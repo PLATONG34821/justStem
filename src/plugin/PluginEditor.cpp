@@ -262,7 +262,10 @@ void justStemEditor::paint (juce::Graphics& g)
     if (song != nullptr)
     {
         const auto& a = song->analysis;
-        paintReadout (g, tempoArea, "TEMPO", bpmText (a.tempo.bpm) + " BPM", "", juce::Justification::centredLeft, true);
+        // The detected tempo octave is a guess, so offer half and double time too.
+        paintReadout (g, tempoArea, "TEMPO", bpmText (a.tempo.bpm) + " BPM",
+                      "half " + bpmText (a.tempo.bpm / 2) + juce::String::fromUTF8 ("  \xc2\xb7  ") + "double " + bpmText (a.tempo.bpm * 2),
+                      juce::Justification::centredLeft, true);
         paintReadout (g, loudArea, "LOUDNESS", juce::String (a.loudness.integratedLufs, 1) + " LUFS",
                       "peak " + juce::String (a.loudness.samplePeakDb > 0 ? "+" : "") + juce::String (a.loudness.samplePeakDb, 1) + " dBFS",
                       juce::Justification::centredRight, true);
