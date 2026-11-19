@@ -63,6 +63,21 @@ void Gauge::paint (juce::Graphics& g)
 }
 
 // ============================================================================ icon button
+void TabButton::paintButton (juce::Graphics& g, bool over, bool)
+{
+    const bool on = getToggleState();
+    const auto f = capsFont (11.5f);
+    g.setFont (f);
+    g.setColour (on ? Palette::text : over ? Palette::dim.brighter (0.3f) : Palette::dim);
+    g.drawText (getButtonText().toUpperCase(), getLocalBounds(), juce::Justification::centredLeft, false);
+    if (on)
+    {
+        const float w = juce::GlyphArrangement::getStringWidth (f, getButtonText().toUpperCase());
+        g.setColour (Palette::accentTo);
+        g.fillRoundedRectangle (0.0f, (float) getHeight() - 3.0f, w, 2.0f, 1.0f);
+    }
+}
+
 void IconButton::paintButton (juce::Graphics& g, bool over, bool down)
 {
     const auto r = getLocalBounds().toFloat().reduced (1.0f);

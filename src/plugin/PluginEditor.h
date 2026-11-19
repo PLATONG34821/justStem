@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PluginProcessor.h"
+#include "ui/ChordView.h"
 #include "ui/StoragePanel.h"
 #include "ui/Theme.h"
 #include "ui/Widgets.h"
@@ -10,7 +11,7 @@
 /** The plug-in window, top to bottom:
       input bar   YouTube link, Choose file, Split
       readouts    KEY (left), the tempo gauge (centre; shows progress while splitting), LOUDNESS (right)
-      stems       one row per stem: mute, solo, volume, drag-to-DAW
+      stems       tabs: one row per stem (mute, solo, volume, drag-to-DAW), or the chords
       player bar  play, seek, time, Follow DAW */
 class CoverToolsEditor final : public juce::AudioProcessorEditor,
                                public juce::DragAndDropContainer,
@@ -41,12 +42,14 @@ private:
     void chooseFile();
     void saveAll();
     void showStorage();
+    void showChords (bool);
+    void copyChords();
 
     CoverToolsProcessor& proc;
     covertools::ui::DashboardLookAndFeel lnf;
 
     // layout regions (set in resized)
-    juce::Rectangle<int> statusLine, keyArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea;
+    juce::Rectangle<int> statusLine, keyArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea, transposeArea;
 
     juce::TextEditor linkBox;
     juce::TextButton chooseButton { "Choose file" }, splitButton { "Split" }, cancelButton { "Cancel" };
@@ -63,6 +66,11 @@ private:
 #endif
     juce::TextButton saveAllButton { "Save all" }, storageButton { "Storage" };
     std::unique_ptr<covertools::ui::StoragePanel> storagePanel;
+
+    covertools::ui::TabButton stemsTab { "Stems" }, chordsTab { "Chords" };
+    covertools::ui::ChordView chordView;
+    juce::TextButton transposeDown { juce::String::fromUTF8 ("\xe2\x88\x92") }, transposeUp { "+" }, copyButton { "Copy chords" };
+    bool chordsShown = false;
 
     covertools::ui::IconButton playButton;
     juce::Slider position;

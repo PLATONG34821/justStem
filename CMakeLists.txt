@@ -33,6 +33,8 @@ FetchContent_MakeAvailable(faad2)
 add_library(covertools_core STATIC
     src/core/Separator.cpp
     src/core/Analysis.cpp
+    src/core/Chords.cpp
+    src/core/Dsp.cpp
     src/core/Resampler.cpp)
 target_include_directories(covertools_core PUBLIC src/core)
 target_link_libraries(covertools_core PUBLIC onnxruntime::onnxruntime)
@@ -56,6 +58,7 @@ set(COVERTOOLS_PLUGIN_SOURCES
     src/plugin/SongJob.cpp
     src/plugin/SongResult.cpp
     src/plugin/StemPlayer.cpp
+    src/plugin/ui/ChordView.cpp
     src/plugin/ui/StoragePanel.cpp
     src/plugin/ui/Theme.cpp
     src/plugin/ui/Widgets.cpp)

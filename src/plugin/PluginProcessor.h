@@ -28,6 +28,9 @@ public:
     void showError (const juce::String& message) { error = message; sendChangeMessage(); }
     covertools::SongResultPtr getSong() const { return song; }
     covertools::StemPlayer& player() { return stemPlayer; }
+    /** Semitones the chord view transposes by (saved with the DAW project). */
+    int getTranspose() const { return transpose; }
+    void setTranspose (int semitones) { transpose = juce::jlimit (-11, 11, semitones); sendChangeMessage(); }
 
     // ---- AudioProcessor
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -62,6 +65,7 @@ private:
     covertools::SongResultPtr song;
     juce::String error;
     juce::StringArray lastLog;
+    int transpose = 0;
     std::shared_ptr<bool> alive = std::make_shared<bool> (true); // guards async job callbacks
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CoverToolsProcessor)

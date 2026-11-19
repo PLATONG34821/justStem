@@ -108,6 +108,13 @@ SongResultPtr SongJob::process()
         setStatus ("Loading saved stems", -1);
         auto song = loadSong (juce::File (source));
         addLog ("Loaded \"" + song->title + "\"");
+        if (song->analysis.chords.segments.empty()) // saved before chord detection existed
+        {
+            setStatus ("Finding chords", -1);
+            song->analysis.chords = detectSongChords ({}, song->stems, song->analysis.tempo.bpm, song->analysis.key);
+            saveInfo (*song);
+            addLog ("Found " + juce::String ((int) song->analysis.chords.segments.size()) + " chord changes (saved for next time)");
+        }
         return song;
     }
 
@@ -160,11 +167,13 @@ SongResultPtr SongJob::process()
     addLog ("Split 6 stems in " + juce::String (splitSeconds, 1) + " s ("
             + juce::String (song->durationSeconds / std::max (0.01, splitSeconds), 1) + "x realtime)");
 
-    setStatus ("Detecting key and tempo", -1);
+    setStatus ("Detecting key, tempo and chords", -1);
     song->analysis = analyzeSong (mix, song->stems);
     const auto& a = song->analysis;
     addLog ("Key " + juce::String (a.key.name()) + " (" + juce::String (a.key.votes) + "/3 profiles agree), "
             + juce::String (a.tempo.bpm, 1) + " BPM, " + juce::String (a.loudness.integratedLufs, 1) + " LUFS");
+    addLog (juce::String ((int) a.chords.bars (song->durationSeconds).size()) + " bars, "
+            + juce::String ((int) a.chords.segments.size()) + " chord changes");
 
     setStatus ("Saving stems", -1);
     song->folder = newSongFolder (song->title);

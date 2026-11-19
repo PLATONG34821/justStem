@@ -4,6 +4,7 @@
 //   covertools_cli import <YouTube link | audio file> <output.wav>
 //   covertools_cli analyze-selftest
 //   covertools_cli analyze <audio file> [model.onnx]   (with a model: analyse the separated stems)
+//   covertools_cli chords <song folder>                 (stems saved by the plug-in)
 #include "../src/core/Analysis.h"
 #include "../src/core/Resampler.h"
 #include "../src/core/Separator.h"
@@ -278,6 +279,116 @@ static int analyzeSelftest()
                                   + (sameOctave ? "" : " (octave: " + juce::String (best, 2).toStdString() + " via half/double)"));
         }
     }
+    std::printf ("Beats and chords (synthetic band: drums, bass, re-struck chords; 7ths, sus, dim, slash chords)\n");
+    {
+        // A 16-bar progression in C major, two chords per bar where marked. {root, quality, bass, beats}
+        struct Truth { int root; ChordQuality q; int bass; int beats; };
+        using Q = ChordQuality;
+        const std::vector<Truth> song {
+            { 0, Q::Major, -1, 4 }, { 9, Q::Minor7, -1, 4 }, { 5, Q::Major7, -1, 4 }, { 7, Q::Dominant7, -1, 4 },
+            { 0, Q::Major, 4, 4 }, { 2, Q::Minor, -1, 4 }, { 7, Q::Sus4, -1, 2 }, { 7, Q::Major, -1, 2 }, { 0, Q::Major, -1, 4 },
+            { 5, Q::Major, -1, 4 }, { 11, Q::Diminished, -1, 4 }, { 4, Q::Minor, -1, 4 }, { 9, Q::Minor, -1, 4 },
+            { 2, Q::Sus2, -1, 4 }, { 2, Q::Minor7, -1, 2 }, { 7, Q::Dominant7, -1, 2 }, { 0, Q::Major, -1, 4 }, { 0, Q::Major, -1, 4 },
+            { 9, Q::Minor, -1, 4 }, { 5, Q::Major, 9, 4 },
+        };
+        static constexpr int iv[8][4] { { 0, 4, 7, -1 }, { 0, 3, 7, -1 }, { 0, 4, 7, 10 }, { 0, 4, 7, 11 },
+                                        { 0, 3, 7, 10 }, { 0, 2, 7, -1 }, { 0, 5, 7, -1 }, { 0, 3, 6, -1 } };
+        auto note = [] (std::vector<float>& x, double t0, double len, int midi, float amp, int partials, double decay) {
+            const double f = 440 * std::pow (2.0, (midi - 69) / 12.0);
+            const auto s0 = (std::size_t) (t0 * sampleRate);
+            for (std::size_t i = 0; i < (std::size_t) (len * sampleRate) && s0 + i < x.size(); ++i)
+            {
+                const double t = (double) i / sampleRate;
+                double v = 0;
+                for (int h = 1; h <= partials; ++h) v += std::sin (2 * std::numbers::pi * f * h * t) * std::pow (0.5, h - 1);
+                x[s0 + i] += (float) (v * amp * std::exp (-t * decay) * std::min (1.0, t * 200));
+            }
+        };
+        int totalBeats = 0;
+        for (auto& c : song) totalBeats += c.beats;
+        for (int transpose : { 0, 3, 6, 9 })
+            for (double bpm : { 96.0, 124.0 })
+            {
+                const double beat = 60.0 / bpm, offset = 0.61; // music starts after a short silence, a pickup beat first
+                const double length = offset + (totalBeats + 1) * beat + 1.0;
+                std::vector<float> harmonic ((std::size_t) (length * sampleRate), 0.0f), bass = harmonic, drums = harmonic;
+                std::uint32_t seed = 11;
+                auto rnd = [&] { seed = seed * 1664525u + 1013904223u; return (double) (seed >> 8) / (1 << 24) * 2 - 1; };
+                for (int b = 0; b <= totalBeats; ++b) // drums: kick on 1 and 3, snare on 2 and 4 (beat 0 is the pickup)
+                {
+                    const auto s0 = (std::size_t) ((offset + b * beat) * sampleRate);
+                    for (std::size_t i = 0; i < (std::size_t) sampleRate / 5 && s0 + i < drums.size(); ++i)
+                    {
+                        const double t = (double) i / sampleRate;
+                        drums[s0 + i] += (float) ((b % 2 == 1) ? std::sin (2 * std::numbers::pi * (50 + 80 * std::exp (-t * 30)) * t) * std::exp (-t * 15) * 0.9
+                                                               : rnd() * std::exp (-t * 25) * 0.5);
+                    }
+                }
+                double t = offset + beat; // bar 1 starts after the pickup beat
+                ChordResult truth;
+                KeyResult key;
+                key.tonic = transpose;
+                for (auto& c : song)
+                {
+                    const int root = c.root + transpose;
+                    for (int k = 0; k < c.beats; ++k)
+                    {
+                        for (int i : iv[(int) c.q]) if (i >= 0) note (harmonic, t + k * beat, beat, 60 + (root + i) % 12, 0.12f, 5, 2.5);
+                        if (k % 2 == 0) note (bass, t + k * beat, 2 * beat, 36 + ((c.bass >= 0 ? c.bass : c.root) + transpose) % 12, 0.35f, 3, 1.0);
+                    }
+                    truth.segments.push_back ({ t, t + c.beats * beat, { root % 12, c.q, c.bass >= 0 ? (c.bass + transpose) % 12 : -1 } });
+                    t += c.beats * beat;
+                }
+                auto tempo = detectTempo (drums, sampleRate).bpm;
+                if (std::fabs (tempo / 2 - bpm) < 2) tempo /= 2;
+                if (std::fabs (tempo * 2 - bpm) < 2) tempo *= 2;
+                const auto r = detectChords (harmonic, bass, drums, sampleRate, tempo, key);
+
+                // Beats: every true beat has a detected beat within 35 ms.
+                double worst = 0, bias = 0;
+                for (int b = 0; b <= totalBeats; ++b)
+                {
+                    double best = 1e9;
+                    for (double d : r.beats) if (std::fabs (d - (offset + b * beat)) < std::fabs (best)) best = d - (offset + b * beat);
+                    worst = std::max (worst, std::fabs (best));
+                    bias += best / (totalBeats + 1);
+                }
+                // Chords, sampled every 10 ms where the truth has a chord.
+                int same = 0, sameTriad = 0, samples = 0;
+                for (const auto& seg : truth.segments)
+                    for (double x = seg.start + 0.005; x < seg.end; x += 0.01, ++samples)
+                    {
+                        const int i = r.segmentAt (x);
+                        if (i < 0) continue;
+                        const auto& c = r.segments[(size_t) i].chord;
+                        same += c == seg.chord;
+                        auto minorish = [] (ChordQuality q) { return q == ChordQuality::Minor || q == ChordQuality::Minor7 || q == ChordQuality::Diminished; };
+                        sameTriad += c.root == seg.chord.root && minorish (c.quality) == minorish (seg.chord.quality);
+                    }
+                // The bar line: the first downbeat is beat 1 of bar 1 (after the pickup).
+                const double firstBar = offset + beat;
+                bool barOk = (size_t) r.firstDownbeat < r.beats.size();
+                if (barOk)
+                {
+                    const double bars = (r.beats[(size_t) r.firstDownbeat] - firstBar) / (4 * beat);
+                    barOk = std::fabs (bars - std::round (bars)) * 4 * beat < 0.05;
+                }
+                const auto label = key.name() + " at " + std::to_string ((int) bpm) + " BPM: ";
+                check (worst < 0.035, label + "beats within " + std::to_string ((int) std::round (worst * 1000)) + " ms (average "
+                                            + std::to_string ((int) std::round (bias * 1000)) + " ms)");
+                check (barOk, label + "bar lines found");
+                check (same >= 0.85 * samples, label + "exact chords " + std::to_string (100 * same / samples) + "%, root+major/minor "
+                                                   + std::to_string (100 * sameTriad / samples) + "%");
+                if (transpose == 0 && bpm == 96.0) std::printf ("%s", chordChart (r, length, key).c_str());
+            }
+        KeyResult eb;
+        eb.tonic = 3;
+        const Chord bbOverD { 10, ChordQuality::Major, 2 };
+        check (chordName (bbOverD, eb) == "Bb/D" && chordName (bbOverD, eb, 1) == "B/D#" && chordName ({ 6, ChordQuality::Minor7, -1 }, eb) == "Gbm7"
+                   && chordName ({}, eb) == "N.C.",
+               "chord spelling: Bb/D in Eb, B/D# up a semitone, N.C.");
+    }
+
     std::printf ("%s\n", failures == 0 ? "ALL PASSED" : (std::to_string (failures) + " FAILED").c_str());
     return failures == 0 ? 0 : 1;
 }
@@ -294,12 +405,35 @@ static int analyzeFile (const juce::File& in, const std::string& model)
         std::fprintf (stderr, "\n");
     }
     const auto t0 = juce::Time::getMillisecondCounterHiRes();
-    const auto [key, tempo, loud] = analyzeSong (audio, stems);
+    const auto analysis = analyzeSong (audio, stems);
+    const auto& [key, tempo, loud, chords] = analysis;
     std::printf ("analysed in %.0f ms\n", juce::Time::getMillisecondCounterHiRes() - t0);
     std::printf ("key: %s (relative %s, Camelot %s), confidence %.2f, %d/3 profiles agree, tuning %+.0f cents\n",
                  key.name().c_str(), key.relative().name().c_str(), key.camelot().c_str(), key.confidence, key.votes, key.tuningCents);
     std::printf ("tempo: %.2f BPM (half %.2f, double %.2f)\n", tempo.bpm, tempo.bpm / 2, tempo.bpm * 2);
     std::printf ("loudness: %.1f LUFS, sample peak %.1f dBFS\n", loud.integratedLufs, loud.samplePeakDb);
+    std::printf ("chords:\n%s", chordChart (chords, (double) audio.size() / sampleRate, key).c_str());
+    return 0;
+}
+
+/** Analyse a song folder written by the plug-in (its stem WAVs), without separating again. */
+static int analyzeFolder (const juce::File& folder)
+{
+    StemMap stems;
+    StereoAudio mix;
+    for (auto stem : stemOrder)
+    {
+        auto audio = loadAudioFile (folder.getChildFile (juce::String (std::string (stemName (stem))) + ".wav"));
+        mix.left.resize (std::max (mix.size(), audio.size()), 0.0f);
+        mix.right.resize (mix.left.size(), 0.0f);
+        for (std::size_t i = 0; i < audio.size(); ++i) { mix.left[i] += audio.left[i]; mix.right[i] += audio.right[i]; }
+        stems[stem] = std::move (audio);
+    }
+    const auto t0 = juce::Time::getMillisecondCounterHiRes();
+    const auto a = analyzeSong (mix, stems);
+    std::printf ("analysed in %.0f ms\nkey %s, %.2f BPM, %zu beats, first downbeat = beat %d, %zu chord segments\n%s",
+                 juce::Time::getMillisecondCounterHiRes() - t0, a.key.name().c_str(), a.tempo.bpm, a.chords.beats.size(),
+                 a.chords.firstDownbeat, a.chords.segments.size(), chordChart (a.chords, (double) mix.size() / sampleRate, a.key).c_str());
     return 0;
 }
 
@@ -311,6 +445,7 @@ int main (int argc, char** argv)
     {
         if (cmd == "analyze-selftest") return analyzeSelftest();
         if (cmd == "analyze" && argc >= 3) return analyzeFile (juce::File (juce::String::fromUTF8 (argv[2])), argc > 3 ? argv[3] : "");
+        if (cmd == "chords" && argc >= 3) return analyzeFolder (juce::File (juce::String::fromUTF8 (argv[2])));
         if (argc < 3) return 2;
         if (cmd == "selftest") return selftest (argv[2], argc > 3 ? std::atoi (argv[3]) : 12, argc > 4 ? (float) std::atof (argv[4]) : 0.0f);
         if (cmd == "import" && argc >= 4) return importSong (juce::String::fromUTF8 (argv[2]), juce::File (juce::String::fromUTF8 (argv[3])));

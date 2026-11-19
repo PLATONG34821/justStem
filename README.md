@@ -6,6 +6,7 @@ audio file or a YouTube link) and it:
 - splits it into **vocals, drums, bass, guitar, piano and other**, plus an instrumental,
   saved as 24-bit WAVs you can drag straight onto DAW tracks;
 - finds the **key** (with relative key, Camelot code and tuning), **tempo** and **loudness** (LUFS);
+- finds the **chords**, bar by bar, with a transpose control and a text chart to copy;
 - previews the stems in sync with your session (mute / solo / volume per stem).
 
 Everything runs on your computer. The AI model (HT-Demucs 6-stem) ships inside the plug-in.
@@ -53,6 +54,8 @@ src/core/      Separation and analysis. Plain C++ + ONNX Runtime, no JUCE.
   Audio.h        shared types: StereoAudio, Stem, sample rate
   Separator.*    runs HT-Demucs in crossfaded chunks (CoreML / DirectML / CPU)
   Analysis.*     key, tempo, loudness (EBU R128)
+  Chords.*       beat tracking, bar lines and chord recognition
+  Dsp.*          shared spectral peaks and onset envelope
   Resampler.*    sample-rate conversion to 44.1 kHz (polyphase, exact timing)
 src/io/        Files and the outside world (JUCE).
   AudioFiles.*   decode audio files to 44.1 kHz stereo (gapless); write WAVs
@@ -66,7 +69,8 @@ src/plugin/    The plug-in.
   SongJob.*          background work: import -> split -> analyse -> save
   SongResult.*       a split song; saves and reloads it
   StemPlayer.*       real-time stem preview (lock-free on the audio thread)
-  ui/                dashboard theme (Inter font, colours, icons) and widgets (gauge, stem rows)
+  ui/                dashboard theme (Inter font, colours, icons), widgets (gauge, stem rows, tabs),
+                     the chord view and the Storage panel
 tools/         Developer tools, not shipped (see Testing).
 scripts/       Builds the model file.
 resources/     Embedded fonts.
@@ -114,13 +118,31 @@ build/covertools_uitest_artefacts/Release/covertools_uitest models/htdemucs_6s_w
 ```
 
 - `analyze-selftest`: the resampler against exact sine waves and an aliasing test, loudness against
-  the EBU reference signals, key detection in all 24 keys, tempo from 72 to 174 BPM.
+  the EBU reference signals, key detection in all 24 keys, tempo from 72 to 174 BPM, and beats,
+  bar lines and chords (7ths, sus, dim, slash chords) in a synthetic band recording in 4 keys.
 - `selftest`: separates a synthetic track and scores each stem against the original parts.
 - `covertools_uitest`: runs the real plug-in code without a DAW. It renders the window to PNGs,
-  splits a song, checks the preview audio and saves / reloads the plug-in state.
+  splits a song, checks the preview audio, the chord view and transpose, and saves / reloads the
+  plug-in state (including a song saved before chord detection existed).
 
-`covertools_cli` can also `separate`, `analyze` or `import` real songs; see the top of
-`tools/cli.cpp`.
+`covertools_cli` can also `separate`, `analyze` or `import` real songs, or print the `chords` of a
+song folder the plug-in saved; see the top of `tools/cli.cpp`.
+
+## How chords are found
+
+The chords come from the separated stems: guitar + piano + other for the harmony, the bass stem
+for the bass note, and the drums for the beats. Vocals are left out (they carry the melody).
+
+1. **Beats**: a dynamic-programming beat tracker follows the detected tempo through the drums.
+2. **Per beat**: the strength of each of the 12 notes (chroma) in the chord instruments, and the
+   lowest strong note in the bass.
+3. **Matching**: major, minor, 7, maj7, m7, sus2, sus4 and dim on every root, in root position or
+   with another chord tone in the bass (slash chords only when the bass clearly says so).
+4. **Smoothing**: Viterbi decoding makes chords hold rather than flicker and leans towards
+   chords in the song's key. A first pass finds which beat of four chords change on (the bar
+   line), and the second pass prefers changes there.
+
+4/4 is assumed. Expect most chords right on pop and rock; dense or jazzy harmony is harder.
 
 ## Licences
 

@@ -95,6 +95,7 @@ void CoverToolsProcessor::getStateInformation (juce::MemoryBlock& data)
     juce::ValueTree state ("CoverTools");
     if (song != nullptr) state.setProperty ("folder", song->folder.getFullPathName(), nullptr);
     state.setProperty ("followHost", stemPlayer.followsHost(), nullptr);
+    state.setProperty ("transpose", transpose, nullptr);
     for (int i = 0; i < numStems; ++i)
     {
         juce::ValueTree s ("Stem");
@@ -112,6 +113,7 @@ void CoverToolsProcessor::setStateInformation (const void* data, int size)
     const auto state = juce::ValueTree::readFromData (data, (size_t) size);
     if (! state.hasType ("CoverTools")) return;
     stemPlayer.setFollowHost (state["followHost"]);
+    transpose = juce::jlimit (-11, 11, (int) state["transpose"]);
     for (int i = 0; i < numStems && i < state.getNumChildren(); ++i)
     {
         const auto s = state.getChild (i);

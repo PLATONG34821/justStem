@@ -28,6 +28,10 @@ using SongResultPtr = std::shared_ptr<const SongResult>;
 /** Write the stem WAVs, the instrumental and info.json into song.folder. Throws std::runtime_error. */
 void saveSong (const SongResult& song);
 
-/** Reload a song written by saveSong (e.g. when a DAW project is reopened). Throws std::runtime_error. */
-SongResultPtr loadSong (const juce::File& folder);
+/** Write (or rewrite) song.folder/info.json: title, analysis, beats and chords. */
+void saveInfo (const SongResult& song);
+
+/** Reload a song written by saveSong (e.g. when a DAW project is reopened). Songs saved before
+    chord detection existed come back with no chord segments. Throws std::runtime_error. */
+std::shared_ptr<SongResult> loadSong (const juce::File& folder);
 } // namespace covertools

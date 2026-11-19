@@ -22,7 +22,11 @@ void saveSong (const SongResult& song)
         }
     }
     writeWav (song.instrumentalFile(), instrumental);
+    saveInfo (song);
+}
 
+void saveInfo (const SongResult& song)
+{
     const auto& a = song.analysis;
     auto info = std::make_unique<juce::DynamicObject>();
     info->setProperty ("version", 1);
@@ -36,10 +40,18 @@ void saveSong (const SongResult& song)
     info->setProperty ("bpm", a.tempo.bpm);
     info->setProperty ("lufs", a.loudness.integratedLufs);
     info->setProperty ("peakDb", a.loudness.samplePeakDb);
+    juce::Array<juce::var> beats, chords;
+    for (double b : a.chords.beats) beats.add (std::round (b * 1000.0) / 1000.0);
+    for (const auto& seg : a.chords.segments) // [start, end, root, quality, bass]; root -1 = no chord
+        chords.add (juce::Array<juce::var> { std::round (seg.start * 1000.0) / 1000.0, std::round (seg.end * 1000.0) / 1000.0,
+                                             seg.chord.root, (int) seg.chord.quality, seg.chord.bass });
+    info->setProperty ("beats", beats);
+    info->setProperty ("firstDownbeat", a.chords.firstDownbeat);
+    info->setProperty ("chords", chords);
     song.infoFile().replaceWithText (juce::JSON::toString (juce::var (info.release())));
 }
 
-SongResultPtr loadSong (const juce::File& folder)
+std::shared_ptr<SongResult> loadSong (const juce::File& folder)
 {
     auto song = std::make_shared<SongResult>();
     song->folder = folder;
@@ -57,6 +69,14 @@ SongResultPtr loadSong (const juce::File& folder)
     a.tempo.bpm = (float) (double) info["bpm"];
     a.loudness.integratedLufs = (float) (double) info["lufs"];
     a.loudness.samplePeakDb = (float) (double) info["peakDb"];
+    if (const auto* beats = info["beats"].getArray())
+        for (const auto& b : *beats) a.chords.beats.push_back ((double) b);
+    a.chords.firstDownbeat = (int) info["firstDownbeat"];
+    if (const auto* chords = info["chords"].getArray())
+        for (const auto& c : *chords)
+            if (c.size() == 5)
+                a.chords.segments.push_back ({ (double) c[0], (double) c[1],
+                                               { (int) c[2], (ChordQuality) juce::jlimit (0, numChordQualities - 1, (int) c[3]), (int) c[4] } });
 
     for (auto stem : stemOrder)
         song->stems[stem] = loadAudioFile (song->stemFile (stem));

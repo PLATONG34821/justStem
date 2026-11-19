@@ -124,6 +124,32 @@ int main (int argc, char** argv)
     pl.setVolume (1, 0.5f);
     pl.setPlaying (false);
 
+    std::printf ("Chords\n");
+    check (a.chords.segments.size() > 4 && a.chords.beats.size() > 100,
+           juce::String ((int) a.chords.beats.size()) + " beats, " + juce::String ((int) a.chords.segments.size()) + " chord changes");
+    auto* chordsTab = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
+        auto* b = dynamic_cast<covertools::ui::TabButton*> (c);
+        return b != nullptr && b->getButtonText() == "Chords";
+    }));
+    check (chordsTab != nullptr && chordsTab->isVisible(), "Chords tab shown");
+    if (chordsTab != nullptr) chordsTab->triggerClick();
+    pumpUntil ([] { return false; }, 200);
+    auto* view = findChild ([] (juce::Component* c) { return dynamic_cast<covertools::ui::ChordView*> (c) != nullptr; });
+    check (view != nullptr && view->isVisible(), "chord view shown");
+    for (int i = 0; i < 2; ++i)
+        if (auto* up = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
+                auto* b = dynamic_cast<juce::TextButton*> (c);
+                return b != nullptr && b->getButtonText() == "+" && b->isVisible();
+            })))
+            up->triggerClick();
+    pumpUntil ([] { return false; }, 300);
+    check (proc->getTranspose() == 2, "transpose +2");
+    const auto chart = covertools::ui::ChordView::chartText (*s, 2);
+    check (chart.contains ("transposed +2") && chart.contains ("| "), "chord chart text for the clipboard");
+    std::printf ("%s", chart.upToFirstOccurrenceOf ("\n\n", false, false).toRawUTF8());
+    std::printf ("\n%s\n", chart.fromFirstOccurrenceOf ("\n\n", false, false).upToFirstOccurrenceOf ("\n", false, false).toRawUTF8());
+    snapshot (*editor, outDir.getChildFile ("5-chords.png"));
+
     std::printf ("Save and reload, like reopening a DAW project\n");
     juce::MemoryBlock state;
     proc->getStateInformation (state);
@@ -138,6 +164,24 @@ int main (int argc, char** argv)
         const auto& b = proc2->getSong()->analysis;
         check (b.key.name() == a.key.name() && std::fabs (b.tempo.bpm - a.tempo.bpm) < 0.01f,
                "analysis restored (" + juce::String (b.key.name()) + ", " + juce::String (b.tempo.bpm, 2) + " BPM)");
+        check (b.chords.segments.size() == a.chords.segments.size() && b.chords.firstDownbeat == a.chords.firstDownbeat
+                   && b.chords.segments.back().chord == a.chords.segments.back().chord,
+               "chords restored (" + juce::String ((int) b.chords.segments.size()) + " changes)");
+        check (proc2->getTranspose() == 2, "transpose restored");
+    }
+
+    std::printf ("Song saved before chord detection existed\n");
+    {
+        auto info = juce::JSON::parse (s->infoFile());
+        if (auto* obj = info.getDynamicObject()) { obj->removeProperty ("chords"); obj->removeProperty ("beats"); }
+        s->infoFile().replaceWithText (juce::JSON::toString (info));
+        auto proc3 = std::make_unique<CoverToolsProcessor> (model);
+        proc3->setStateInformation (state.getData(), (int) state.getSize());
+        pumpUntil ([&] { return proc3->getSong() != nullptr && ! proc3->isBusy(); }, 60000);
+        const auto song3 = proc3->getSong();
+        check (song3 != nullptr && song3->analysis.chords.segments.size() == a.chords.segments.size(),
+               "chords worked out on reload (" + juce::String (song3 ? (int) song3->analysis.chords.segments.size() : 0) + " changes)");
+        check (juce::JSON::parse (s->infoFile())["chords"].size() == (int) a.chords.segments.size(), "and saved to info.json");
     }
 
     editor.reset();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Audio.h"
+#include "Chords.h"
 
 #include <array>
 #include <string>
@@ -48,9 +49,10 @@ struct SongAnalysis
     KeyResult key;
     TempoResult tempo;
     LoudnessResult loudness;
+    ChordResult chords;
 };
 
-/** Key (from the non-drum stems), tempo (from the drums) and loudness (from the mix).
+/** Key (from the non-drum stems), tempo (from the drums), loudness (from the mix) and chords.
     Pass an empty StemMap to analyse the mix alone. */
 SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems);
 

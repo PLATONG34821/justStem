@@ -86,6 +86,18 @@ CoverToolsEditor::CoverToolsEditor (CoverToolsProcessor& p) : AudioProcessorEdit
     storageButton.onClick = [this] { showStorage(); };
     addAndMakeVisible (storageButton);
 
+    stemsTab.onClick = [this] { showChords (false); };
+    chordsTab.onClick = [this] { showChords (true); };
+    chordView.onSeek = [this] (double t) { proc.player().seek (t); };
+    transposeDown.onClick = [this] { proc.setTranspose (proc.getTranspose() - 1); };
+    transposeUp.onClick = [this] { proc.setTranspose (proc.getTranspose() + 1); };
+    transposeDown.setTooltip ("Transpose the chords down a semitone");
+    transposeUp.setTooltip ("Transpose the chords up a semitone");
+    copyButton.setTooltip ("Copy the chord chart as text");
+    copyButton.onClick = [this] { copyChords(); };
+    for (auto* c : std::initializer_list<juce::Component*> { &stemsTab, &chordsTab, &chordView, &transposeDown, &transposeUp, &copyButton })
+        addChildComponent (c);
+
     playButton.setIcon (icons::play());
     playButton.onClick = [this] { proc.player().setPlaying (! proc.player().isPlaying()); };
     position.setSliderStyle (juce::Slider::LinearHorizontal);
@@ -135,12 +147,27 @@ void CoverToolsEditor::resized()
     stemsArea = r;
 
     auto header = stemsHeader;
-    saveAllButton.setBounds (header.removeFromRight (96).withSizeKeepingCentre (96, 26));
-    header.removeFromRight (8);
-    revealButton.setBounds (header.removeFromRight (150).withSizeKeepingCentre (150, 26));
-    if (! revealButton.isVisible()) header = stemsHeader; // Storage moves to the right edge when there's no song
-    else header.removeFromRight (8);
+    stemsTab.setBounds (header.getX(), header.getY(), 64, header.getHeight());
+    chordsTab.setBounds (header.getX() + 84, header.getY(), 74, header.getHeight());
+    if (chordsShown && transposeUp.isVisible())
+    {
+        copyButton.setBounds (header.removeFromRight (128).withSizeKeepingCentre (128, 26));
+        header.removeFromRight (16);
+        transposeUp.setBounds (header.removeFromRight (30).withSizeKeepingCentre (30, 26));
+        transposeArea = header.removeFromRight (104);
+        transposeDown.setBounds (header.removeFromRight (30).withSizeKeepingCentre (30, 26));
+        header.removeFromRight (16);
+    }
+    else
+    {
+        saveAllButton.setBounds (header.removeFromRight (96).withSizeKeepingCentre (96, 26));
+        header.removeFromRight (8);
+        revealButton.setBounds (header.removeFromRight (150).withSizeKeepingCentre (150, 26));
+        if (! revealButton.isVisible()) header = stemsHeader; // Storage moves to the right edge when there's no song
+        else header.removeFromRight (8);
+    }
     storageButton.setBounds (header.removeFromRight (104).withSizeKeepingCentre (104, 26));
+    chordView.setBounds (stemsArea.withTrimmedTop (6));
     if (storagePanel != nullptr) storagePanel->setBounds (getLocalBounds());
 
     auto list = stemsArea;
@@ -194,7 +221,14 @@ void CoverToolsEditor::paint (juce::Graphics& g)
     const bool showLog = busy || (song == nullptr && ! log.isEmpty());
     g.setColour (Palette::dim);
     g.setFont (capsFont (11.5f));
-    g.drawText (showLog ? "LOG" : "STEMS", stemsHeader, juce::Justification::centredLeft, false);
+    if (! stemsTab.isVisible()) g.drawText (showLog ? "LOG" : "STEMS", stemsHeader, juce::Justification::centredLeft, false);
+    if (transposeUp.isVisible())
+    {
+        const int t = proc.getTranspose();
+        g.setColour (t != 0 ? Palette::text : Palette::dim);
+        g.setFont (font (Weight::Regular, 13.0f));
+        g.drawText ("Transpose " + juce::String (t > 0 ? "+" : "") + juce::String (t), transposeArea, juce::Justification::centred, false);
+    }
     g.setColour (Palette::hairline);
     g.drawHorizontalLine (stemsHeader.getBottom(), (float) stemsHeader.getX(), (float) stemsHeader.getRight());
     g.drawHorizontalLine (playerBar.getY() - 6, (float) playerBar.getX(), (float) playerBar.getRight());
@@ -253,11 +287,18 @@ void CoverToolsEditor::refreshAll()
     splitButton.setEnabled (! busy);
     chooseButton.setEnabled (! busy);
     cancelButton.setVisible (busy);
-    revealButton.setVisible (song != nullptr);
-    saveAllButton.setVisible (song != nullptr);
+    saveAllButton.setVisible (song != nullptr && ! chordsShown);
+    revealButton.setVisible (song != nullptr && ! chordsShown);
+    stemsTab.setVisible (song != nullptr);
+    chordsTab.setVisible (song != nullptr);
+    stemsTab.setToggleState (! chordsShown, juce::dontSendNotification);
+    chordsTab.setToggleState (chordsShown, juce::dontSendNotification);
+    for (auto* b : { &transposeDown, &transposeUp, &copyButton }) b->setVisible (song != nullptr && chordsShown);
+    chordView.setVisible (song != nullptr && chordsShown);
+    chordView.setTranspose (proc.getTranspose());
     resized(); // Storage button position depends on the buttons above
     if (storagePanel != nullptr) storagePanel->refresh();
-    for (auto* row : rows) row->setVisible (song != nullptr);
+    for (auto* row : rows) row->setVisible (song != nullptr && ! chordsShown);
     followHost.setToggleState (proc.player().followsHost(), juce::dontSendNotification);
 
     if (song != nullptr && song != shownSong)
@@ -266,6 +307,7 @@ void CoverToolsEditor::refreshAll()
         for (int i = 0; i < numStems; ++i) rows[i]->setFile (song->stemFile (stemOrder[(size_t) i]));
         rows.getLast()->setFile (song->instrumentalFile());
         position.setRange (0.0, std::max (1.0, song->durationSeconds), 0.01);
+        chordView.setSong (song);
     }
     for (auto* row : rows) row->refresh();
     updateGauge();
@@ -322,7 +364,10 @@ void CoverToolsEditor::timerCallback()
         repaint (stemsArea); // the log
     }
     else
+    {
         updatePlayerBar();
+        if (chordView.isVisible()) chordView.setPosition (proc.player().positionSeconds());
+    }
 }
 
 // ============================================================================ actions
@@ -387,4 +432,22 @@ void CoverToolsEditor::showStorage()
     };
     addAndMakeVisible (*storagePanel);
     storagePanel->setBounds (getLocalBounds());
+}
+
+// ============================================================================ chords
+void CoverToolsEditor::showChords (bool show)
+{
+    chordsShown = show;
+    refreshAll();
+}
+
+void CoverToolsEditor::copyChords()
+{
+    auto song = proc.getSong();
+    if (song == nullptr) return;
+    juce::SystemClipboard::copyTextToClipboard (ChordView::chartText (*song, proc.getTranspose()));
+    copyButton.setButtonText ("Copied");
+    juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer<CoverToolsEditor> (this)] {
+        if (safe != nullptr) safe->copyButton.setButtonText ("Copy chords");
+    });
 }

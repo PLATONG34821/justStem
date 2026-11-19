@@ -24,6 +24,14 @@ private:
     State state;
 };
 
+/** A tab: spaced uppercase text, underlined in blue when selected (toggle state). */
+class TabButton final : public juce::Button
+{
+public:
+    explicit TabButton (const juce::String& name) : juce::Button (name) {}
+    void paintButton (juce::Graphics&, bool over, bool down) override;
+};
+
 /** Round button with a filled icon (play / pause). */
 class IconButton final : public juce::Button
 {

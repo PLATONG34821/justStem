@@ -1,5 +1,5 @@
 #include "Analysis.h"
-#include "Fft.h"
+#include "Dsp.h"
 
 #include <algorithm>
 #include <cmath>
@@ -19,13 +19,6 @@ const char* noteName (int pc, bool minor)
     static constexpr bool flatMajor[12] { 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0 };
     static constexpr bool flatMinor[12] { 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0 };
     return (minor ? flatMinor[pc] : flatMajor[pc]) ? flatNames[pc] : sharpNames[pc];
-}
-
-std::vector<float> hann (int n)
-{
-    std::vector<float> w ((size_t) n);
-    for (int i = 0; i < n; ++i) w[(size_t) i] = (float) (0.5 - 0.5 * std::cos (2 * std::numbers::pi * i / n));
-    return w;
 }
 
 // Key profiles, index 0 = tonic. Krumhansl-Kessler (1982), Temperley (2001), Aarden (2003).
@@ -83,55 +76,15 @@ KeyResult KeyResult::transposed (int semitones) const
 // ------------------------------------------------------------------------------------ key
 KeyResult detectKey (const std::vector<float>& x, int sr)
 {
-    constexpr int n = 8192, hop = 4096;
-    const float minF = 55.0f, maxF = 5000.0f;
-    RealFft fft (n);
-    const auto win = hann (n);
-    std::vector<float> frame ((size_t) n), mag ((size_t) n / 2 + 1);
-
-    struct Peak { float freq, mag; };
-    std::vector<std::vector<Peak>> peaks;
-    double tuneRe = 0, tuneIm = 0;
-
-    for (std::size_t start = 0; start + (size_t) n <= x.size(); start += hop)
-    {
-        double energy = 0;
-        for (int i = 0; i < n; ++i)
-        {
-            frame[(size_t) i] = x[start + (size_t) i] * win[(size_t) i];
-            energy += (double) frame[(size_t) i] * frame[(size_t) i];
-        }
-        if (energy / n < 1e-8) { peaks.emplace_back(); continue; } // silence
-        fft.magnitudes (frame.data(), mag.data());
-
-        const int lo = (int) (minF * n / sr), hi = std::min ((int) (maxF * n / sr), n / 2 - 1);
-        const float frameMax = *std::max_element (mag.begin() + lo, mag.begin() + hi);
-        auto& fp = peaks.emplace_back();
-        for (int k = lo + 1; k < hi; ++k)
-        {
-            const float m = mag[(size_t) k];
-            if (m < frameMax * 0.01f || m <= mag[(size_t) k - 1] || m < mag[(size_t) k + 1]) continue;
-            // Parabolic interpolation on log magnitude.
-            const float a = std::log (mag[(size_t) k - 1] + 1e-9f), b = std::log (m + 1e-9f), c = std::log (mag[(size_t) k + 1] + 1e-9f);
-            const float d = 0.5f * (a - c) / (a - 2 * b + c);
-            const float f = (k + d) * sr / (float) n;
-            const float pm = std::exp (b - 0.25f * (a - c) * d);
-            fp.push_back ({ f, pm });
-            // Tuning: circular mean of each peak's deviation from the 12-TET grid.
-            const double semis = 12.0 * std::log2 (f / 440.0);
-            const double angle = 2 * std::numbers::pi * (semis - std::round (semis));
-            tuneRe += pm * std::cos (angle);
-            tuneIm += pm * std::sin (angle);
-        }
-    }
-
-    const float tuning = (float) (std::atan2 (tuneIm, tuneRe) / (2 * std::numbers::pi)); // semitones, -0.5..0.5
+    const float minF = 55.0f;
+    const auto peaks = dsp::spectralPeaks (x, sr, 8192, 4096, minF, 5000.0f);
+    const float tuning = peaks.tuning;
     const double ref = 440.0 * std::pow (2.0, tuning / 12.0);
 
     // Harmonic pitch-class profile: each peak votes for itself and for the fundamentals it
     // could be a harmonic of (weight 0.6^(h-1)), spread over +-2/3 semitone with a cos^2 window.
     std::array<double, 12> chroma {};
-    for (auto& fp : peaks)
+    for (auto& fp : peaks.frames)
     {
         std::array<double, 12> c {};
         for (auto& p : fp)
@@ -201,46 +154,9 @@ KeyResult detectKey (const std::vector<float>& x, int sr)
 // ------------------------------------------------------------------------------------ tempo
 TempoResult detectTempo (const std::vector<float>& x, int sr)
 {
-    constexpr int n = 2048, hop = 512, bands = 40;
-    const double frameRate = (double) sr / hop;
-    RealFft fft (n);
-    const auto win = hann (n);
-    std::vector<float> frame ((size_t) n), mag ((size_t) n / 2 + 1);
-
-    // Log-spaced bands from 30 Hz to 16 kHz.
-    std::vector<int> edges (bands + 1);
-    for (int b = 0; b <= bands; ++b)
-        edges[(size_t) b] = std::clamp ((int) std::round (30.0 * std::pow (16000.0 / 30.0, (double) b / bands) * n / sr), 1, n / 2);
-
-    // Onset strength: half-wave rectified flux of log band energies.
-    std::vector<float> onset, prev ((size_t) bands, 0.0f);
-    for (std::size_t start = 0; start + (size_t) n <= x.size(); start += hop)
-    {
-        for (int i = 0; i < n; ++i) frame[(size_t) i] = x[start + (size_t) i] * win[(size_t) i];
-        fft.magnitudes (frame.data(), mag.data());
-        float flux = 0;
-        for (int b = 0; b < bands; ++b)
-        {
-            double e = 0;
-            for (int k = edges[(size_t) b]; k < std::max (edges[(size_t) b] + 1, edges[(size_t) b + 1]); ++k) e += (double) mag[(size_t) k] * mag[(size_t) k];
-            const float l = (float) std::log1p (1000.0 * e);
-            flux += std::max (0.0f, l - prev[(size_t) b]);
-            prev[(size_t) b] = l;
-        }
-        onset.push_back (flux);
-    }
-    if (onset.size() < 64) return {};  // too short to measure
-
-    // Remove the slowly varying part (local mean over ~1 s), keep positive deviations.
-    const int m = (int) frameRate;
-    std::vector<double> cum (onset.size() + 1, 0.0);
-    for (std::size_t i = 0; i < onset.size(); ++i) cum[i + 1] = cum[i] + onset[i];
-    std::vector<float> env (onset.size());
-    for (std::size_t i = 0; i < onset.size(); ++i)
-    {
-        const std::size_t a = i >= (size_t) m ? i - (size_t) m : 0, b = std::min (onset.size(), i + (size_t) m + 1);
-        env[i] = std::max (0.0f, onset[i] - (float) ((cum[b] - cum[a]) / (double) (b - a)));
-    }
+    const double frameRate = (double) sr / dsp::onsetHop;
+    const auto env = dsp::onsetEnvelope (x, sr);
+    if (env.size() < 64) return {};  // too short to measure
 
     // Autocorrelation over ~8 s of lags, so the comb below can compare up to 16 beats.
     const int maxLag = std::min ((int) env.size() - 1, (int) (frameRate * 8.0) + 2);
@@ -377,7 +293,9 @@ SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems)
         for (const auto& [stem, audio] : stems)
             addMono (stem == Stem::Drums ? drums : harmonic, audio);
 
-    return { detectKey (harmonic, sampleRate), detectTempo (drums, sampleRate),
-             measureLoudness (mix.left, mix.right, sampleRate) };
+    SongAnalysis a { detectKey (harmonic, sampleRate), detectTempo (drums, sampleRate),
+                     measureLoudness (mix.left, mix.right, sampleRate), {} };
+    a.chords = detectSongChords (mix, stems, a.tempo.bpm, a.key);
+    return a;
 }
 } // namespace covertools
