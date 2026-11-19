@@ -178,6 +178,50 @@ namespace icons
         p.addRoundedRectangle (0.44f, 0.30f, 0.52f, 0.40f, 0.20f);
         return p;
     }
+    juce::Path plus()
+    {
+        juce::Path p;
+        p.startNewSubPath (0.5f, 0.14f);
+        p.lineTo (0.5f, 0.86f);
+        p.startNewSubPath (0.14f, 0.5f);
+        p.lineTo (0.86f, 0.5f);
+        return p;
+    }
+    juce::Path minus()
+    {
+        juce::Path p;
+        p.startNewSubPath (0.14f, 0.5f);
+        p.lineTo (0.86f, 0.5f);
+        return p;
+    }
+    juce::Path close()
+    {
+        juce::Path p;
+        p.startNewSubPath (0.2f, 0.2f);
+        p.lineTo (0.8f, 0.8f);
+        p.startNewSubPath (0.8f, 0.2f);
+        p.lineTo (0.2f, 0.8f);
+        return p;
+    }
+    juce::Path copy()
+    {
+        juce::Path p;
+        p.addRoundedRectangle (0.34f, 0.30f, 0.58f, 0.64f, 0.08f);
+        p.startNewSubPath (0.12f, 0.70f);
+        p.lineTo (0.12f, 0.14f);
+        p.quadraticTo (0.12f, 0.06f, 0.20f, 0.06f);
+        p.lineTo (0.66f, 0.06f);
+        return p;
+    }
+    juce::Path drive()
+    {
+        juce::Path p;
+        p.addRoundedRectangle (0.06f, 0.24f, 0.88f, 0.52f, 0.12f);
+        p.startNewSubPath (0.20f, 0.50f);
+        p.lineTo (0.52f, 0.50f);
+        p.addEllipse (0.68f, 0.44f, 0.12f, 0.12f);
+        return p;
+    }
 } // namespace icons
 
 void drawIcon (juce::Graphics& g, const juce::Path& icon, juce::Rectangle<float> area, juce::Colour colour, bool filled,
@@ -192,6 +236,19 @@ void drawIcon (juce::Graphics& g, const juce::Path& icon, juce::Rectangle<float>
         scaled.applyTransform (t);
         g.strokePath (scaled, juce::PathStrokeType (strokeWidth, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
+}
+
+// ---------------------------------------------------------------------------- pill button
+static float pillIconSize (int height) { return std::min (14.0f, std::round ((float) height * 0.42f)); }
+static constexpr float pillIconGap = 8.0f;
+
+int PillButton::idealWidth (int height) const
+{
+    if (getButtonText().isEmpty()) return height;
+    const auto f = capsFont (std::min (12.0f, (float) height * 0.42f));
+    const float textW = juce::GlyphArrangement::getStringWidth (f, getButtonText().toUpperCase());
+    const float iconW = icon.isEmpty() ? 0.0f : pillIconSize (height) + pillIconGap;
+    return (int) std::ceil (textW + iconW) + 2 * juce::jmax (14, height / 2);
 }
 
 // ---------------------------------------------------------------------------- look and feel
@@ -209,6 +266,8 @@ DashboardLookAndFeel::DashboardLookAndFeel()
     setColour (juce::ToggleButton::textColourId, Palette::dim);
     setColour (juce::TooltipWindow::backgroundColourId, Palette::bgTop);
     setColour (juce::TooltipWindow::textColourId, Palette::text);
+    setColour (juce::ScrollBar::thumbColourId, juce::Colours::white.withAlpha (0.16f));
+    setColour (juce::ScrollBar::trackColourId, juce::Colours::transparentBlack);
 }
 
 juce::Typeface::Ptr DashboardLookAndFeel::getTypefaceForFont (const juce::Font& f)
@@ -246,10 +305,30 @@ juce::Font DashboardLookAndFeel::getTextButtonFont (juce::TextButton&, int heigh
 
 void DashboardLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool)
 {
-    g.setFont (getTextButtonFont (b, b.getHeight()));
+    const auto f = getTextButtonFont (b, b.getHeight());
+    g.setFont (f);
     auto c = b.findColour (b.getToggleState() ? juce::TextButton::textColourOnId : juce::TextButton::textColourOffId);
-    g.setColour (b.isEnabled() ? c : c.withMultipliedAlpha (0.4f));
-    g.drawText (b.getButtonText().toUpperCase(), b.getLocalBounds(), juce::Justification::centred, false);
+    if (! b.isEnabled()) c = c.withMultipliedAlpha (0.4f);
+    g.setColour (c);
+    const auto text = b.getButtonText().toUpperCase();
+
+    auto* pill = dynamic_cast<PillButton*> (&b);
+    if (pill == nullptr || pill->getIcon().isEmpty())
+    {
+        g.drawText (text, b.getLocalBounds(), juce::Justification::centred, false);
+        return;
+    }
+    // Icon then text, centred together.
+    const float h = (float) b.getHeight(), iconS = pillIconSize (b.getHeight());
+    const float textW = text.isEmpty() ? 0.0f : juce::GlyphArrangement::getStringWidth (f, text);
+    const float gap = text.isEmpty() ? 0.0f : pillIconGap;
+    const float x = std::round (((float) b.getWidth() - (iconS + gap + textW)) * 0.5f);
+    drawIcon (g, pill->getIcon(), { x, std::round ((h - iconS) * 0.5f), iconS, iconS }, c, false, 1.4f);
+    if (textW > 0)
+    {
+        g.setColour (c);
+        g.drawText (text, juce::Rectangle<float> (x + iconS + gap, 0.0f, textW + 4.0f, h), juce::Justification::centredLeft, false);
+    }
 }
 
 void DashboardLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b, bool, bool)
@@ -265,6 +344,11 @@ void DashboardLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButt
     g.setColour (Palette::dim);
     g.setFont (capsFont (11.0f));
     g.drawText (b.getButtonText().toUpperCase(), r.withTrimmedLeft (8.0f), juce::Justification::centredLeft, false);
+}
+
+int DashboardLookAndFeel::toggleWidth (const juce::ToggleButton& b)
+{
+    return 38 + (int) std::ceil (juce::GlyphArrangement::getStringWidth (capsFont (11.0f), b.getButtonText().toUpperCase())) + 2;
 }
 
 void DashboardLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,
@@ -290,5 +374,16 @@ void DashboardLookAndFeel::drawTextEditorOutline (juce::Graphics& g, int w, int 
 {
     g.setColour (e.hasKeyboardFocus (true) ? Palette::accentTo.withAlpha (0.6f) : Palette::panelBorder);
     g.drawRoundedRectangle (0.5f, 0.5f, (float) w - 1.0f, (float) h - 1.0f, (float) h * 0.5f, 1.0f);
+}
+void DashboardLookAndFeel::drawScrollbar (juce::Graphics& g, juce::ScrollBar& bar, int x, int y, int w, int h, bool vertical,
+                                          int thumbStart, int thumbSize, bool over, bool down)
+{
+    // Just a thin rounded thumb, brighter while hovered or dragged.
+    if (thumbSize <= 0) return;
+    const auto thumb = vertical ? juce::Rectangle<int> (x, thumbStart, w, thumbSize) : juce::Rectangle<int> (thumbStart, y, thumbSize, h);
+    auto r = thumb.toFloat().reduced (vertical ? 1.0f : 2.0f, vertical ? 2.0f : 1.0f);
+    const auto c = bar.findColour (juce::ScrollBar::thumbColourId);
+    g.setColour (over || down ? c.withMultipliedAlpha (1.8f) : c);
+    g.fillRoundedRectangle (r, std::min (r.getWidth(), r.getHeight()) * 0.5f);
 }
 } // namespace juststem::ui

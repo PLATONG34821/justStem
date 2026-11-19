@@ -91,7 +91,7 @@ int main (int argc, char** argv)
     };
     auto* storageButton = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
         auto* b = dynamic_cast<juce::Button*> (c);
-        return b != nullptr && b->getButtonText() == "Storage";
+        return b != nullptr && b->getName() == "Storage";
     }));
     check (storageButton != nullptr && storageButton->isVisible(), "Storage button shown");
     if (storageButton != nullptr) storageButton->triggerClick();
@@ -110,6 +110,27 @@ int main (int argc, char** argv)
         pumpUntil ([] { return false; }, 200);
         check (findChild ([] (juce::Component* c) { return dynamic_cast<juststem::ui::StoragePanel*> (c) != nullptr; }) == nullptr,
                "Storage panel closes");
+    }
+
+    std::printf ("New song\n");
+    {
+        auto* newSong = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
+            auto* b = dynamic_cast<juce::Button*> (c);
+            return b != nullptr && b->getName() == "New song";
+        }));
+        auto* link = dynamic_cast<juce::TextEditor*> (findChild ([] (juce::Component* c) { return dynamic_cast<juce::TextEditor*> (c) != nullptr; }));
+        check (newSong != nullptr && newSong->isVisible() && link != nullptr && ! link->isVisible(), "link box hidden while a song is open");
+        if (newSong != nullptr) newSong->triggerClick();
+        pumpUntil ([] { return false; }, 200);
+        check (link != nullptr && link->isVisible() && ! newSong->isVisible(), "New song shows the link box");
+        snapshot (*editor, outDir.getChildFile ("3b-new-song.png"));
+        if (auto* back = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
+                auto* b = dynamic_cast<juce::Button*> (c);
+                return b != nullptr && b->getName() == "Back to song" && b->isVisible();
+            })))
+            back->triggerClick();
+        pumpUntil ([] { return false; }, 200);
+        check (link != nullptr && ! link->isVisible(), "back to the song hides it again");
     }
 
     auto s = proc->getSong();
@@ -155,7 +176,7 @@ int main (int argc, char** argv)
     for (int i = 0; i < 2; ++i)
         if (auto* up = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
                 auto* b = dynamic_cast<juce::TextButton*> (c);
-                return b != nullptr && b->getButtonText() == "+" && b->isVisible();
+                return b != nullptr && b->getName() == "Transpose up" && b->isVisible();
             })))
             up->triggerClick();
     pumpUntil ([] { return false; }, 300);

@@ -40,7 +40,31 @@ void Gauge::paint (juce::Graphics& g)
     track.addCentredArc (c.x, c.y, arcR, arcR, 0.0f, gaugeStart, gaugeEnd, true);
     g.setColour (juce::Colours::white.withAlpha (0.06f));
     g.strokePath (track, juce::PathStrokeType (thickness, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
-    if (state.fraction >= 0)
+    const auto pointAt = [&] (float angle, float radius) {
+        return juce::Point<float> (c.x + radius * std::sin (angle), c.y - radius * std::cos (angle));
+    };
+    if (state.slots > 0)
+    {
+        // A faint dot per position, and the active position as a lit segment.
+        const float step = (gaugeEnd - gaugeStart) / (float) state.slots;
+        g.setColour (juce::Colours::white.withAlpha (0.22f));
+        for (int i = 0; i < state.slots; ++i)
+        {
+            const auto p = pointAt (gaugeStart + step * ((float) i + 0.5f), arcR);
+            g.fillEllipse (juce::Rectangle<float> (thickness * 0.3f, thickness * 0.3f).withCentre (p));
+        }
+        if (state.activeSlot >= 0 && state.activeSlot < state.slots)
+        {
+            const float a0 = gaugeStart + step * (float) state.activeSlot + 0.02f, a1 = a0 + step - 0.04f;
+            juce::Path seg;
+            seg.addCentredArc (c.x, c.y, arcR, arcR, 0.0f, a0, a1, true);
+            g.setColour (Palette::accentTo.withAlpha (0.18f)); // soft glow
+            g.strokePath (seg, juce::PathStrokeType (thickness * 2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setGradientFill (accentGradient (outer));
+            g.strokePath (seg, juce::PathStrokeType (thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+    }
+    else if (state.fraction >= 0)
     {
         juce::Path arc;
         const float end = gaugeStart + (gaugeEnd - gaugeStart) * (float) juce::jlimit (0.0, 1.0, state.fraction);

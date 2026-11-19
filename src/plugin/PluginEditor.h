@@ -9,8 +9,9 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 /** The plug-in window, top to bottom:
-      input bar   YouTube link, Choose file, Split
-      readouts    KEY (left), the tempo gauge (centre; shows progress while splitting), LOUDNESS (right)
+      top bar     YouTube link, Choose file, Split, Storage; once a song is open: its title, New song, Storage
+      name        "justStem" above the gauge (or an error message)
+      readouts    TEMPO (left), the key gauge (centre; shows progress while splitting), LOUDNESS (right)
       stems       tabs: one row per stem (mute, solo, volume, drag-to-DAW), or the chords
       player bar  play, seek, time, Follow DAW */
 class justStemEditor final : public juce::AudioProcessorEditor,
@@ -45,32 +46,41 @@ private:
     void showStorage();
     void showChords (bool);
     void copyChords();
+    /** The link box (and Choose file / Split) are shown with no song open, while working, or after New song. */
+    bool inputShown() const;
+    void showInput (bool);
 
     justStemProcessor& proc;
     juststem::ui::DashboardLookAndFeel lnf;
 
     // layout regions (set in resized)
-    juce::Rectangle<int> statusLine, tempoArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea, transposeArea;
+    juce::Rectangle<int> statusLine, titleArea, tempoArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea, transposeArea;
 
     juce::TextEditor linkBox;
-    juce::TextButton chooseButton { "Choose file" }, splitButton { "Split" }, cancelButton { "Cancel" };
+    juststem::ui::PillButton chooseButton { "Choose file", juststem::ui::icons::note() };
+    juce::TextButton splitButton { "Split" }, cancelButton { "Cancel" };
+    juststem::ui::PillButton newSongButton { "New song", juststem::ui::icons::plus() };
+    juststem::ui::PillButton closeInputButton { {}, juststem::ui::icons::close() };
+    bool wantInput = false; // New song pressed while a song is open
     std::unique_ptr<juce::FileChooser> chooser;
 
     juststem::ui::Gauge gauge;
     juce::OwnedArray<juststem::ui::StemRow> rows;
 #if JUCE_MAC
-    juce::TextButton revealButton { "Show in Finder" };
+    juststem::ui::PillButton revealButton { "Show in Finder", juststem::ui::icons::folder() };
 #elif JUCE_WINDOWS
-    juce::TextButton revealButton { "Show in Explorer" };
+    juststem::ui::PillButton revealButton { "Show in Explorer", juststem::ui::icons::folder() };
 #else
-    juce::TextButton revealButton { "Show in Folder" };
+    juststem::ui::PillButton revealButton { "Show in Folder", juststem::ui::icons::folder() };
 #endif
-    juce::TextButton saveAllButton { "Save all" }, storageButton { "Storage" };
+    juststem::ui::PillButton saveAllButton { "Save all", juststem::ui::icons::download() };
+    juststem::ui::PillButton storageButton { {}, juststem::ui::icons::drive() };
     std::unique_ptr<juststem::ui::StoragePanel> storagePanel;
 
     juststem::ui::TabButton stemsTab { "Stems" }, chordsTab { "Chords" };
     juststem::ui::ChordView chordView;
-    juce::TextButton transposeDown { juce::String::fromUTF8 ("\xe2\x88\x92") }, transposeUp { "+" }, copyButton { "Copy chords" };
+    juststem::ui::PillButton transposeDown { {}, juststem::ui::icons::minus() }, transposeUp { {}, juststem::ui::icons::plus() };
+    juststem::ui::PillButton copyButton { "Copy chords", juststem::ui::icons::copy() };
     bool chordsShown = false;
 
     juststem::ui::IconButton playButton;

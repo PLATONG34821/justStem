@@ -8,13 +8,15 @@
 namespace juststem::ui
 {
 /** The centre dial: a 270° arc (blue gradient) around a big thin number, with a caption above
-    and a unit below. */
+    and a unit below. With `slots` set, the arc is split into that many positions and only the
+    active one is lit (for values that aren't amounts, like the key's place on the Camelot wheel). */
 class Gauge final : public juce::Component
 {
 public:
     struct State
     {
         double fraction = -1;          // arc fill 0..1; < 0: no arc (idle)
+        int slots = 0, activeSlot = -1; // slots > 0: light one position instead of filling
         juce::String value = "--", unit, caption;
     };
     void set (State s) { state = std::move (s); repaint(); }

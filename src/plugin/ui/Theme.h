@@ -53,11 +53,29 @@ namespace icons
     juce::Path download();
     juce::Path grip();  // filled dots
     juce::Path link();
+    juce::Path plus();
+    juce::Path minus();
+    juce::Path close();
+    juce::Path copy();
+    juce::Path drive();
 } // namespace icons
 
 /** Stroke (or fill) an icon path scaled to fit `area`. */
 void drawIcon (juce::Graphics&, const juce::Path& icon, juce::Rectangle<float> area, juce::Colour, bool filled = false,
                float strokeWidth = 1.4f);
+
+/** The usual pill button, with an optional line icon before its text (icon only when the text is empty). */
+class PillButton final : public juce::TextButton
+{
+public:
+    explicit PillButton (const juce::String& text = {}, juce::Path iconPath = {}) : juce::TextButton (text), icon (std::move (iconPath)) {}
+    const juce::Path& getIcon() const { return icon; }
+    /** Width that fits the icon and text at `height` (a circle when there's no text). */
+    int idealWidth (int height) const;
+
+private:
+    juce::Path icon;
+};
 
 class DashboardLookAndFeel final : public juce::LookAndFeel_V4
 {
@@ -72,5 +90,10 @@ public:
                            juce::Slider::SliderStyle, juce::Slider&) override;
     void fillTextEditorBackground (juce::Graphics&, int w, int h, juce::TextEditor&) override;
     void drawTextEditorOutline (juce::Graphics&, int w, int h, juce::TextEditor&) override;
+    void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int w, int h, bool vertical, int thumbStart, int thumbSize,
+                        bool over, bool down) override;
+
+    /** Pixel width of a ToggleButton's switch plus its label. */
+    static int toggleWidth (const juce::ToggleButton&);
 };
 } // namespace juststem::ui

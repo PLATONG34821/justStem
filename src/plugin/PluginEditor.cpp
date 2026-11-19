@@ -120,7 +120,14 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     linkBox.setIndents (16, 0);
     linkBox.setJustification (juce::Justification::centredLeft);
     linkBox.onReturnKey = [this] { startFromInput(); };
+    linkBox.onEscapeKey = [this] { if (wantInput) showInput (false); };
     addAndMakeVisible (linkBox);
+    newSongButton.setTooltip ("Split another song (this one stays saved)");
+    newSongButton.onClick = [this] { showInput (true); };
+    closeInputButton.setTooltip ("Back to the open song");
+    closeInputButton.onClick = [this] { showInput (false); };
+    addChildComponent (newSongButton);
+    addChildComponent (closeInputButton);
 
     splitButton.setColour (juce::TextButton::buttonColourId, Palette::text);
     splitButton.setColour (juce::TextButton::textColourOffId, Palette::bgBottom);
@@ -140,7 +147,13 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     saveAllButton.onClick = [this] { saveAll(); };
     addChildComponent (revealButton);
     addChildComponent (saveAllButton);
-    storageButton.setTooltip ("See how much space justStem uses and free it");
+    // Icon-only buttons get names (tooltips for people, names for tools/uitest).
+    storageButton.setName ("Storage");
+    transposeDown.setName ("Transpose down");
+    transposeUp.setName ("Transpose up");
+    newSongButton.setName ("New song");
+    closeInputButton.setName ("Back to song");
+    storageButton.setTooltip ("Storage: see how much space justStem uses and free it");
     storageButton.onClick = [this] { showStorage(); };
     addAndMakeVisible (storageButton);
 
@@ -184,13 +197,30 @@ void justStemEditor::resized()
 {
     auto r = getLocalBounds().reduced (margin, 22);
 
-    auto input = r.removeFromTop (40);
-    splitButton.setBounds (input.removeFromRight (96));
-    input.removeFromRight (8);
-    chooseButton.setBounds (input.removeFromRight (128));
-    input.removeFromRight (10);
-    linkBox.setBounds (input);
-    statusLine = r.removeFromTop (26).withTrimmedLeft (16);
+    auto top = r.removeFromTop (40);
+    storageButton.setBounds (top.removeFromRight (40));
+    top.removeFromRight (10);
+    if (inputShown())
+    {
+        if (closeInputButton.isVisible())
+        {
+            closeInputButton.setBounds (top.removeFromRight (40));
+            top.removeFromRight (8);
+        }
+        splitButton.setBounds (top.removeFromRight (96));
+        top.removeFromRight (8);
+        chooseButton.setBounds (top.removeFromRight (chooseButton.idealWidth (40)));
+        top.removeFromRight (10);
+        linkBox.setBounds (top);
+        titleArea = {};
+    }
+    else
+    {
+        newSongButton.setBounds (top.removeFromRight (newSongButton.idealWidth (40)));
+        top.removeFromRight (16);
+        titleArea = top;
+    }
+    statusLine = r.removeFromTop (26);
 
     auto readouts = r.removeFromTop (236);
     gauge.setBounds (readouts.withSizeKeepingCentre (236, 236));
@@ -207,17 +237,19 @@ void justStemEditor::resized()
     auto header = stemsHeader;
     stemsTab.setBounds (header.getX(), header.getY(), 64, header.getHeight());
     chordsTab.setBounds (header.getX() + 84, header.getY(), 74, header.getHeight());
+    const auto placeRight = [&header] (PillButton& b) {
+        const int w = b.idealWidth (26);
+        b.setBounds (header.removeFromRight (w).withSizeKeepingCentre (w, 26));
+    };
     if (transposeUp.isVisible()) // a song is open
     {
-        if (chordsShown) copyButton.setBounds (header.removeFromRight (128).withSizeKeepingCentre (128, 26));
+        if (chordsShown) placeRight (copyButton);
         else
         {
-            // Narrower than before so Storage + these two fit right of the centred Transpose.
-            saveAllButton.setBounds (header.removeFromRight (104).withSizeKeepingCentre (104, 26));
+            placeRight (saveAllButton);
             header.removeFromRight (8);
-            revealButton.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
+            placeRight (revealButton);
         }
-        header.removeFromRight (8);
 
         // Transpose centred under the gauge.
         auto t = juce::Rectangle<int> (148, header.getHeight()).withCentre ({ gauge.getBounds().getCentreX(), header.getCentreY() });
@@ -225,7 +257,6 @@ void justStemEditor::resized()
         transposeUp.setBounds (t.removeFromRight (30).withSizeKeepingCentre (30, 26));
         transposeArea = t;
     }
-    storageButton.setBounds (header.removeFromRight (88).withSizeKeepingCentre (88, 26));
     chordView.setBounds (stemsArea.withTrimmedTop (6));
     if (storagePanel != nullptr) storagePanel->setBounds (getLocalBounds());
 
@@ -236,7 +267,7 @@ void justStemEditor::resized()
     auto bar = playerBar;
     playButton.setBounds (bar.removeFromLeft (40).withSizeKeepingCentre (36, 36));
     bar.removeFromLeft (14);
-    followHost.setBounds (bar.removeFromRight (140));
+    followHost.setBounds (bar.removeFromRight (DashboardLookAndFeel::toggleWidth (followHost))); // flush with the right edge
     bar.removeFromRight (14);
     timeArea = bar.removeFromRight (96);
     bar.removeFromRight (10);
@@ -250,12 +281,36 @@ void justStemEditor::paint (juce::Graphics& g)
     const bool busy = proc.isBusy();
     const auto song = busy ? nullptr : proc.getSong();
 
-    // Status (while busy) or error, under the input bar.
-    if (busy || proc.lastError().isNotEmpty())
+    // Under the top bar: an error if there is one, otherwise the name, centred over the gauge.
+    // (While working, progress is on the gauge and in the log, so it isn't repeated here.)
+    if (! busy && proc.lastError().isNotEmpty())
     {
-        g.setColour (busy ? Palette::dim : Palette::bad);
+        g.setColour (Palette::bad);
         g.setFont (font (Weight::Regular, 12.5f));
-        g.drawFittedText (busy ? proc.jobStatus().step : proc.lastError(), statusLine, juce::Justification::centredLeft, 1, 0.8f);
+        g.drawFittedText (proc.lastError(), statusLine.withTrimmedLeft (16), juce::Justification::centredLeft, 1, 0.8f);
+    }
+    else
+    {
+        const auto light = font (Weight::Light, 17.0f, 0.02f), bold = font (Weight::SemiBold, 17.0f, 0.02f);
+        const float w1 = juce::GlyphArrangement::getStringWidth (light, "just"), w2 = juce::GlyphArrangement::getStringWidth (bold, "Stem");
+        const float x = (float) gauge.getBounds().getCentreX() - (w1 + w2) * 0.5f;
+        const auto row = statusLine.toFloat();
+        g.setColour (Palette::text.withAlpha (0.85f));
+        g.setFont (light);
+        g.drawText ("just", juce::Rectangle<float> (x, row.getY(), w1 + 2, row.getHeight()), juce::Justification::centredLeft, false);
+        g.setFont (bold);
+        g.drawText ("Stem", juce::Rectangle<float> (x + w1, row.getY(), w2 + 2, row.getHeight()), juce::Justification::centredLeft, false);
+    }
+
+    // The open song's title, in the top bar while the link box is hidden.
+    if (song != nullptr && ! titleArea.isEmpty())
+    {
+        auto t = titleArea;
+        drawIcon (g, icons::note(), t.removeFromLeft (18).toFloat().withSizeKeepingCentre (16, 16), Palette::dim);
+        t.removeFromLeft (12);
+        g.setColour (Palette::text);
+        g.setFont (font (Weight::Light, 19.0f));
+        g.drawText (song->title, t, juce::Justification::centredLeft, true);
     }
 
     // Tempo and loudness, either side of the gauge (which shows the key).
@@ -291,7 +346,6 @@ void justStemEditor::paint (juce::Graphics& g)
     }
     g.setColour (Palette::hairline);
     g.drawHorizontalLine (stemsHeader.getBottom(), (float) stemsHeader.getX(), (float) stemsHeader.getRight());
-    g.drawHorizontalLine (playerBar.getY() - 6, (float) playerBar.getX(), (float) playerBar.getRight());
 
     if (showLog)
     {
@@ -342,7 +396,12 @@ void justStemEditor::refreshAll()
 {
     const bool busy = proc.isBusy();
     const auto song = busy ? nullptr : proc.getSong();
+    if (busy) wantInput = false; // a new song is on its way; show it when it's done
 
+    const bool input = inputShown();
+    for (auto* c : std::initializer_list<juce::Component*> { &linkBox, &chooseButton, &splitButton }) c->setVisible (input);
+    newSongButton.setVisible (! input);
+    closeInputButton.setVisible (input && song != nullptr);
     linkBox.setEnabled (! busy);
     splitButton.setEnabled (! busy);
     chooseButton.setEnabled (! busy);
@@ -360,7 +419,7 @@ void justStemEditor::refreshAll()
     saveAllButton.setTooltip (t == 0 ? "Copy all the stems to a folder" : "Save all the stems pitch-shifted to the transposed key");
     chordView.setVisible (song != nullptr && chordsShown);
     chordView.setTranspose (proc.getTranspose());
-    resized(); // Storage button position depends on the buttons above
+    resized(); // the top bar and the stems header depend on what's visible
     if (storagePanel != nullptr) storagePanel->refresh();
     for (auto* row : rows) row->setVisible (song != nullptr && ! chordsShown);
     followHost.setToggleState (proc.player().followsHost(), juce::dontSendNotification);
@@ -403,7 +462,8 @@ void justStemEditor::updateGauge()
         s.value = name.upToFirstOccurrenceOf (" ", false, false);
         s.unit = name.fromFirstOccurrenceOf (" ", false, false) + juce::String::fromUTF8 (" \xc2\xb7 ") + camelot
                  + (sure ? "" : " ?");
-        s.fraction = camelot.getIntValue() / 12.0;
+        s.slots = 12; // a place on the Camelot wheel, not an amount
+        s.activeSlot = camelot.getIntValue() - 1;
     }
     else
     {
@@ -487,6 +547,20 @@ void justStemEditor::filesDropped (const juce::StringArray& files, int, int)
     dropHover = false;
     repaint();
     if (files.size() == 1 && ! proc.isBusy()) proc.startFile (juce::File (files[0]));
+}
+
+// ============================================================================ new song
+bool justStemEditor::inputShown() const
+{
+    return proc.isBusy() || proc.getSong() == nullptr || wantInput;
+}
+
+void justStemEditor::showInput (bool show)
+{
+    wantInput = show;
+    if (! show) proc.showError ({}); // drop a stale "not a link" message with the box
+    refreshAll();
+    if (show) linkBox.grabKeyboardFocus();
 }
 
 // ============================================================================ storage

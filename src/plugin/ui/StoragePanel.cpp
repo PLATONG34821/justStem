@@ -119,9 +119,11 @@ void StoragePanel::resized()
 
     otherArea = r.removeFromBottom (3 * 44);
     r.removeFromBottom (16);
-    viewport.setBounds (r.withTrimmedTop (4));
-    constexpr int rowH = 46;
-    listContent.setSize (viewport.getWidth() - (rows.size() * rowH > viewport.getHeight() ? 10 : 0), rows.size() * rowH);
+    // The scrollbar sits out in the card's margin, so the rows keep the full width and their
+    // Delete buttons line up with the Clear / Remove buttons below.
+    constexpr int rowH = 46, scrollGap = 12;
+    viewport.setBounds (r.withTrimmedTop (4).withTrimmedRight (-(scrollGap + viewport.getScrollBarThickness())));
+    listContent.setSize (r.getWidth(), rows.size() * rowH);
     for (int i = 0; i < rows.size(); ++i) rows[i]->setBounds (0, i * rowH, listContent.getWidth(), rowH);
 
     auto other = otherArea;
