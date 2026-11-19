@@ -195,8 +195,8 @@ void justStemEditor::resized()
     auto readouts = r.removeFromTop (236);
     gauge.setBounds (readouts.withSizeKeepingCentre (236, 236));
     cancelButton.setBounds (gauge.getBounds().getCentreX() - 46, gauge.getBottom() - 34, 92, 26);
-    keyArea = readouts.removeFromLeft ((readouts.getWidth() - 236) / 2 - 20);
-    loudArea = readouts.removeFromRight (keyArea.getWidth());
+    tempoArea = readouts.removeFromLeft ((readouts.getWidth() - 236) / 2 - 20);
+    loudArea = readouts.removeFromRight (tempoArea.getWidth());
 
     playerBar = r.removeFromBottom (40);
     r.removeFromBottom (10);
@@ -212,17 +212,20 @@ void justStemEditor::resized()
         if (chordsShown) copyButton.setBounds (header.removeFromRight (128).withSizeKeepingCentre (128, 26));
         else
         {
-            saveAllButton.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
+            // Narrower than before so Storage + these two fit right of the centred Transpose.
+            saveAllButton.setBounds (header.removeFromRight (104).withSizeKeepingCentre (104, 26));
             header.removeFromRight (8);
-            revealButton.setBounds (header.removeFromRight (150).withSizeKeepingCentre (150, 26));
+            revealButton.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
         }
-        header.removeFromRight (16);
-        transposeUp.setBounds (header.removeFromRight (30).withSizeKeepingCentre (30, 26));
-        transposeArea = header.removeFromRight (104);
-        transposeDown.setBounds (header.removeFromRight (30).withSizeKeepingCentre (30, 26));
-        header.removeFromRight (16);
+        header.removeFromRight (8);
+
+        // Transpose centred under the gauge.
+        auto t = juce::Rectangle<int> (148, header.getHeight()).withCentre ({ gauge.getBounds().getCentreX(), header.getCentreY() });
+        transposeDown.setBounds (t.removeFromLeft (30).withSizeKeepingCentre (30, 26));
+        transposeUp.setBounds (t.removeFromRight (30).withSizeKeepingCentre (30, 26));
+        transposeArea = t;
     }
-    storageButton.setBounds (header.removeFromRight (104).withSizeKeepingCentre (104, 26));
+    storageButton.setBounds (header.removeFromRight (88).withSizeKeepingCentre (88, 26));
     chordView.setBounds (stemsArea.withTrimmedTop (6));
     if (storagePanel != nullptr) storagePanel->setBounds (getLocalBounds());
 
@@ -255,20 +258,18 @@ void justStemEditor::paint (juce::Graphics& g)
         g.drawFittedText (busy ? proc.jobStatus().step : proc.lastError(), statusLine, juce::Justification::centredLeft, 1, 0.8f);
     }
 
-    // Key and loudness, either side of the gauge.
+    // Tempo and loudness, either side of the gauge (which shows the key).
     if (song != nullptr)
     {
         const auto& a = song->analysis;
-        const bool sure = a.key.votes >= 2 && a.key.confidence > 0.5f;
-        paintReadout (g, keyArea, "KEY", a.key.name(),
-                      "Camelot " + juce::String (a.key.camelot()) + (sure ? "" : "   (uncertain)"), juce::Justification::centredLeft, true);
+        paintReadout (g, tempoArea, "TEMPO", bpmText (a.tempo.bpm) + " BPM", "", juce::Justification::centredLeft, true);
         paintReadout (g, loudArea, "LOUDNESS", juce::String (a.loudness.integratedLufs, 1) + " LUFS",
                       "peak " + juce::String (a.loudness.samplePeakDb > 0 ? "+" : "") + juce::String (a.loudness.samplePeakDb, 1) + " dBFS",
                       juce::Justification::centredRight, true);
     }
     else
     {
-        paintReadout (g, keyArea, "KEY", "--", "", juce::Justification::centredLeft, false);
+        paintReadout (g, tempoArea, "TEMPO", "--", "", juce::Justification::centredLeft, false);
         paintReadout (g, loudArea, "LOUDNESS", "--", "", juce::Justification::centredRight, false);
     }
 
@@ -389,16 +390,21 @@ void justStemEditor::updateGauge()
     }
     else if (auto song = proc.getSong())
     {
-        const float bpm = song->analysis.tempo.bpm;
-        s.caption = "Tempo";
-        s.value = bpmText (bpm);
-        s.unit = "BPM";
-        s.fraction = juce::jlimit (0.0, 1.0, (bpm - 60.0) / 140.0); // 60..200 BPM across the arc
+        // The key follows Transpose. "C# minor" -> value "C#", unit "minor · 12A"; the arc is the Camelot number.
+        const auto& detected = song->analysis.key;
+        const auto key = detected.transposed (proc.getTranspose());
+        const auto name = juce::String (key.name());
+        const auto camelot = juce::String (key.camelot());
+        const bool sure = detected.votes >= 2 && detected.confidence > 0.5f;
+        s.caption = "Key";
+        s.value = name.upToFirstOccurrenceOf (" ", false, false);
+        s.unit = name.fromFirstOccurrenceOf (" ", false, false) + juce::String::fromUTF8 (" \xc2\xb7 ") + camelot
+                 + (sure ? "" : " ?");
+        s.fraction = camelot.getIntValue() / 12.0;
     }
     else
     {
-        s.caption = "Tempo";
-        s.unit = "BPM";
+        s.caption = "Key";
     }
     gauge.set (s);
 }

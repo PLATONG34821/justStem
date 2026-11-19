@@ -50,7 +50,7 @@ private:
     juststem::ui::DashboardLookAndFeel lnf;
 
     // layout regions (set in resized)
-    juce::Rectangle<int> statusLine, keyArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea, transposeArea;
+    juce::Rectangle<int> statusLine, tempoArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea, transposeArea;
 
     juce::TextEditor linkBox;
     juce::TextButton chooseButton { "Choose file" }, splitButton { "Split" }, cancelButton { "Cancel" };
