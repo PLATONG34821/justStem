@@ -187,6 +187,7 @@ def main() -> None:
     istft_to_matmul(model)
     print("iSTFT: ConvTranspose -> MatMul + overlap-add")
     print(f"fp16 weights: {fp16_weights(model)} tensors")
+    dst.parent.mkdir(parents=True, exist_ok=True)  # models/ isn't in git, so a fresh checkout has none
     onnx.save(model, str(dst))
     print(f"{src.stat().st_size / 1e6:.1f} MB -> {dst.stat().st_size / 1e6:.1f} MB")
     compare(src, dst)
