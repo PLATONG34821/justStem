@@ -102,14 +102,21 @@ void StoragePanel::refresh()
     repaint();
 }
 
-juce::Rectangle<int> StoragePanel::card() const { return getLocalBounds().withSizeKeepingCentre (600, 484); } // list fits 4 whole rows
+juce::Rectangle<int> StoragePanel::card() const { return getLocalBounds().withSizeKeepingCentre (600, 490); } // list fits 4 whole rows
+
+namespace
+{
+constexpr int headerH = 80; // the darker band with the title and Close
+
+/** The title row, centred in the header band. */
+juce::Rectangle<int> titleRow (juce::Rectangle<int> card) { return card.withHeight (headerH).reduced (28, (headerH - 44) / 2); }
+} // namespace
 
 void StoragePanel::resized()
 {
-    auto r = card().reduced (28, 24);
-    auto top = r.removeFromTop (44);
+    auto r = card().reduced (28, 24).withTop (card().getY() + headerH + 8);
+    auto top = titleRow (card());
     closeButton.setBounds (top.removeFromRight (90).withSizeKeepingCentre (90, 28));
-    r.removeFromTop (14);
 
     songsHeader = r.removeFromTop (30);
     auto h = songsHeader;
@@ -162,8 +169,16 @@ void StoragePanel::paint (juce::Graphics& g)
     g.setColour (Palette::panelBorder);
     g.drawRoundedRectangle (c.toFloat().reduced (0.5f), 18.0f, 1.0f);
 
-    auto r = c.reduced (28, 24);
-    auto top = r.removeFromTop (44);
+    // The title sits in a darker header band, like the footer below.
+    {
+        const auto header = c.toFloat().withHeight ((float) headerH);
+        juce::Path shape;
+        shape.addRoundedRectangle (header.getX(), header.getY(), header.getWidth(), header.getHeight(), 18.0f, 18.0f,
+                                   true, true, false, false); // rounded top like the card, square bottom
+        g.setColour (juce::Colours::black.withAlpha (0.28f));
+        g.fillPath (shape);
+    }
+    auto top = titleRow (c);
     // Title and total on one baseline.
     const auto titleFont = font (Weight::Light, 26.0f);
     const int baseline = juce::roundToInt ((float) top.getCentreY() + (titleFont.getAscent() - titleFont.getDescent()) * 0.5f);
