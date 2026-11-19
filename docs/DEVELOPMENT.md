@@ -13,7 +13,7 @@ packages (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are d
    python3 -m venv .venv && .venv/bin/pip install onnx onnxruntime numpy
    curl -L -o htdemucs_6s_fp16weights.onnx \
      https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx
-   .venv/bin/python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_web2.onnx
+   .venv/bin/python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
    ```
 2. Build:
    ```sh
@@ -33,8 +33,8 @@ Every push is built and tested on macOS, Windows and Linux by GitHub Actions
 
 ```sh
 build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
-build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_web2.onnx
-build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_web2.onnx <song> <screenshot folder>
+build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx
+build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx <song> <screenshot folder>
 ```
 
 - `analyze-selftest`: the resampler against exact sine waves and an aliasing test, loudness

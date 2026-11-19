@@ -98,7 +98,7 @@ static int selftest (const std::string& model, int seconds, float overlap)
     for (auto& [_, s] : stems)
         for (int i = 0; i < n; ++i) sum[(size_t) i] += s.left[(size_t) i];
 
-    std::printf ("demucs on %s: %.1fs for %ds (%.2fx realtime)\n", backendName (sep.backend()), secs, seconds, seconds / secs);
+    std::printf ("separation on %s: %.1fs for %ds (%.2fx realtime)\n", backendName (sep.backend()), secs, seconds, seconds / secs);
     std::printf ("  SI-SDR drums %.2f dB, bass %.2f dB, keys(piano+other+guitar) %.2f dB, sum-of-stems vs mix %.2f dB\n",
                  siSdr (mid (stems[Stem::Drums]), drums), siSdr (mid (stems[Stem::Bass]), bass), siSdr (harm, keys), siSdr (sum, mix.left));
     return 0;

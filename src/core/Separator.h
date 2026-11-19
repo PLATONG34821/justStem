@@ -12,7 +12,7 @@ namespace juststem
 /** The bundled model: HT-Demucs 6-stem, built by scripts/prepare_demucs_onnx.py. */
 namespace model
 {
-    constexpr std::string_view fileName = "htdemucs_6s_web2.onnx";
+    constexpr std::string_view fileName = "htdemucs_6s_opt.onnx";
     /** Order of the stems in the model's output tensor. */
     constexpr std::array<Stem, numStems> outputStems { Stem::Drums, Stem::Bass, Stem::Other,
                                                        Stem::Vocals, Stem::Guitar, Stem::Piano };

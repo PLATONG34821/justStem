@@ -10,7 +10,7 @@
 # Done here rather than with JUCE's COPY_PLUGIN_AFTER_BUILD, which installs before the extra
 # files are added and (on macOS) before the bundle is re-signed.
 
-set(JUSTSTEM_MODEL "${CMAKE_SOURCE_DIR}/models/htdemucs_6s_web2.onnx")
+set(JUSTSTEM_MODEL "${CMAKE_SOURCE_DIR}/models/htdemucs_6s_opt.onnx")
 if(NOT EXISTS "${JUSTSTEM_MODEL}")
     message(FATAL_ERROR "Missing ${JUSTSTEM_MODEL}.\n"
         "Build it with scripts/prepare_demucs_onnx.py (see the comment at the top of that script).")
