@@ -15,6 +15,9 @@ endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Static libraries (juststem_core, faad) are linked into the shared plug-in on Linux; they need -fPIC.
+# Likely cause of the Linux CI failure "final link failed: bad value" (not reproduced locally; see CI).
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
     # Apple Silicon only: Microsoft ships ONNX Runtime for macOS arm64 only.
