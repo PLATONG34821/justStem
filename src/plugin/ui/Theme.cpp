@@ -364,12 +364,14 @@ void DashboardLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButt
     g.fillEllipse (on ? sw.getRight() - 14.0f : sw.getX() + 2.0f, sw.getY() + 2.0f, 12.0f, 12.0f);
     g.setColour (Palette::dim);
     g.setFont (capsFont (11.0f));
-    g.drawText (b.getButtonText().toUpperCase(), r.withTrimmedLeft (8.0f), juce::Justification::centredLeft, false);
+    // Right-aligned, nudged by the letter spacing after the last letter, so the label ends flush with the
+    // button's right edge (which the editor puts on the window margin).
+    g.drawText (b.getButtonText().toUpperCase(), r.withTrimmedLeft (8.0f).translated (11.0f * 0.14f, 0.0f), juce::Justification::centredRight, false);
 }
 
 int DashboardLookAndFeel::toggleWidth (const juce::ToggleButton& b)
 {
-    return 38 + (int) std::ceil (juce::GlyphArrangement::getStringWidth (capsFont (11.0f), b.getButtonText().toUpperCase())) + 2;
+    return 38 + (int) std::ceil (juce::GlyphArrangement::getStringWidth (capsFont (11.0f), b.getButtonText().toUpperCase()));
 }
 
 void DashboardLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,

@@ -89,6 +89,7 @@ public:
     void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool over, bool down) override;
     void drawLinearSlider (juce::Graphics&, int x, int y, int w, int h, float pos, float min, float max,
                            juce::Slider::SliderStyle, juce::Slider&) override;
+    int getSliderThumbRadius (juce::Slider&) override { return 5; } // the seek knob; keeps the track close to its bounds
     void fillTextEditorBackground (juce::Graphics&, int w, int h, juce::TextEditor&) override;
     void drawTextEditorOutline (juce::Graphics&, int w, int h, juce::TextEditor&) override;
     void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int w, int h, bool vertical, int thumbStart, int thumbSize,

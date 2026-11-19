@@ -35,20 +35,21 @@ juce::String bpmText (float bpm)
     return std::fabs (r - std::round (r)) < 0.05f ? juce::String ((int) std::round (r)) : juce::String (r, 1);
 }
 
-/** A readout: small caption, big light value, one dim line under it. */
-void paintReadout (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& caption, const juce::String& value,
-                   const juce::String& detail, juce::Justification just, bool hasValue)
+/** A readout: small caption, big light value, one dim line under it, each on the matching line of the
+    gauge beside it (`lines` in editor coordinates). */
+void paintReadout (juce::Graphics& g, juce::Rectangle<int> r, Gauge::Lines lines, const juce::String& caption,
+                   const juce::String& value, const juce::String& detail, juce::Justification just, bool hasValue)
 {
-    r = r.withSizeKeepingCentre (r.getWidth(), 100);
+    const auto line = [&r] (float centreY, int h) { return r.withHeight (h).withCentre ({ r.getCentreX(), juce::roundToInt (centreY) }); };
     g.setColour (Palette::dim);
     g.setFont (capsFont (11.5f));
-    g.drawText (caption, r.removeFromTop (22), just, false);
+    g.drawText (caption, line (lines.caption, 22), just, false);
     g.setColour (hasValue ? Palette::text : Palette::faint);
     g.setFont (font (Weight::Light, 38.0f));
-    g.drawText (value, r.removeFromTop (50), just, false);
+    g.drawText (value, line (lines.value, 50), just, false);
     g.setColour (Palette::dim);
     g.setFont (font (Weight::Regular, 13.0f));
-    g.drawText (detail, r.removeFromTop (22), just, false);
+    g.drawText (detail, line (lines.unit, 22), just, false);
 }
 } // namespace
 
@@ -282,13 +283,17 @@ void justStemEditor::resized()
     const int rowH = list.getHeight() / rows.size();
     for (auto* row : rows) row->setBounds (list.removeFromTop (rowH));
 
+    // Play flush left, Follow DAW flush right, the time sized to its text, and the same gap either side of the seek bar.
     auto bar = playerBar;
-    playButton.setBounds (bar.removeFromLeft (40).withSizeKeepingCentre (36, 36));
-    bar.removeFromLeft (14);
-    followHost.setBounds (bar.removeFromRight (DashboardLookAndFeel::toggleWidth (followHost))); // flush with the right edge
-    bar.removeFromRight (14);
-    timeArea = bar.removeFromRight (96);
-    bar.removeFromRight (10);
+    playButton.setBounds (bar.removeFromLeft (36).withSizeKeepingCentre (36, 36));
+    bar.removeFromLeft (16);
+    followHost.setBounds (bar.removeFromRight (DashboardLookAndFeel::toggleWidth (followHost)));
+    bar.removeFromRight (24);
+    const auto song = proc.getSong();
+    const auto longest = formatTime (song != nullptr ? song->durationSeconds : 0.0);
+    timeArea = bar.removeFromRight ((int) std::ceil (juce::GlyphArrangement::getStringWidth (font (Weight::Regular, 13.0f),
+                                                                                            longest + " / " + longest)) + 2);
+    bar.removeFromRight (16);
     position.setBounds (bar);
 }
 
@@ -331,22 +336,24 @@ void justStemEditor::paint (juce::Graphics& g)
         g.drawText (song->title, t, juce::Justification::centredLeft, true);
     }
 
-    // Tempo and loudness, either side of the gauge (which shows the key).
+    // Tempo and loudness, either side of the gauge (which shows the key), on the gauge's text lines.
+    auto lines = gauge.lines();
+    for (auto* y : { &lines.caption, &lines.value, &lines.unit }) *y += (float) gauge.getY();
     if (song != nullptr)
     {
         const auto& a = song->analysis;
         // The detected tempo octave is a guess, so offer half and double time too.
-        paintReadout (g, tempoArea, "TEMPO", bpmText (a.tempo.bpm) + " BPM",
+        paintReadout (g, tempoArea, lines, "TEMPO", bpmText (a.tempo.bpm) + " BPM",
                       "half " + bpmText (a.tempo.bpm / 2) + juce::String::fromUTF8 ("  \xc2\xb7  ") + "double " + bpmText (a.tempo.bpm * 2),
                       juce::Justification::centredLeft, true);
-        paintReadout (g, loudArea, "LOUDNESS", juce::String (a.loudness.integratedLufs, 1) + " LUFS",
+        paintReadout (g, loudArea, lines, "LOUDNESS", juce::String (a.loudness.integratedLufs, 1) + " LUFS",
                       "peak " + juce::String (a.loudness.samplePeakDb > 0 ? "+" : "") + juce::String (a.loudness.samplePeakDb, 1) + " dBFS",
                       juce::Justification::centredRight, true);
     }
     else
     {
-        paintReadout (g, tempoArea, "TEMPO", "--", "", juce::Justification::centredLeft, false);
-        paintReadout (g, loudArea, "LOUDNESS", "--", "", juce::Justification::centredRight, false);
+        paintReadout (g, tempoArea, lines, "TEMPO", "--", "", juce::Justification::centredLeft, false);
+        paintReadout (g, loudArea, lines, "LOUDNESS", "--", "", juce::Justification::centredRight, false);
     }
 
     // The lower area shows the stems, or the processing log while working (and after an error).

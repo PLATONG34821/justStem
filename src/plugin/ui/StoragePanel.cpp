@@ -166,12 +166,15 @@ void StoragePanel::paint (juce::Graphics& g)
 
     auto r = c.reduced (28, 24);
     auto top = r.removeFromTop (44);
+    // Title and total on one baseline.
+    const auto titleFont = font (Weight::Light, 26.0f);
+    const int baseline = juce::roundToInt ((float) top.getCentreY() + (titleFont.getAscent() - titleFont.getDescent()) * 0.5f);
     g.setColour (Palette::text);
-    g.setFont (font (Weight::Light, 26.0f));
-    g.drawText ("Storage", top.removeFromLeft (130), juce::Justification::centredLeft, false);
+    g.setFont (titleFont);
+    g.drawSingleLineText ("Storage", top.getX(), baseline);
     g.setColour (Palette::dim);
     g.setFont (font (Weight::Regular, 13.0f));
-    g.drawText (size (songsBytes + cacheBytes + toolsBytes + downloadsBytes) + " used", top, juce::Justification::centredLeft, false);
+    g.drawSingleLineText (size (songsBytes + cacheBytes + toolsBytes + downloadsBytes) + " used", top.getX() + 130, baseline);
 
     g.setColour (Palette::dim);
     g.setFont (capsFont (11.5f));
@@ -215,7 +218,7 @@ void StoragePanel::paint (juce::Graphics& g)
         if (row.getY() > otherArea.getY()) g.drawHorizontalLine (row.getY(), (float) otherArea.getX(), (float) otherArea.getRight());
         g.setColour (Palette::text);
         g.setFont (font (Weight::Regular, 13.5f));
-        g.drawText (juce::String (item.name) + "   " + size (item.bytes), row.removeFromTop (24).withTrimmedTop (4),
+        g.drawText (juce::String (item.name) + "   " + size (item.bytes), row.removeFromTop (22).withTrimmedTop (2),
                     juce::Justification::bottomLeft, false);
         g.setColour (Palette::faint);
         g.setFont (font (Weight::Regular, 11.5f));

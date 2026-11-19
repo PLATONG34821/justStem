@@ -16,6 +16,17 @@ juce::ColourGradient accentGradient (juce::Rectangle<float> r)
 } // namespace
 
 // ============================================================================ gauge
+Gauge::Lines Gauge::lines() const
+{
+    // Must match the text rectangles in paint().
+    const auto bounds = getLocalBounds().toFloat();
+    const float size = std::min (bounds.getWidth(), bounds.getHeight());
+    const auto outer = bounds.withSizeKeepingCentre (size, size).reduced (4.0f);
+    const auto disc = outer.reduced (size * 0.14f);
+    const float cy = outer.getCentreY();
+    return { disc.getY() + disc.getHeight() * 0.18f + size * 0.03f, cy, cy + size * 0.13f + size * 0.035f };
+}
+
 void Gauge::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();

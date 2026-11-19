@@ -22,6 +22,11 @@ public:
     void set (State s) { state = std::move (s); repaint(); }
     void paint (juce::Graphics&) override;
 
+    /** Vertical centres of the caption, value and unit lines, in the gauge's own coordinates,
+        so text beside the gauge can line up with them. */
+    struct Lines { float caption, value, unit; };
+    Lines lines() const;
+
 private:
     State state;
 };
