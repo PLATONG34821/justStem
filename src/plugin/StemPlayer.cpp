@@ -96,7 +96,7 @@ void StemPlayer::process (juce::AudioBuffer<float>& buffer, double hostSeconds)
     {
         const float g0 = currentGain[(size_t) i], g1 = targetGain (i);
         currentGain[(size_t) i] = g1;
-        if (g0 == 0.0f && g1 == 0.0f) continue;
+        if (juce::exactlyEqual (g0, 0.0f) && juce::exactlyEqual (g1, 0.0f)) continue;
         const auto& st = song->stems.at (stemOrder[(size_t) i]);
         const float* l = st.left.data() + pos;
         const float* r = st.right.data() + pos;

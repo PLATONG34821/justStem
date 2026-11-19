@@ -71,7 +71,7 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
                 if (progress && pct.isNotEmpty()) progress ("Getting audio from YouTube", pct.getDoubleValue() / 100.0);
             }
             else if (line.startsWith ("ERROR")) errors << line << "\n";
-            else if (line.startsWith ("WARNING")) DBG (line);
+            else if (line.startsWith ("WARNING")) { DBG (line); }
         }
     }
 

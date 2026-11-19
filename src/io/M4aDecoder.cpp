@@ -90,7 +90,7 @@ std::vector<juce::uint8> audioSpecificConfig (const Bytes& b, const Box& esds)
     pos += 2; // ES_ID
     const auto flags = b.u8 (pos++);
     if (flags & 0x80) pos += 2;                  // dependsOn_ES_ID
-    if (flags & 0x40) pos += 1 + b.u8 (pos);     // URL
+    if (flags & 0x40) pos += 1u + std::size_t { b.u8 (pos) }; // URL
     if (flags & 0x20) pos += 2;                  // OCR_ES_ID
     if (b.u8 (pos++) != 0x04) fail ("no audio decoder configuration");
     descriptorLength (b, pos);
