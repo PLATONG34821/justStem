@@ -4,7 +4,7 @@
 
 #include <stdexcept>
 
-namespace covertools
+namespace juststem
 {
 void saveSong (const SongResult& song)
 {
@@ -108,4 +108,4 @@ std::shared_ptr<SongResult> loadSong (const juce::File& folder)
         song->stems[stem] = loadAudioFile (song->stemFile (stem));
     return song;
 }
-} // namespace covertools
+} // namespace juststem

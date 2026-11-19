@@ -8,7 +8,7 @@
 #include <string_view>
 #include <stdexcept>
 
-namespace covertools
+namespace juststem
 {
 namespace
 {
@@ -356,4 +356,4 @@ DecodedAudio decodeM4a (const juce::File& file)
     }
     return out;
 }
-} // namespace covertools
+} // namespace juststem

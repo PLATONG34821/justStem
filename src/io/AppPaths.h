@@ -4,25 +4,25 @@
 
 #include <functional>
 
-namespace covertools
+namespace juststem
 {
 /** Reports a step name and its progress (0..1, or -1 when unknown). */
 using ProgressCallback = std::function<void (const juce::String& step, double fraction)>;
 
-/** Where CoverTools keeps its files. */
+/** Where justStem keeps its files. */
 namespace paths
 {
     /** The app's data folder, created on demand:
-          macOS    ~/Library/Application Support/CoverTools
-          Windows  %APPDATA%\CoverTools
-          Linux    ~/.config/CoverTools */
+          macOS    ~/Library/Application Support/justStem
+          Windows  %APPDATA%\justStem
+          Linux    ~/.config/justStem */
     inline juce::File supportRoot()
     {
         auto dir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory);
        #if JUCE_MAC
         dir = dir.getChildFile ("Application Support");
        #endif
-        dir = dir.getChildFile ("CoverTools");
+        dir = dir.getChildFile ("justStem");
         dir.createDirectory();
         return dir;
     }
@@ -39,12 +39,12 @@ namespace paths
     inline juce::File coremlCache() { return support ("coreml-cache"); } // compiled model
     inline juce::File downloads() { return support ("downloads"); }      // YouTube audio, deleted after use
 
-    /** <user's Music folder>/CoverTools: one folder of stems per song. */
+    /** <user's Music folder>/justStem: one folder of stems per song. */
     inline juce::File stems()
     {
-        auto dir = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("CoverTools");
+        auto dir = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("justStem");
         dir.createDirectory();
         return dir;
     }
 } // namespace paths
-} // namespace covertools
+} // namespace juststem

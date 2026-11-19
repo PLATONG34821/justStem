@@ -2,9 +2,9 @@
 #include "PluginEditor.h"
 #include "../core/Separator.h"
 
-using namespace covertools;
+using namespace juststem;
 
-juce::File CoverToolsProcessor::bundledModelFile()
+juce::File justStemProcessor::bundledModelFile()
 {
     // For a plug-in, currentExecutableFile is the plug-in binary itself, not the host.
     const auto binaryDir = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory();
@@ -21,7 +21,7 @@ juce::File CoverToolsProcessor::bundledModelFile()
     return candidates[0]; // missing: SongJob reports it
 }
 
-CoverToolsProcessor::CoverToolsProcessor (juce::File model)
+justStemProcessor::justStemProcessor (juce::File model)
     : AudioProcessor (BusesProperties()
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
@@ -29,25 +29,25 @@ CoverToolsProcessor::CoverToolsProcessor (juce::File model)
 {
 }
 
-CoverToolsProcessor::~CoverToolsProcessor()
+justStemProcessor::~justStemProcessor()
 {
     *alive = false;
     job.reset(); // stops the thread
 }
 
-void CoverToolsProcessor::prepareToPlay (double hostRate, int samplesPerBlock)
+void justStemProcessor::prepareToPlay (double hostRate, int samplesPerBlock)
 {
     stemPlayer.prepare (hostRate, samplesPerBlock);
 }
 
-bool CoverToolsProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool justStemProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto& out = layouts.getMainOutputChannelSet();
     return (out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono())
         && layouts.getMainInputChannelSet() == out;
 }
 
-void CoverToolsProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void justStemProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
     // The input passes through; the stem preview is added on top.
@@ -58,7 +58,7 @@ void CoverToolsProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     stemPlayer.process (buffer, hostSeconds);
 }
 
-void CoverToolsProcessor::startJob (SongJob::Kind kind, const juce::String& source)
+void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source)
 {
     if (job != nullptr) return;
     error.clear();
@@ -80,19 +80,19 @@ void CoverToolsProcessor::startJob (SongJob::Kind kind, const juce::String& sour
     sendChangeMessage();
 }
 
-void CoverToolsProcessor::cancelJob()
+void justStemProcessor::cancelJob()
 {
     if (job != nullptr) job->cancel();
 }
 
-SongJob::Status CoverToolsProcessor::jobStatus() const
+SongJob::Status justStemProcessor::jobStatus() const
 {
     return job != nullptr ? job->status() : SongJob::Status {};
 }
 
-void CoverToolsProcessor::getStateInformation (juce::MemoryBlock& data)
+void justStemProcessor::getStateInformation (juce::MemoryBlock& data)
 {
-    juce::ValueTree state ("CoverTools");
+    juce::ValueTree state ("justStem");
     if (song != nullptr) state.setProperty ("folder", song->folder.getFullPathName(), nullptr);
     state.setProperty ("followHost", stemPlayer.followsHost(), nullptr);
     state.setProperty ("transpose", transpose, nullptr);
@@ -108,10 +108,10 @@ void CoverToolsProcessor::getStateInformation (juce::MemoryBlock& data)
     state.writeToStream (out);
 }
 
-void CoverToolsProcessor::setStateInformation (const void* data, int size)
+void justStemProcessor::setStateInformation (const void* data, int size)
 {
     const auto state = juce::ValueTree::readFromData (data, (size_t) size);
-    if (! state.hasType ("CoverTools")) return;
+    if (! state.hasType ("justStem")) return;
     stemPlayer.setFollowHost (state["followHost"]);
     transpose = juce::jlimit (-11, 11, (int) state["transpose"]);
     stemPlayer.setTranspose (transpose);
@@ -129,12 +129,12 @@ void CoverToolsProcessor::setStateInformation (const void* data, int size)
         });
 }
 
-juce::AudioProcessorEditor* CoverToolsProcessor::createEditor()
+juce::AudioProcessorEditor* justStemProcessor::createEditor()
 {
-    return new CoverToolsEditor (*this);
+    return new justStemEditor (*this);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new CoverToolsProcessor();
+    return new justStemProcessor();
 }

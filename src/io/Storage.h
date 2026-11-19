@@ -4,9 +4,9 @@
 
 #include <vector>
 
-namespace covertools
+namespace juststem
 {
-/** What CoverTools keeps on disk, and ways to free it. */
+/** What justStem keeps on disk, and ways to free it. */
 namespace storage
 {
     struct SavedSong
@@ -17,7 +17,7 @@ namespace storage
         juce::Time created;
     };
 
-    /** Song folders made by CoverTools (they contain info.json), newest first. Other files in
+    /** Song folders made by justStem (they contain info.json), newest first. Other files in
         the stems folder are never listed, so they can't be deleted from here. */
     std::vector<SavedSong> savedSongs();
 
@@ -30,4 +30,4 @@ namespace storage
     /** Delete a cache folder's contents (the folder itself is recreated on demand). */
     void clearFolder (const juce::File&);
 } // namespace storage
-} // namespace covertools
+} // namespace juststem

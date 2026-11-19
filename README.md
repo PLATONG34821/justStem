@@ -1,4 +1,4 @@
-# CoverTools
+# justStem
 
 A VST3 / AU plug-in (and standalone app) for people who make covers. Give it a song (an
 audio file or a YouTube link) and it:
@@ -40,11 +40,11 @@ packages (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are d
    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
    cmake --build build
    ```
-   The plug-ins are in `build/CoverTools_artefacts/Release/`, and are also installed for you:
+   The plug-ins are in `build/justStem_artefacts/Release/`, and are also installed for you:
    - **macOS:** VST3 and AU in `~/Library/Audio/Plug-Ins/`. Builds are ad-hoc signed, so they run
      on the machine that built them; distributing them needs a Developer ID signature and notarization.
    - **Linux:** VST3 in `~/.vst3/`.
-   - **Windows:** copy `CoverTools.vst3` to `C:\Program Files\Common Files\VST3\` (needs admin rights).
+   - **Windows:** copy `justStem.vst3` to `C:\Program Files\Common Files\VST3\` (needs admin rights).
 
 Every push is built and tested on macOS, Windows and Linux by GitHub Actions
 (`.github/workflows/build.yml`); the built plug-ins can be downloaded from each run.
@@ -93,10 +93,10 @@ with the original file in a DAW.
 
 | What | Where |
 |---|---|
-| Stems for each song (7 WAVs + `info.json`) | `<your Music folder>/CoverTools/<song title>/` |
-| yt-dlp and Deno (downloaded on first YouTube link) | `<app data>/CoverTools/bin/` |
-| CoreML's compiled model (macOS; makes later loads fast) | `<app data>/CoverTools/coreml-cache/` |
-| YouTube audio while it's being processed | `<app data>/CoverTools/downloads/` |
+| Stems for each song (7 WAVs + `info.json`) | `<your Music folder>/justStem/<song title>/` |
+| yt-dlp and Deno (downloaded on first YouTube link) | `<app data>/justStem/bin/` |
+| CoreML's compiled model (macOS; makes later loads fast) | `<app data>/justStem/coreml-cache/` |
+| YouTube audio while it's being processed | `<app data>/justStem/downloads/` |
 
 `<app data>` is `~/Library/Application Support` on macOS, `%APPDATA%` on Windows and `~/.config` on Linux.
 
@@ -115,9 +115,9 @@ Everything is disabled while a song is being processed.
 ## Testing
 
 ```sh
-build/covertools_cli_artefacts/Release/covertools_cli analyze-selftest
-build/covertools_cli_artefacts/Release/covertools_cli selftest models/htdemucs_6s_web2.onnx
-build/covertools_uitest_artefacts/Release/covertools_uitest models/htdemucs_6s_web2.onnx <song> <screenshot folder>
+build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
+build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_web2.onnx
+build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_web2.onnx <song> <screenshot folder>
 ```
 
 - `analyze-selftest`: the resampler against exact sine waves and an aliasing test, loudness against
@@ -125,12 +125,12 @@ build/covertools_uitest_artefacts/Release/covertools_uitest models/htdemucs_6s_w
   bar lines and chords (7ths, sus, dim, slash chords) in a synthetic band recording in 4 keys,
   and pitch shifting (pitch within 5 cents, no timing offset, same level).
 - `selftest`: separates a synthetic track and scores each stem against the original parts.
-- `covertools_uitest`: runs the real plug-in code without a DAW. It renders the window to PNGs,
+- `juststem_uitest`: runs the real plug-in code without a DAW. It renders the window to PNGs,
   splits a song, checks the preview audio, the chord view, the transposed preview (in time with
   the original) and transposed stem saving, and saves / reloads the
   plug-in state (including a song saved before chord detection existed).
 
-`covertools_cli` can also `separate`, `analyze` or `import` real songs, or print the `chords` of a
+`juststem_cli` can also `separate`, `analyze` or `import` real songs, or print the `chords` of a
 song folder the plug-in saved; see the top of `tools/cli.cpp`.
 
 ## How chords are found
@@ -160,7 +160,7 @@ especially on vocals.
 
 ## Licences
 
-CoverTools is licensed under the GNU AGPL-3.0 (see `LICENSE`), as required by JUCE's free licence.
+justStem is licensed under the GNU AGPL-3.0 (see `LICENSE`), as required by JUCE's free licence.
 
 - [JUCE](https://juce.com): AGPL-3.0 / commercial
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime): MIT
@@ -170,7 +170,7 @@ CoverTools is licensed under the GNU AGPL-3.0 (see `LICENSE`), as required by JU
 - [FAAD2](https://github.com/knik0/faad2) (AAC decoder): GPL-2.0-or-later, used under GPL-3.0 with the AGPL
 - [DirectML](https://github.com/microsoft/DirectML) (Windows builds only): Microsoft's proprietary,
   redistributable `DirectML.dll` (Microsoft Software License Terms). Check that bundling it suits
-  how you distribute CoverTools.
+  how you distribute justStem.
 - [HT-Demucs](https://github.com/facebookresearch/demucs) (Meta): MIT. ONNX export by
   [StemSplitio](https://huggingface.co/StemSplitio/htdemucs-6s-onnx) (MIT)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) and [Deno](https://deno.com) (MIT),

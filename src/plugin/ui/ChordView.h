@@ -5,7 +5,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-namespace covertools::ui
+namespace juststem::ui
 {
 /** The chord progression: the chord playing now and the next ones, then the song as a grid of
     bars (4 per row) that follows playback. Click a bar to jump there. */
@@ -42,4 +42,4 @@ private:
     int currentBar = -1, currentSegment = -1, firstRow = 0;
     juce::Rectangle<int> now, grid;
 };
-} // namespace covertools::ui
+} // namespace juststem::ui

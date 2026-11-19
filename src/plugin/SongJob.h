@@ -7,7 +7,7 @@
 #include <atomic>
 #include <functional>
 
-namespace covertools
+namespace juststem
 {
 /** Runs one song on a background thread: get audio -> split -> analyse -> save,
     or reload a song saved earlier. */
@@ -54,4 +54,4 @@ private:
     int lastQuarter = 0;
     const double startMs = juce::Time::getMillisecondCounterHiRes();
 };
-} // namespace covertools
+} // namespace juststem

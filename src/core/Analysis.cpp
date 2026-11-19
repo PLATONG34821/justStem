@@ -6,7 +6,7 @@
 #include <numbers>
 #include <numeric>
 
-namespace covertools
+namespace juststem
 {
 namespace
 {
@@ -298,4 +298,4 @@ SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems)
     a.chords = detectSongChords (mix, stems, a.tempo.bpm, a.key);
     return a;
 }
-} // namespace covertools
+} // namespace juststem

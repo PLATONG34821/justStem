@@ -1,10 +1,10 @@
-// covertools_cli: test the separation engine outside a DAW.
-//   covertools_cli selftest <model.onnx> [seconds] [overlap]
-//   covertools_cli separate <model.onnx> <input audio> <output folder>
-//   covertools_cli import <YouTube link | audio file> <output.wav>
-//   covertools_cli analyze-selftest
-//   covertools_cli analyze <audio file> [model.onnx]   (with a model: analyse the separated stems)
-//   covertools_cli chords <song folder>                 (stems saved by the plug-in)
+// juststem_cli: test the separation engine outside a DAW.
+//   juststem_cli selftest <model.onnx> [seconds] [overlap]
+//   juststem_cli separate <model.onnx> <input audio> <output folder>
+//   juststem_cli import <YouTube link | audio file> <output.wav>
+//   juststem_cli analyze-selftest
+//   juststem_cli analyze <audio file> [model.onnx]   (with a model: analyse the separated stems)
+//   juststem_cli chords <song folder>                 (stems saved by the plug-in)
 #include "../src/core/Analysis.h"
 #include "../src/core/Fft.h"
 #include "../src/core/PitchShift.h"
@@ -19,12 +19,12 @@
 #include <numbers>
 #include <cstdio>
 
-using namespace covertools;
+using namespace juststem;
 
 /** Developer tools keep their own CoreML cache, so they don't add copies to the plug-in's. */
 static std::string devCoremlCache()
 {
-    return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("covertools-coreml-cache").getFullPathName().toStdString();
+    return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("juststem-coreml-cache").getFullPathName().toStdString();
 }
 
 static double siSdr (const std::vector<float>& est, const std::vector<float>& ref)

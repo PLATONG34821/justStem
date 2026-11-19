@@ -3,7 +3,7 @@
 #include <vector>
 
 /** Signal-processing building blocks shared by the key, tempo and chord detectors. */
-namespace covertools::dsp
+namespace juststem::dsp
 {
 std::vector<float> hann (int n);
 
@@ -27,4 +27,4 @@ PeakFrames spectralPeaks (const std::vector<float>& x, int rate, int size, int h
     One value per onsetHop samples. */
 constexpr int onsetSize = 2048, onsetHop = 512;
 std::vector<float> onsetEnvelope (const std::vector<float>& x, int rate);
-} // namespace covertools::dsp
+} // namespace juststem::dsp

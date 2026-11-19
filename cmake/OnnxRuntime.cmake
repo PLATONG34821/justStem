@@ -14,7 +14,7 @@ set(ORT_LIB_DIR ${CMAKE_BINARY_DIR}/onnxruntime)
 file(MAKE_DIRECTORY ${ORT_LIB_DIR})
 
 # Download and unpack a NuGet package; sets <out_var> to where it was unpacked.
-function(covertools_nuget out_var name version sha256)
+function(juststem_nuget out_var name version sha256)
     string(TOLOWER ${name} lower)
     string(REPLACE "." "_" id ${lower})
     FetchContent_Declare(${id}
@@ -35,7 +35,7 @@ endif()
 add_library(onnxruntime::onnxruntime SHARED IMPORTED GLOBAL)
 
 if(APPLE)
-    covertools_nuget(pkg Microsoft.ML.OnnxRuntime 1.32.0 a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db)
+    juststem_nuget(pkg Microsoft.ML.OnnxRuntime 1.32.0 a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db)
     # The package ships libonnxruntime.dylib, but its install name is @rpath/libonnxruntime.1.dylib.
     set(lib ${ORT_LIB_DIR}/libonnxruntime.1.dylib)
     file(COPY_FILE ${pkg}/runtimes/osx-arm64/native/libonnxruntime.dylib ${lib} ONLY_IF_DIFFERENT)
@@ -45,8 +45,8 @@ if(APPLE)
     set(ORT_RUNTIME_FILES ${lib})
 
 elseif(WIN32)
-    covertools_nuget(pkg Microsoft.ML.OnnxRuntime.DirectML 1.24.4 57e9f11b73437bef7a309496135d4c1f96b1a8e9ddba60013fa27bfc1d788681)
-    covertools_nuget(dml Microsoft.AI.DirectML 1.15.4 4e7cb7ddce8cf837a7a75dc029209b520ca0101470fcdf275c1f49736a3615b9)
+    juststem_nuget(pkg Microsoft.ML.OnnxRuntime.DirectML 1.24.4 57e9f11b73437bef7a309496135d4c1f96b1a8e9ddba60013fa27bfc1d788681)
+    juststem_nuget(dml Microsoft.AI.DirectML 1.15.4 4e7cb7ddce8cf837a7a75dc029209b520ca0101470fcdf275c1f49736a3615b9)
     set(native ${pkg}/runtimes/win-${ORT_ARCH}/native)
     file(COPY_FILE ${native}/onnxruntime.dll ${ORT_LIB_DIR}/onnxruntime.dll ONLY_IF_DIFFERENT)
     file(COPY_FILE ${dml}/bin/${ORT_ARCH}-win/DirectML.dll ${ORT_LIB_DIR}/DirectML.dll ONLY_IF_DIFFERENT)
@@ -57,7 +57,7 @@ elseif(WIN32)
     set(extra_includes ${dml}/include) # DirectML.h, needed by dml_provider_factory.h
 
 else() # Linux
-    covertools_nuget(pkg Microsoft.ML.OnnxRuntime 1.32.0 a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db)
+    juststem_nuget(pkg Microsoft.ML.OnnxRuntime 1.32.0 a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db)
     # The package ships libonnxruntime.so, but its soname is libonnxruntime.so.1.
     set(lib ${ORT_LIB_DIR}/libonnxruntime.so.1)
     file(COPY_FILE ${pkg}/runtimes/linux-${ORT_ARCH}/native/libonnxruntime.so ${lib} ONLY_IF_DIFFERENT)

@@ -1,6 +1,6 @@
 #include "StemPlayer.h"
 
-namespace covertools
+namespace juststem
 {
 void StemPlayer::prepare (double rate, int maxBlock)
 {
@@ -136,4 +136,4 @@ void StemPlayer::process (juce::AudioBuffer<float>& buffer, double hostSeconds)
         buffer.addFrom (0, 0, out, 1, 0, numOut, 0.5f);
     }
 }
-} // namespace covertools
+} // namespace juststem

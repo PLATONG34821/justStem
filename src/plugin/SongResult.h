@@ -7,7 +7,7 @@
 #include <functional>
 #include <memory>
 
-namespace covertools
+namespace juststem
 {
 /** A split song: its stems (in memory and as WAVs in `folder`) and its analysis.
     Immutable once published, so the audio thread can read it without locks. */
@@ -40,4 +40,4 @@ void saveInfo (const SongResult& song);
 /** Reload a song written by saveSong (e.g. when a DAW project is reopened). Songs saved before
     chord detection existed come back with no chord segments. Throws std::runtime_error. */
 std::shared_ptr<SongResult> loadSong (const juce::File& folder);
-} // namespace covertools
+} // namespace juststem

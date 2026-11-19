@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace covertools::storage
+namespace juststem::storage
 {
 juce::int64 folderSize (const juce::File& dir)
 {
@@ -19,7 +19,7 @@ std::vector<SavedSong> savedSongs()
     {
         const auto dir = entry.getFile();
         const auto info = juce::JSON::parse (dir.getChildFile ("info.json"));
-        if (! info.isObject()) continue; // not made by CoverTools
+        if (! info.isObject()) continue; // not made by justStem
         songs.push_back ({ info["title"].toString().isNotEmpty() ? info["title"].toString() : dir.getFileName(), dir,
                            folderSize (dir), dir.getCreationTime() });
     }
@@ -37,4 +37,4 @@ void clearFolder (const juce::File& dir)
     for (const auto& entry : juce::RangedDirectoryIterator (dir, false, "*", juce::File::findFilesAndDirectories))
         entry.getFile().isDirectory() ? (void) entry.getFile().deleteRecursively() : (void) entry.getFile().deleteFile();
 }
-} // namespace covertools::storage
+} // namespace juststem::storage

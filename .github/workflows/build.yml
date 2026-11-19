@@ -1,4 +1,4 @@
-# Builds and tests CoverTools on macOS, Windows and Linux, and uploads the plug-ins.
+# Builds and tests justStem on macOS, Windows and Linux, and uploads the plug-ins.
 name: build
 
 on:
@@ -63,15 +63,15 @@ jobs:
         run: cmake --build build
 
       - name: Test analysis (resampler, loudness, key, tempo)
-        run: build/covertools_cli_artefacts/Release/covertools_cli analyze-selftest
+        run: build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
       - name: Test separation
-        run: build/covertools_cli_artefacts/Release/covertools_cli selftest models/htdemucs_6s_web2.onnx 12
+        run: build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_web2.onnx 12
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CoverTools-${{ matrix.name }}
+          name: justStem-${{ matrix.name }}
           path: |
-            build/CoverTools_artefacts/Release/VST3
-            build/CoverTools_artefacts/Release/AU
-            build/CoverTools_artefacts/Release/Standalone
+            build/justStem_artefacts/Release/VST3
+            build/justStem_artefacts/Release/AU
+            build/justStem_artefacts/Release/Standalone
           if-no-files-found: error

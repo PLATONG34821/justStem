@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace covertools
+namespace juststem
 {
 const char* backendName (Backend b)
 {
@@ -28,7 +28,7 @@ namespace
 {
 Ort::Env& ortEnv()
 {
-    static Ort::Env env (ORT_LOGGING_LEVEL_ERROR, "CoverTools");
+    static Ort::Env env (ORT_LOGGING_LEVEL_ERROR, "justStem");
     return env;
 }
 
@@ -216,4 +216,4 @@ StemMap Separator::separate (const StereoAudio& mix,
     }
     throw std::runtime_error ("no backend available");
 }
-} // namespace covertools
+} // namespace juststem

@@ -7,7 +7,7 @@
 #include <memory>
 #include <string>
 
-namespace covertools
+namespace juststem
 {
 /** The bundled model: HT-Demucs 6-stem, built by scripts/prepare_demucs_onnx.py. */
 namespace model
@@ -58,4 +58,4 @@ private:
     std::unique_ptr<Impl> impl;
     Backend currentBackend = Backend::CPU;
 };
-} // namespace covertools
+} // namespace juststem

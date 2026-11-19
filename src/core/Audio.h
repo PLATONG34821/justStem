@@ -5,9 +5,9 @@
 #include <string_view>
 #include <vector>
 
-namespace covertools
+namespace juststem
 {
-/** Everything inside CoverTools runs at this rate (the model's rate). */
+/** Everything inside justStem runs at this rate (the model's rate). */
 constexpr int sampleRate = 44100;
 
 struct StereoAudio
@@ -39,4 +39,4 @@ constexpr std::string_view stemName (Stem s)
 }
 
 using StemMap = std::map<Stem, StereoAudio>;
-} // namespace covertools
+} // namespace juststem

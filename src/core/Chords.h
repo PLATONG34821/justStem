@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace covertools
+namespace juststem
 {
 struct KeyResult;
 
@@ -65,4 +65,4 @@ ChordResult detectChords (const std::vector<float>& harmonic, const std::vector<
 /** detectChords from separated stems (guitar + piano + other, bass, drums), or from the mix
     when `stems` is empty. */
 ChordResult detectSongChords (const StereoAudio& mix, const StemMap& stems, float bpm, const KeyResult& key);
-} // namespace covertools
+} // namespace juststem

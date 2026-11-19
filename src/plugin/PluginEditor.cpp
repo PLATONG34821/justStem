@@ -2,8 +2,8 @@
 #include "../io/AudioFiles.h"
 #include "../io/YouTube.h"
 
-using namespace covertools;
-using namespace covertools::ui;
+using namespace juststem;
+using namespace juststem::ui;
 
 namespace
 {
@@ -101,7 +101,7 @@ private:
 };
 } // namespace
 
-void CoverToolsEditor::saveTransposed (SongResultPtr song, int semitones, const juce::File& dest)
+void justStemEditor::saveTransposed (SongResultPtr song, int semitones, const juce::File& dest)
 {
     const auto key = song->analysis.key.transposed (semitones);
     const auto dir = dest.getChildFile (juce::File::createLegalFileName (song->title + " stems (" + (semitones > 0 ? "+" : "")
@@ -111,7 +111,7 @@ void CoverToolsEditor::saveTransposed (SongResultPtr song, int semitones, const 
 }
 
 // ============================================================================ setup
-CoverToolsEditor::CoverToolsEditor (CoverToolsProcessor& p) : AudioProcessorEditor (&p), proc (p)
+justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p), proc (p)
 {
     setLookAndFeel (&lnf);
 
@@ -140,7 +140,7 @@ CoverToolsEditor::CoverToolsEditor (CoverToolsProcessor& p) : AudioProcessorEdit
     saveAllButton.onClick = [this] { saveAll(); };
     addChildComponent (revealButton);
     addChildComponent (saveAllButton);
-    storageButton.setTooltip ("See how much space CoverTools uses and free it");
+    storageButton.setTooltip ("See how much space justStem uses and free it");
     storageButton.onClick = [this] { showStorage(); };
     addAndMakeVisible (storageButton);
 
@@ -173,14 +173,14 @@ CoverToolsEditor::CoverToolsEditor (CoverToolsProcessor& p) : AudioProcessorEdit
     startTimerHz (30);
 }
 
-CoverToolsEditor::~CoverToolsEditor()
+justStemEditor::~justStemEditor()
 {
     proc.removeChangeListener (this);
     setLookAndFeel (nullptr);
 }
 
 // ============================================================================ layout
-void CoverToolsEditor::resized()
+void justStemEditor::resized()
 {
     auto r = getLocalBounds().reduced (margin, 22);
 
@@ -241,7 +241,7 @@ void CoverToolsEditor::resized()
 }
 
 // ============================================================================ painting
-void CoverToolsEditor::paint (juce::Graphics& g)
+void justStemEditor::paint (juce::Graphics& g)
 {
     paintBackground (g, getLocalBounds());
     const bool busy = proc.isBusy();
@@ -320,7 +320,7 @@ void CoverToolsEditor::paint (juce::Graphics& g)
                 timeArea, juce::Justification::centredRight, false);
 }
 
-void CoverToolsEditor::paintOverChildren (juce::Graphics& g)
+void justStemEditor::paintOverChildren (juce::Graphics& g)
 {
     if (! dropHover) return;
     const auto r = getLocalBounds().toFloat().reduced (10.0f);
@@ -334,7 +334,7 @@ void CoverToolsEditor::paintOverChildren (juce::Graphics& g)
 }
 
 // ============================================================================ state
-void CoverToolsEditor::refreshAll()
+void justStemEditor::refreshAll()
 {
     const bool busy = proc.isBusy();
     const auto song = busy ? nullptr : proc.getSong();
@@ -375,7 +375,7 @@ void CoverToolsEditor::refreshAll()
     repaint();
 }
 
-void CoverToolsEditor::updateGauge()
+void justStemEditor::updateGauge()
 {
     Gauge::State s;
     if (proc.isBusy())
@@ -403,7 +403,7 @@ void CoverToolsEditor::updateGauge()
     gauge.set (s);
 }
 
-void CoverToolsEditor::updatePlayerBar()
+void justStemEditor::updatePlayerBar()
 {
     auto& pl = proc.player();
     const bool hasSong = ! proc.isBusy() && proc.getSong() != nullptr;
@@ -415,7 +415,7 @@ void CoverToolsEditor::updatePlayerBar()
     repaint (timeArea);
 }
 
-void CoverToolsEditor::timerCallback()
+void justStemEditor::timerCallback()
 {
     if (proc.isBusy())
     {
@@ -431,7 +431,7 @@ void CoverToolsEditor::timerCallback()
 }
 
 // ============================================================================ actions
-void CoverToolsEditor::startFromInput()
+void justStemEditor::startFromInput()
 {
     const auto text = linkBox.getText().trim();
     if (text.isEmpty()) return chooseFile();
@@ -440,7 +440,7 @@ void CoverToolsEditor::startFromInput()
     proc.showError ("That doesn't look like a YouTube link or an audio file.");
 }
 
-void CoverToolsEditor::chooseFile()
+void justStemEditor::chooseFile()
 {
     chooser = std::make_unique<juce::FileChooser> ("Choose a song", juce::File::getSpecialLocation (juce::File::userMusicDirectory),
                                                    supportedAudioWildcards());
@@ -450,7 +450,7 @@ void CoverToolsEditor::chooseFile()
                           });
 }
 
-void CoverToolsEditor::saveAll()
+void justStemEditor::saveAll()
 {
     auto song = proc.getSong();
     if (song == nullptr) return;
@@ -468,12 +468,12 @@ void CoverToolsEditor::saveAll()
                           });
 }
 
-bool CoverToolsEditor::isInterestedInFileDrag (const juce::StringArray& files)
+bool justStemEditor::isInterestedInFileDrag (const juce::StringArray& files)
 {
     return ! proc.isBusy() && files.size() == 1;
 }
 
-void CoverToolsEditor::filesDropped (const juce::StringArray& files, int, int)
+void justStemEditor::filesDropped (const juce::StringArray& files, int, int)
 {
     dropHover = false;
     repaint();
@@ -481,13 +481,13 @@ void CoverToolsEditor::filesDropped (const juce::StringArray& files, int, int)
 }
 
 // ============================================================================ storage
-void CoverToolsEditor::showStorage()
+void justStemEditor::showStorage()
 {
     storagePanel = std::make_unique<StoragePanel> (
         [this] { auto s = proc.getSong(); return s != nullptr ? s->folder : juce::File(); },
         [this] { return proc.isBusy(); });
     storagePanel->onClose = [this] {
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<CoverToolsEditor> (this)] {
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<justStemEditor> (this)] {
             if (safe != nullptr) safe->storagePanel.reset();
         });
     };
@@ -496,19 +496,19 @@ void CoverToolsEditor::showStorage()
 }
 
 // ============================================================================ chords
-void CoverToolsEditor::showChords (bool show)
+void justStemEditor::showChords (bool show)
 {
     chordsShown = show;
     refreshAll();
 }
 
-void CoverToolsEditor::copyChords()
+void justStemEditor::copyChords()
 {
     auto song = proc.getSong();
     if (song == nullptr) return;
     juce::SystemClipboard::copyTextToClipboard (ChordView::chartText (*song, proc.getTranspose()));
     copyButton.setButtonText ("Copied");
-    juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer<CoverToolsEditor> (this)] {
+    juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer<justStemEditor> (this)] {
         if (safe != nullptr) safe->copyButton.setButtonText ("Copy chords");
     });
 }

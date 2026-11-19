@@ -3,7 +3,7 @@
 
 #include <stdexcept>
 
-namespace covertools
+namespace juststem
 {
 bool isYouTubeLink (const juce::String& text)
 {
@@ -30,9 +30,9 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
         "-f", "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]",
         "-o", paths::downloads().getChildFile ("%(id)s.%(ext)s").getFullPathName(),
         "--no-simulate", "--newline", "--progress",
-        "--progress-template", "download:covertools-progress %(progress._percent_str)s",
-        "--print", "before_dl:covertools-title %(title)s",
-        "--print", "after_move:covertools-file %(filepath)s",
+        "--progress-template", "download:juststem-progress %(progress._percent_str)s",
+        "--print", "before_dl:juststem-title %(title)s",
+        "--print", "after_move:juststem-file %(filepath)s",
         "--", link.trim()
     };
 
@@ -63,9 +63,9 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
         {
             const auto line = pending.upToFirstOccurrenceOf ("\n", false, false).trim();
             pending = pending.fromFirstOccurrenceOf ("\n", false, false);
-            if (line.startsWith ("covertools-title ")) result.title = line.fromFirstOccurrenceOf (" ", false, false);
-            else if (line.startsWith ("covertools-file ")) result.file = juce::File (line.fromFirstOccurrenceOf (" ", false, false));
-            else if (line.startsWith ("covertools-progress "))
+            if (line.startsWith ("juststem-title ")) result.title = line.fromFirstOccurrenceOf (" ", false, false);
+            else if (line.startsWith ("juststem-file ")) result.file = juce::File (line.fromFirstOccurrenceOf (" ", false, false));
+            else if (line.startsWith ("juststem-progress "))
             {
                 const auto pct = line.fromFirstOccurrenceOf (" ", false, false).retainCharacters ("0123456789.");
                 if (progress && pct.isNotEmpty()) progress ("Getting audio from YouTube", pct.getDoubleValue() / 100.0);
@@ -89,4 +89,4 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
     if (result.title.isEmpty()) result.title = result.file.getFileNameWithoutExtension();
     return result;
 }
-} // namespace covertools
+} // namespace juststem

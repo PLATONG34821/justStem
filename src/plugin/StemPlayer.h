@@ -8,7 +8,7 @@
 #include <array>
 #include <atomic>
 
-namespace covertools
+namespace juststem
 {
 /** Real-time preview of the stems, mixed into the plug-in's output.
     Index 0..5 = stemOrder (vocals, drums, bass, guitar, piano, other). */
@@ -73,4 +73,4 @@ private:
     juce::LagrangeInterpolator interpL, interpR;
     juce::AudioBuffer<float> out, shifted;
 };
-} // namespace covertools
+} // namespace juststem

@@ -13,15 +13,15 @@
       readouts    KEY (left), the tempo gauge (centre; shows progress while splitting), LOUDNESS (right)
       stems       tabs: one row per stem (mute, solo, volume, drag-to-DAW), or the chords
       player bar  play, seek, time, Follow DAW */
-class CoverToolsEditor final : public juce::AudioProcessorEditor,
+class justStemEditor final : public juce::AudioProcessorEditor,
                                public juce::DragAndDropContainer,
                                public juce::FileDragAndDropTarget,
                                private juce::ChangeListener,
                                private juce::Timer
 {
 public:
-    explicit CoverToolsEditor (CoverToolsProcessor&);
-    ~CoverToolsEditor() override;
+    explicit justStemEditor (justStemProcessor&);
+    ~justStemEditor() override;
 
     void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
@@ -41,13 +41,13 @@ private:
     void startFromInput();
     void chooseFile();
     void saveAll();
-    static void saveTransposed (covertools::SongResultPtr, int semitones, const juce::File& dest);
+    static void saveTransposed (juststem::SongResultPtr, int semitones, const juce::File& dest);
     void showStorage();
     void showChords (bool);
     void copyChords();
 
-    CoverToolsProcessor& proc;
-    covertools::ui::DashboardLookAndFeel lnf;
+    justStemProcessor& proc;
+    juststem::ui::DashboardLookAndFeel lnf;
 
     // layout regions (set in resized)
     juce::Rectangle<int> statusLine, keyArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea, transposeArea;
@@ -56,8 +56,8 @@ private:
     juce::TextButton chooseButton { "Choose file" }, splitButton { "Split" }, cancelButton { "Cancel" };
     std::unique_ptr<juce::FileChooser> chooser;
 
-    covertools::ui::Gauge gauge;
-    juce::OwnedArray<covertools::ui::StemRow> rows;
+    juststem::ui::Gauge gauge;
+    juce::OwnedArray<juststem::ui::StemRow> rows;
 #if JUCE_MAC
     juce::TextButton revealButton { "Show in Finder" };
 #elif JUCE_WINDOWS
@@ -66,19 +66,19 @@ private:
     juce::TextButton revealButton { "Show in Folder" };
 #endif
     juce::TextButton saveAllButton { "Save all" }, storageButton { "Storage" };
-    std::unique_ptr<covertools::ui::StoragePanel> storagePanel;
+    std::unique_ptr<juststem::ui::StoragePanel> storagePanel;
 
-    covertools::ui::TabButton stemsTab { "Stems" }, chordsTab { "Chords" };
-    covertools::ui::ChordView chordView;
+    juststem::ui::TabButton stemsTab { "Stems" }, chordsTab { "Chords" };
+    juststem::ui::ChordView chordView;
     juce::TextButton transposeDown { juce::String::fromUTF8 ("\xe2\x88\x92") }, transposeUp { "+" }, copyButton { "Copy chords" };
     bool chordsShown = false;
 
-    covertools::ui::IconButton playButton;
+    juststem::ui::IconButton playButton;
     juce::Slider position;
     juce::ToggleButton followHost { "Follow DAW" };
 
-    covertools::SongResultPtr shownSong;
+    juststem::SongResultPtr shownSong;
     bool dropHover = false;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CoverToolsEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (justStemEditor)
 };

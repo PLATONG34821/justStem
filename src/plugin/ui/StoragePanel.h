@@ -5,9 +5,9 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-namespace covertools::ui
+namespace juststem::ui
 {
-/** Overlay listing what CoverTools keeps on disk, with buttons to free space:
+/** Overlay listing what justStem keeps on disk, with buttons to free space:
     saved songs (moved to the Trash, after confirming), the CoreML cache, the YouTube tools and
     temporary downloads. */
 class StoragePanel final : public juce::Component
@@ -43,4 +43,4 @@ private:
     juce::OwnedArray<SongRow> rows;
     juce::Rectangle<int> songsHeader, otherArea;
 };
-} // namespace covertools::ui
+} // namespace juststem::ui

@@ -5,7 +5,7 @@
 #include <numbers>
 #include <vector>
 
-namespace covertools
+namespace juststem
 {
 /** Small radix-2 real FFT (power-of-two sizes) for the analysis code. */
 class RealFft
@@ -51,4 +51,4 @@ private:
     std::vector<std::complex<float>> tw, buf;
     std::vector<int> rev;
 };
-} // namespace covertools
+} // namespace juststem

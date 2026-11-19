@@ -7,11 +7,11 @@
 
 #include <stdexcept>
 
-namespace covertools
+namespace juststem
 {
 namespace
 {
-/** <Music>/CoverTools/<title>, numbered if that folder already exists. */
+/** <Music>/justStem/<title>, numbered if that folder already exists. */
 juce::File newSongFolder (const juce::String& title)
 {
     auto name = juce::File::createLegalFileName (title).trim().substring (0, 80);
@@ -24,7 +24,7 @@ juce::File newSongFolder (const juce::String& title)
 } // namespace
 
 SongJob::SongJob (Kind k, juce::String src, juce::File model, Finished done)
-    : juce::Thread ("CoverTools song job"), kind (k), source (std::move (src)), modelFile (std::move (model)), onFinished (std::move (done))
+    : juce::Thread ("justStem song job"), kind (k), source (std::move (src)), modelFile (std::move (model)), onFinished (std::move (done))
 {
 }
 
@@ -145,7 +145,7 @@ SongResultPtr SongJob::process()
 
     // On macOS the first run also compiles the model for CoreML (about 25 s); later runs reuse it.
     setStatus ("Preparing AI model", -1);
-    if (! modelFile.existsAsFile()) throw std::runtime_error ("The AI model is missing from the plug-in. Please reinstall CoverTools.");
+    if (! modelFile.existsAsFile()) throw std::runtime_error ("The AI model is missing from the plug-in. Please reinstall justStem.");
     addLog ("Model: " + modelFile.getFileName() + " (HT-Demucs, 6 stems)");
     Separator separator (modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString());
     const auto splitStart = juce::Time::getMillisecondCounterHiRes();
@@ -182,4 +182,4 @@ SongResultPtr SongJob::process()
     addLog ("Done in " + mmss ((juce::Time::getMillisecondCounterHiRes() - startMs) / 1000.0));
     return song;
 }
-} // namespace covertools
+} // namespace juststem

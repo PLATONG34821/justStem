@@ -8,7 +8,7 @@
 #include <limits>
 #include <numbers>
 
-namespace covertools
+namespace juststem
 {
 namespace
 {
@@ -367,4 +367,4 @@ ChordResult detectSongChords (const StereoAudio& mix, const StemMap& stems, floa
         for (std::size_t i = 0; i < n; ++i) drums[i] = harmonic[i] + bass[i];
     return detectChords (harmonic, bass, drums, sampleRate, bpm, key);
 }
-} // namespace covertools
+} // namespace juststem

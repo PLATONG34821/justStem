@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace covertools
+namespace juststem
 {
 struct PitchShifter::Impl
 {
@@ -69,4 +69,4 @@ StereoAudio pitchShift (const StereoAudio& audio, float semitones, int rate, con
     }
     return result;
 }
-} // namespace covertools
+} // namespace juststem

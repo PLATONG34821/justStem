@@ -4,7 +4,7 @@
 
 #include <vector>
 
-namespace covertools
+namespace juststem
 {
 /** Decoded audio at its original sample rate. */
 struct DecodedAudio
@@ -21,4 +21,4 @@ bool isMp4File (const juce::File&);
     Mono is copied to both channels; more than two channels are downmixed.
     Throws std::runtime_error. */
 DecodedAudio decodeM4a (const juce::File&);
-} // namespace covertools
+} // namespace juststem

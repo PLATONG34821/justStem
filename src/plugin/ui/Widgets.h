@@ -5,7 +5,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-namespace covertools::ui
+namespace juststem::ui
 {
 /** The centre dial: a 270° arc (blue gradient) around a big thin number, with a caption above
     and a unit below. */
@@ -100,4 +100,4 @@ private:
     SegmentBar volume;
     DragHandle drag;
 };
-} // namespace covertools::ui
+} // namespace juststem::ui

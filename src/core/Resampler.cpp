@@ -5,7 +5,7 @@
 #include <numbers>
 #include <numeric>
 
-namespace covertools
+namespace juststem
 {
 namespace
 {
@@ -82,4 +82,4 @@ std::vector<float> resample (const std::vector<float>& in, int inRate, int outRa
     }
     return out;
 }
-} // namespace covertools
+} // namespace juststem

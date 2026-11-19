@@ -2,7 +2,7 @@
 
 #include <BinaryData.h>
 
-namespace covertools::ui
+namespace juststem::ui
 {
 juce::Colour Palette::forStem (int i)
 {
@@ -291,4 +291,4 @@ void DashboardLookAndFeel::drawTextEditorOutline (juce::Graphics& g, int w, int 
     g.setColour (e.hasKeyboardFocus (true) ? Palette::accentTo.withAlpha (0.6f) : Palette::panelBorder);
     g.drawRoundedRectangle (0.5f, 0.5f, (float) w - 1.0f, (float) h - 1.0f, (float) h * 0.5f, 1.0f);
 }
-} // namespace covertools::ui
+} // namespace juststem::ui

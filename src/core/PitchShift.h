@@ -5,7 +5,7 @@
 #include <functional>
 #include <memory>
 
-namespace covertools
+namespace juststem
 {
 /** Real-time pitch shifting without changing the tempo (Signalsmith Stretch). The output is
     delayed by latency() samples. */
@@ -32,4 +32,4 @@ private:
 /** Offline: the whole song shifted, aligned with the original (no delay).
     `progress` gets 0..1 and returns false to cancel (the result is then empty). */
 StereoAudio pitchShift (const StereoAudio&, float semitones, int rate, const std::function<bool (double)>& progress = {});
-} // namespace covertools
+} // namespace juststem

@@ -6,7 +6,7 @@
 #include <cctype>
 #include <cstring>
 
-namespace covertools
+namespace juststem
 {
 namespace
 {
@@ -136,4 +136,4 @@ void writeWav (const juce::File& file, const StereoAudio& audio, int bitsPerSamp
     if (! writer->writeFromFloatArrays (channels, 2, (int) audio.size()))
         throw std::runtime_error ("Error while writing " + file.getFullPathName().toStdString());
 }
-} // namespace covertools
+} // namespace juststem

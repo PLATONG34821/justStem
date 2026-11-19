@@ -5,7 +5,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace covertools::dsp
+namespace juststem::dsp
 {
 std::vector<float> hann (int n)
 {
@@ -100,4 +100,4 @@ std::vector<float> onsetEnvelope (const std::vector<float>& x, int sr)
     }
     return env;
 }
-} // namespace covertools::dsp
+} // namespace juststem::dsp

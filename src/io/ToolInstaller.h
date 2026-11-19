@@ -4,7 +4,7 @@
 
 #include <atomic>
 
-namespace covertools
+namespace juststem
 {
 /** The command-line tools YouTube import needs, downloaded on first use into paths::tools().
     Each download is checked against the SHA-256 published with the official release.
@@ -15,4 +15,4 @@ juce::File ensureYtDlp (const ProgressCallback&, const std::atomic<bool>& cancel
 
 /** Deno, the JavaScript runtime yt-dlp needs for YouTube. Refreshed monthly. */
 juce::File ensureDeno (const ProgressCallback&, const std::atomic<bool>& cancel);
-} // namespace covertools
+} // namespace juststem

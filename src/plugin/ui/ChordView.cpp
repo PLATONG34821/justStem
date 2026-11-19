@@ -1,6 +1,6 @@
 #include "ChordView.h"
 
-namespace covertools::ui
+namespace juststem::ui
 {
 void ChordView::setSong (SongResultPtr s)
 {
@@ -192,4 +192,4 @@ void ChordView::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelD
 {
     scrollTo (firstRow + (w.deltaY < 0 ? 1 : -1));
 }
-} // namespace covertools::ui
+} // namespace juststem::ui

@@ -1,6 +1,6 @@
 #include "Widgets.h"
 
-namespace covertools::ui
+namespace juststem::ui
 {
 namespace
 {
@@ -200,4 +200,4 @@ void StemRow::resized()
     r.removeFromRight (6);
     muteButton.setBounds (r.removeFromRight (34));
 }
-} // namespace covertools::ui
+} // namespace juststem::ui

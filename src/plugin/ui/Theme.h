@@ -5,7 +5,7 @@
 /** The look: a dark automotive-dashboard style. Charcoal gradient with a diagonal glass sheen,
     translucent panels with hairline borders, thin type (Inter, embedded so it's the same on every
     OS), thin line icons, and colour used only as small accents. */
-namespace covertools::ui
+namespace juststem::ui
 {
 struct Palette
 {
@@ -73,4 +73,4 @@ public:
     void fillTextEditorBackground (juce::Graphics&, int w, int h, juce::TextEditor&) override;
     void drawTextEditorOutline (juce::Graphics&, int w, int h, juce::TextEditor&) override;
 };
-} // namespace covertools::ui
+} // namespace juststem::ui

@@ -4,7 +4,7 @@
 
 #include <stdexcept>
 
-namespace covertools
+namespace juststem
 {
 namespace
 {
@@ -153,4 +153,4 @@ juce::File ensureDeno (const ProgressCallback& progress, const std::atomic<bool>
     unpackDir.deleteRecursively();
     return exe;
 }
-} // namespace covertools
+} // namespace juststem

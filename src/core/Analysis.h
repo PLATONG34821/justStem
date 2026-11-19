@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace covertools
+namespace juststem
 {
 struct KeyResult
 {
@@ -58,4 +58,4 @@ SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems);
 
 /** K-weighting biquad coefficients for a sample rate: {b0,b1,b2,a1,a2} for the shelf, then the high-pass. */
 std::array<std::array<double, 5>, 2> kWeightingCoefficients (double rate);
-} // namespace covertools
+} // namespace juststem

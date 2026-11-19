@@ -1,6 +1,6 @@
 #include "StoragePanel.h"
 
-namespace covertools::ui
+namespace juststem::ui
 {
 namespace
 {
@@ -203,4 +203,4 @@ void StoragePanel::confirm (const juce::String& title, const juce::String& messa
                                       if (safe != nullptr && result == 1) then();
                                   });
 }
-} // namespace covertools::ui
+} // namespace juststem::ui
