@@ -11,7 +11,7 @@ struct Palette
 {
     static inline const juce::Colour
         bgTop { 0xff2c2d30 }, bgBottom { 0xff141517 },
-        panel { 0x0dffffff }, panelBorder { 0x1affffff }, hairline { 0x14ffffff },
+        panelBorder { 0x1affffff }, hairline { 0x14ffffff },
         text { 0xffeeeeef }, dim { 0xff9a9ca1 }, faint { 0xff5f6268 },
         accentFrom { 0xff2c5a99 }, accentTo { 0xffa8cbf2 }, // the blue gauge arc
         highlight { 0xffffd23f },                         // small yellow accents (solo)
@@ -32,27 +32,16 @@ inline juce::Font capsFont (float size = 11.5f) { return font (Weight::Regular, 
 /** Charcoal gradient + diagonal glass sheen. */
 void paintBackground (juce::Graphics&, juce::Rectangle<int> area);
 
-/** Translucent card with a hairline border. */
-void paintPanel (juce::Graphics&, juce::Rectangle<float> area, float radius = 14.0f);
-
-/** A heading: thin icon + spaced uppercase text. */
-void paintHeading (juce::Graphics&, const juce::Path& icon, const juce::String& text, juce::Rectangle<int> area,
-                   juce::Justification = juce::Justification::centredLeft);
-
 /** Thin line icons, drawn in a 0..1 box (stroke them with drawIcon). */
 namespace icons
 {
     juce::Path note();
-    juce::Path waveform();
-    juce::Path gauge();
-    juce::Path key();
     juce::Path layers();
     juce::Path play();  // filled
     juce::Path pause(); // filled
     juce::Path folder();
     juce::Path download();
     juce::Path grip();  // filled dots
-    juce::Path link();
     juce::Path plus();
     juce::Path minus();
     juce::Path close();

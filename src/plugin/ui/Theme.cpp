@@ -47,30 +47,6 @@ void paintBackground (juce::Graphics& g, juce::Rectangle<int> area)
     g.fillPath (sheen);
 }
 
-void paintPanel (juce::Graphics& g, juce::Rectangle<float> r, float radius)
-{
-    g.setColour (Palette::panel);
-    g.fillRoundedRectangle (r, radius);
-    g.setColour (Palette::panelBorder);
-    g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
-}
-
-void paintHeading (juce::Graphics& g, const juce::Path& icon, const juce::String& text, juce::Rectangle<int> area,
-                   juce::Justification just)
-{
-    const auto f = capsFont (12.0f);
-    const int textW = (int) std::ceil (juce::GlyphArrangement::getStringWidth (f, text.toUpperCase())) + 4;
-    const int iconW = icon.isEmpty() ? 0 : 22;
-    auto content = juce::Rectangle<int> (0, 0, iconW + textW, area.getHeight());
-    if (just.testFlags (juce::Justification::horizontallyCentred)) content.setCentre (area.getCentre());
-    else if (just.testFlags (juce::Justification::right)) content.setPosition (area.getRight() - content.getWidth(), area.getY());
-    else content.setPosition (area.getPosition());
-    if (iconW > 0) drawIcon (g, icon, content.removeFromLeft (iconW).toFloat().withSizeKeepingCentre (14, 14), Palette::dim);
-    g.setColour (Palette::dim);
-    g.setFont (f);
-    g.drawText (text.toUpperCase(), content, juce::Justification::centredLeft, false);
-}
-
 // ---------------------------------------------------------------------------- icons (0..1 box)
 namespace icons
 {
@@ -81,37 +57,6 @@ namespace icons
         p.startNewSubPath (0.42f, 0.78f);
         p.lineTo (0.42f, 0.08f);
         p.quadraticTo (0.70f, 0.18f, 0.86f, 0.36f);
-        return p;
-    }
-    juce::Path waveform()
-    {
-        juce::Path p;
-        const float h[] { 0.25f, 0.55f, 0.85f, 0.45f, 0.70f, 0.30f, 0.60f };
-        for (int i = 0; i < 7; ++i)
-        {
-            const float x = 0.08f + (float) i * 0.14f;
-            p.startNewSubPath (x, 0.5f - h[i] / 2);
-            p.lineTo (x, 0.5f + h[i] / 2);
-        }
-        return p;
-    }
-    juce::Path gauge()
-    {
-        juce::Path p;
-        p.addCentredArc (0.5f, 0.6f, 0.42f, 0.42f, 0.0f, -2.2f, 2.2f, true);
-        p.startNewSubPath (0.5f, 0.6f);
-        p.lineTo (0.72f, 0.32f);
-        return p;
-    }
-    juce::Path key()
-    {
-        juce::Path p;
-        p.addEllipse (0.06f, 0.30f, 0.40f, 0.40f);
-        p.startNewSubPath (0.46f, 0.5f);
-        p.lineTo (0.94f, 0.5f);
-        p.lineTo (0.94f, 0.68f);
-        p.startNewSubPath (0.78f, 0.5f);
-        p.lineTo (0.78f, 0.64f);
         return p;
     }
     juce::Path layers()
@@ -169,13 +114,6 @@ namespace icons
         for (int r = 0; r < 3; ++r)
             for (int c = 0; c < 2; ++c)
                 p.addEllipse (0.30f + (float) c * 0.30f, 0.14f + (float) r * 0.30f, 0.14f, 0.14f);
-        return p;
-    }
-    juce::Path link()
-    {
-        juce::Path p;
-        p.addRoundedRectangle (0.04f, 0.30f, 0.52f, 0.40f, 0.20f);
-        p.addRoundedRectangle (0.44f, 0.30f, 0.52f, 0.40f, 0.20f);
         return p;
     }
     juce::Path plus()
