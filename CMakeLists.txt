@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.28)
-project(justStem VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
+# Objective-C is only needed on Apple (JUCE's macOS sources). Enabling it elsewhere makes CMake probe
+# clang's Objective-C defaults, which fails with MSVC's bundled Clang ("CMAKE_OBJC_STANDARD_COMPUTED_DEFAULT
+# should be set for Clang").
+set(JUSTSTEM_LANGUAGES C CXX)
+if(APPLE)
+    list(APPEND JUSTSTEM_LANGUAGES OBJC OBJCXX)
+endif()
+project(justStem VERSION 0.1.0 LANGUAGES ${JUSTSTEM_LANGUAGES})
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
