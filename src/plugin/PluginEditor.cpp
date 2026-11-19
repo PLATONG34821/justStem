@@ -281,8 +281,13 @@ void justStemEditor::resized()
         const int w = cancelButton.idealWidth (26);
         cancelButton.setBounds (header.removeFromRight (w).withSizeKeepingCentre (w, 26));
     }
-    stemsTab.setBounds (header.getX(), header.getY(), 64, header.getHeight());
-    chordsTab.setBounds (header.getX() + 84, header.getY(), 74, header.getHeight());
+    // Stems | Chords as a segmented control, the same height as the other buttons.
+    tabsArea = header.removeFromLeft (184).withSizeKeepingCentre (184, 26);
+    {
+        auto t = tabsArea;
+        stemsTab.setBounds (t.removeFromLeft (t.getWidth() / 2));
+        chordsTab.setBounds (t);
+    }
     const auto placeRight = [&header] (PillButton& b) {
         const int w = b.idealWidth (26);
         b.setBounds (header.removeFromRight (w).withSizeKeepingCentre (w, 26));
@@ -390,6 +395,14 @@ void justStemEditor::paint (juce::Graphics& g)
     g.setColour (Palette::dim);
     g.setFont (capsFont (11.5f));
     if (! stemsTab.isVisible()) g.drawText (showLog ? "LOG" : "STEMS", stemsHeader, juce::Justification::centredLeft, false);
+    else
+    {
+        const auto pill = tabsArea.toFloat().reduced (0.5f);
+        g.setColour (juce::Colours::black.withAlpha (0.22f));
+        g.fillRoundedRectangle (pill, pill.getHeight() * 0.5f);
+        g.setColour (Palette::panelBorder.withMultipliedAlpha (1.6f));
+        g.drawRoundedRectangle (pill, pill.getHeight() * 0.5f, 1.0f);
+    }
     if (transposeUp.isVisible())
     {
         const int t = proc.getTranspose();

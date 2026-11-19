@@ -31,7 +31,7 @@ private:
     State state;
 };
 
-/** A tab: spaced uppercase text, underlined in blue when selected (toggle state). */
+/** One segment of a segmented control: spaced uppercase text, a filled pill when selected (toggle state). */
 class TabButton final : public juce::Button
 {
 public:

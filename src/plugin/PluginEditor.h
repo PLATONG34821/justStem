@@ -54,7 +54,7 @@ private:
     juststem::ui::DashboardLookAndFeel lnf;
 
     // layout regions (set in resized)
-    juce::Rectangle<int> topRow, wordmarkArea, titleArea, tempoArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea, transposeArea;
+    juce::Rectangle<int> topRow, wordmarkArea, tabsArea, titleArea, tempoArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea, transposeArea;
 
     juce::TextEditor linkBox;
     juststem::ui::PillButton chooseButton { "Choose file", juststem::ui::icons::note() };

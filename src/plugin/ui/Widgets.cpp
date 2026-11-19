@@ -100,17 +100,23 @@ void Gauge::paint (juce::Graphics& g)
 // ============================================================================ icon button
 void TabButton::paintButton (juce::Graphics& g, bool over, bool)
 {
+    // One half of a segmented control (the editor draws the shared pill behind both halves):
+    // the selected segment is a filled inner pill.
     const bool on = getToggleState();
-    const auto f = capsFont (11.5f);
-    g.setFont (f);
-    g.setColour (on ? Palette::text : over ? Palette::dim.brighter (0.3f) : Palette::dim);
-    g.drawText (getButtonText().toUpperCase(), getLocalBounds(), juce::Justification::centredLeft, false);
+    const auto r = getLocalBounds().toFloat().reduced (3.0f);
     if (on)
     {
-        const float w = juce::GlyphArrangement::getStringWidth (f, getButtonText().toUpperCase());
-        g.setColour (Palette::accentTo);
-        g.fillRoundedRectangle (0.0f, (float) getHeight() - 3.0f, w, 2.0f, 1.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.13f));
+        g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
     }
+    else if (over)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.04f));
+        g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
+    }
+    g.setFont (capsFont (11.0f));
+    g.setColour (on ? Palette::text : over ? Palette::dim.brighter (0.3f) : Palette::dim);
+    g.drawText (getButtonText().toUpperCase(), getLocalBounds(), juce::Justification::centred, false);
 }
 
 void IconButton::paintButton (juce::Graphics& g, bool over, bool down)
