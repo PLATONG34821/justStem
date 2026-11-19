@@ -5,7 +5,9 @@
 
 #include <juce_events/juce_events.h>
 
+#include <set>
 #include <stdexcept>
+#include <tuple>
 
 namespace juststem
 {
@@ -20,6 +22,40 @@ juce::File newSongFolder (const juce::String& title)
     for (int i = 2; dir.exists(); ++i) dir = paths::stems().getChildFile (name + " (" + juce::String (i) + ")");
     dir.createDirectory();
     return dir;
+}
+juce::String mmss (double s)
+{
+    const int t = (int) s;
+    return juce::String (t / 60) + ":" + juce::String (t % 60).paddedLeft ('0', 2);
+}
+
+double nowMs() { return juce::Time::getMillisecondCounterHiRes(); }
+
+juce::String seconds (double ms)
+{
+    return (ms < 10000.0 ? juce::String (ms / 1000.0, 1) : juce::String (juce::roundToInt (ms / 1000.0))) + " s";
+}
+
+/** "120" or "92.5" */
+juce::String bpmText (double bpm)
+{
+    const double r = std::round (bpm * 10.0) / 10.0;
+    return std::abs (r - std::round (r)) < 0.05 ? juce::String ((int) std::round (r)) : juce::String (r, 1);
+}
+
+/** RMS level of a stem in dBFS (both channels). */
+float rmsDb (const StereoAudio& a)
+{
+    if (a.size() == 0) return -100.0f;
+    double sum = 0;
+    for (std::size_t i = 0; i < a.size(); ++i) sum += (double) a.left[i] * a.left[i] + (double) a.right[i] * a.right[i];
+    return (float) juce::Decibels::gainToDecibels (std::sqrt (sum / (2.0 * (double) a.size())), -100.0);
+}
+
+juce::String stemLabel (Stem s)
+{
+    auto n = juce::String (std::string (stemName (s)));
+    return n.substring (0, 1).toUpperCase() + n.substring (1);
 }
 } // namespace
 
@@ -56,28 +92,28 @@ void SongJob::addLog (const juce::String& line)
 
 void SongJob::setStatus (const juce::String& step, double fraction)
 {
-    // Log each new step once, and long steps again at every 25 %.
+    // Log each new step once, and long steps again at every 10 %.
     const auto base = step.upToFirstOccurrenceOf (" (", false, false);
-    bool newStep = false, newQuarter = false;
-    int quarter = 0;
+    bool newStep = false, newTenth = false;
+    int tenth = 0;
     {
         const juce::ScopedLock sl (statusLock);
         current = { step, fraction };
         if (base != lastStep)
         {
             lastStep = base;
-            lastQuarter = 0;
+            lastTenth = 0;
             newStep = true;
         }
-        quarter = fraction >= 0 ? (int) std::floor (fraction * 4.0 + 1e-9) : 0;
-        if (quarter > lastQuarter)
+        tenth = fraction >= 0 ? (int) std::floor (fraction * 10.0 + 1e-9) : 0;
+        if (tenth > lastTenth)
         {
-            lastQuarter = quarter;
-            newQuarter = true;
+            lastTenth = tenth;
+            newTenth = true;
         }
     }
     if (newStep) addLog (base);
-    if (newQuarter) addLog (base + " " + juce::String (quarter * 25) + "%" + (step.contains (" (") ? "  " + step.fromFirstOccurrenceOf (" (", false, false).dropLastCharacters (1) : ""));
+    if (newTenth) addLog (base + " " + juce::String (tenth * 10) + "%" + (step.contains (" (") ? "  " + step.fromFirstOccurrenceOf (" (", false, false).dropLastCharacters (1) : ""));
 }
 
 void SongJob::run()
@@ -120,41 +156,62 @@ SongResultPtr SongJob::process()
 
     auto song = std::make_shared<SongResult>();
     StereoAudio mix;
-    auto mmss = [] (double s) { const int t = (int) s; return juce::String (t / 60) + ":" + juce::String (t % 60).paddedLeft ('0', 2); };
+    double decodeMs = 0;
     if (kind == Kind::YouTube)
     {
         addLog ("Source: " + source);
+        const auto dlStart = nowMs();
         const auto dl = downloadYouTubeAudio (source, [this] (const juce::String& s, double f) { setStatus (s, f); }, cancelled);
-        addLog ("Downloaded \"" + dl.title + "\" (" + juce::File::descriptionOfSizeInBytes (dl.file.getSize()) + ")");
+        addLog ("Downloaded \"" + dl.title + "\" in " + seconds (nowMs() - dlStart) + " ("
+                + juce::File::descriptionOfSizeInBytes (dl.file.getSize()) + ", " + describeAudioFile (dl.file) + ")");
         setStatus ("Reading audio", -1);
+        const auto t0 = nowMs();
         mix = loadAudioFile (dl.file);
+        decodeMs = nowMs() - t0;
         dl.file.deleteFile(); // only the stems are kept
+        addLog ("Deleted the downloaded audio (only the stems are kept)");
         song->title = dl.title;
     }
     else
     {
         const juce::File file (source);
-        addLog ("Source: " + file.getFullPathName() + " (" + juce::File::descriptionOfSizeInBytes (file.getSize()) + ")");
+        addLog ("Source: " + file.getFullPathName());
+        addLog ("Format: " + describeAudioFile (file) + ", " + juce::File::descriptionOfSizeInBytes (file.getSize()));
         setStatus ("Reading audio", -1);
+        const auto t0 = nowMs();
         mix = loadAudioFile (file);
+        decodeMs = nowMs() - t0;
         song->title = file.getFileNameWithoutExtension();
     }
     if (cancelled) throw std::runtime_error ("cancelled");
     song->durationSeconds = (double) mix.size() / sampleRate;
-    addLog ("Decoded " + mmss (song->durationSeconds) + " of audio (stereo, 44.1 kHz)");
+    addLog ("Decoded " + mmss (song->durationSeconds) + " of audio in " + seconds (decodeMs)
+            + " (working at 44.1 kHz stereo, " + juce::String (rmsDb (mix), 1) + " dB RMS)");
 
     // On macOS the first run also compiles the model for CoreML (about 25 s); later runs reuse it.
     setStatus ("Preparing AI model", -1);
     if (! modelFile.existsAsFile()) throw std::runtime_error ("The AI model is missing from the plug-in. Please reinstall justStem.");
-    addLog ("Model: " + modelFile.getFileName() + " (HT-Demucs, 6 stems)");
+    addLog ("Model: " + modelFile.getFileName() + " (HT-Demucs, 6 stems, "
+            + juce::File::descriptionOfSizeInBytes (modelFile.getSize()) + ")");
+#if JUCE_MAC
+    const bool cached = paths::coremlCache().isDirectory()
+                        && paths::coremlCache().getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0;
+    addLog (cached ? "Using the CoreML model compiled on an earlier run"
+                   : "First run on this Mac: compiling the model for CoreML (about 25 s, only once)");
+#endif
     Separator separator (modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString());
-    const auto splitStart = juce::Time::getMillisecondCounterHiRes();
+
+    // The model is loaded when the first chunk runs, so the first progress report marks it ready.
+    const auto splitStart = nowMs();
+    double modelMs = 0;
     bool backendLogged = false;
     Backend lastBackend {};
     song->stems = separator.separate (mix, [&] (const SeparationProgress& p) {
         if (! backendLogged || p.backend != lastBackend)
         {
+            if (! backendLogged) modelMs = nowMs() - splitStart;
             addLog (juce::String (backendLogged ? "Fell back to " : "Running on ") + backendName (p.backend)
+                    + (backendLogged ? juce::String() : " (model loaded in " + seconds (modelMs) + ")")
                     + ", " + juce::String (p.totalSegments) + " chunks of 7.8 s");
             backendLogged = true;
             lastBackend = p.backend;
@@ -163,23 +220,55 @@ SongResultPtr SongJob::process()
                        + juce::String (juce::roundToInt (p.etaSeconds)) + " s left)",
                    (double) p.segment / p.totalSegments);
     }, cancelled);
-    const double splitSeconds = (juce::Time::getMillisecondCounterHiRes() - splitStart) / 1000.0;
-    addLog ("Split 6 stems in " + juce::String (splitSeconds, 1) + " s ("
-            + juce::String (song->durationSeconds / std::max (0.01, splitSeconds), 1) + "x realtime)");
+    const double splitMs = nowMs() - splitStart - modelMs; // the stems themselves, without loading the model
+    addLog ("Split 6 stems in " + seconds (splitMs) + " ("
+            + juce::String (song->durationSeconds / std::max (0.01, splitMs / 1000.0), 1) + "x realtime)");
+
+    // How much of the song ended up in each stem; a near-silent one usually means the instrument isn't there.
+    juce::StringArray levels, quiet;
+    for (auto stem : stemOrder)
+    {
+        const float db = rmsDb (song->stems[stem]);
+        levels.add (stemLabel (stem) + " " + juce::String (db, 1));
+        if (db < -45.0f) quiet.add (stemLabel (stem).toLowerCase());
+    }
+    addLog ("Stem levels (dB RMS): " + levels.joinIntoString (", "));
+    if (! quiet.isEmpty()) addLog ("Almost silent: " + quiet.joinIntoString (", ") + " (probably not in this song)");
 
     setStatus ("Detecting key, tempo and chords", -1);
+    const auto analysisStart = nowMs();
     song->analysis = analyzeSong (mix, song->stems);
+    const double analysisMs = nowMs() - analysisStart;
     const auto& a = song->analysis;
-    addLog ("Key " + juce::String (a.key.name()) + " (" + juce::String (a.key.votes) + "/3 profiles agree), "
-            + juce::String (a.tempo.bpm, 1) + " BPM, " + juce::String (a.loudness.integratedLufs, 1) + " LUFS");
-    addLog (juce::String ((int) a.chords.bars (song->durationSeconds).size()) + " bars, "
-            + juce::String ((int) a.chords.segments.size()) + " chord changes");
+    addLog ("Key " + juce::String (a.key.name()) + " (Camelot " + juce::String (a.key.camelot()) + "), "
+            + juce::String (juce::roundToInt (a.key.confidence * 100)) + "% confidence, "
+            + juce::String (a.key.votes) + "/3 profiles agree, "
+            + (std::abs (a.key.tuningCents) < 1.0f ? juce::String ("tuned to A = 440 Hz")
+                                                   : "tuned " + juce::String (a.key.tuningCents > 0 ? "+" : "")
+                                                         + juce::String (juce::roundToInt (a.key.tuningCents)) + " cents from A = 440 Hz"));
+    addLog ("Tempo " + bpmText (a.tempo.bpm) + " BPM (could also be " + bpmText (a.tempo.bpm / 2) + " or "
+            + bpmText (a.tempo.bpm * 2) + ")");
+    addLog ("Loudness " + juce::String (a.loudness.integratedLufs, 1) + " LUFS integrated, sample peak "
+            + (a.loudness.samplePeakDb > 0 ? "+" : "") + juce::String (a.loudness.samplePeakDb, 1) + " dBFS"
+            + (a.loudness.samplePeakDb > 0 ? " (the source clips)" : ""));
+    std::set<std::tuple<int, int, int>> distinct;
+    for (const auto& seg : a.chords.segments)
+        if (! seg.chord.isNone()) distinct.insert ({ seg.chord.root, (int) seg.chord.quality, seg.chord.bass });
+    addLog ("Chords: " + juce::String ((int) a.chords.bars (song->durationSeconds).size()) + " bars, "
+            + juce::String ((int) a.chords.segments.size()) + " changes, " + juce::String ((int) distinct.size())
+            + " different chords (analysis took " + seconds (analysisMs) + ")");
 
     setStatus ("Saving stems", -1);
+    const auto saveStart = nowMs();
     song->folder = newSongFolder (song->title);
     saveSong (*song);
-    addLog ("Saved 6 stems + instrumental to " + song->folder.getFullPathName());
-    addLog ("Done in " + mmss ((juce::Time::getMillisecondCounterHiRes() - startMs) / 1000.0));
+    juce::int64 bytes = 0;
+    for (const auto& f : song->folder.findChildFiles (juce::File::findFiles, false, "*.wav")) bytes += f.getSize();
+    addLog ("Saved 6 stems + instrumental (24-bit WAV, " + juce::File::descriptionOfSizeInBytes (bytes) + ") in "
+            + seconds (nowMs() - saveStart));
+    addLog ("Folder: " + song->folder.getFullPathName());
+    addLog ("Done in " + mmss ((nowMs() - startMs) / 1000.0) + " (decode " + seconds (decodeMs) + ", model " + seconds (modelMs)
+            + ", split " + seconds (splitMs) + ", analysis " + seconds (analysisMs) + ")");
     return song;
 }
 } // namespace juststem

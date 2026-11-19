@@ -224,17 +224,23 @@ void justStemEditor::resized()
 
     auto readouts = r.removeFromTop (236);
     gauge.setBounds (readouts.withSizeKeepingCentre (236, 236));
-    cancelButton.setBounds (gauge.getBounds().getCentreX() - 46, gauge.getBottom() - 34, 92, 26);
     tempoArea = readouts.removeFromLeft ((readouts.getWidth() - 236) / 2 - 20);
     loudArea = readouts.removeFromRight (tempoArea.getWidth());
 
-    playerBar = r.removeFromBottom (40);
-    r.removeFromBottom (10);
+    // While working there's nothing to play, so the log gets the player's space.
+    const bool busy = proc.isBusy();
+    playerBar = busy ? juce::Rectangle<int>() : r.removeFromBottom (40);
+    if (! busy) r.removeFromBottom (10);
     r.removeFromTop (14);
     stemsHeader = r.removeFromTop (34);
     stemsArea = r;
 
     auto header = stemsHeader;
+    if (busy) // Cancel on the right of the LOG heading
+    {
+        const int w = cancelButton.idealWidth (26);
+        cancelButton.setBounds (header.removeFromRight (w).withSizeKeepingCentre (w, 26));
+    }
     stemsTab.setBounds (header.getX(), header.getY(), 64, header.getHeight());
     chordsTab.setBounds (header.getX() + 84, header.getY(), 74, header.getHeight());
     const auto placeRight = [&header] (PillButton& b) {
@@ -371,6 +377,7 @@ void justStemEditor::paint (juce::Graphics& g)
     }
 
     // Time in the player bar.
+    if (busy) return;
     const auto& pl = proc.player();
     g.setColour (song ? Palette::dim : Palette::faint);
     g.setFont (font (Weight::Regular, 13.0f));
@@ -423,6 +430,7 @@ void justStemEditor::refreshAll()
     if (storagePanel != nullptr) storagePanel->refresh();
     for (auto* row : rows) row->setVisible (song != nullptr && ! chordsShown);
     followHost.setToggleState (proc.player().followsHost(), juce::dontSendNotification);
+    for (auto* c : std::initializer_list<juce::Component*> { &playButton, &position, &followHost }) c->setVisible (! busy);
 
     if (song != nullptr && song != shownSong)
     {

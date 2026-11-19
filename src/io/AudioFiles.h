@@ -13,6 +13,10 @@ StereoAudio loadAudioFile (const juce::File& file, double maxSeconds = 15.0 * 60
 /** Write 44.1 kHz stereo as a WAV file (replacing it). Throws std::runtime_error. */
 void writeWav (const juce::File& file, const StereoAudio& audio, int bitsPerSample = 24);
 
+/** A short description of a file's format for logs, e.g. "MP3, 48 kHz, stereo", from its header only.
+    Just the format name when the header can't be read here (M4A). */
+juce::String describeAudioFile (const juce::File& file);
+
 /** Wildcard of the formats loadAudioFile can read, e.g. "*.wav;*.mp3;...". */
 juce::String supportedAudioWildcards();
 } // namespace juststem

@@ -47,11 +47,11 @@ private:
     const juce::File modelFile;
     const Finished onFinished;
     std::atomic<bool> cancelled { false };
-    mutable juce::CriticalSection statusLock; // guards current, logLines, lastStep, lastQuarter
+    mutable juce::CriticalSection statusLock; // guards current, logLines, lastStep, lastTenth
     Status current;
     juce::StringArray logLines;
     juce::String lastStep;
-    int lastQuarter = 0;
+    int lastTenth = 0;
     const double startMs = juce::Time::getMillisecondCounterHiRes();
 };
 } // namespace juststem

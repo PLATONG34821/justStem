@@ -80,6 +80,7 @@ int main (int argc, char** argv)
     pumpUntil ([&] { return ! proc->isBusy(); }, 600000);
     std::printf ("  job finished %.1f s after the progress snapshot\n", (juce::Time::getMillisecondCounterHiRes() - t0) / 1000);
     check (proc->getSong() != nullptr, "song processed" + (proc->lastError().isEmpty() ? juce::String() : ": " + proc->lastError()));
+    for (const auto& line : proc->jobLog()) std::printf ("    | %s\n", line.toRawUTF8());
     if (proc->getSong() == nullptr) return 1;
     pumpUntil ([] { return false; }, 300); // let the editor refresh
     snapshot (*editor, outDir.getChildFile ("3-results.png"));

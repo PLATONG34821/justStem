@@ -100,6 +100,22 @@ DecodedAudio readWithJuce (const juce::File& file, double maxSeconds)
 
 juce::String supportedAudioWildcards() { return formats().getWildcardForAllFormats() + ";*.m4a;*.mp4;*.m4b"; }
 
+juce::String describeAudioFile (const juce::File& file)
+{
+    if (isMp4File (file)) return "M4A (AAC)";
+    std::unique_ptr<juce::AudioFormatReader> reader (formats().createReaderFor (file));
+    if (reader == nullptr) return file.getFileExtension().trimCharactersAtStart (".").toUpperCase();
+    const double rate = reader->sampleRate;
+    const auto rateText = juce::String (rate / 1000.0, std::fmod (rate, 1000.0) == 0 ? 0 : 1) + " kHz";
+    const auto channels = reader->numChannels == 1 ? juce::String ("mono")
+                        : reader->numChannels == 2 ? juce::String ("stereo")
+                                                   : juce::String (reader->numChannels) + " channels";
+    auto text = reader->getFormatName().upToFirstOccurrenceOf (" ", false, false) + ", " + rateText + ", " + channels;
+    if (! reader->usesFloatingPointData && reader->bitsPerSample > 0 && ! file.hasFileExtension ("mp3;ogg"))
+        text << ", " << (int) reader->bitsPerSample << "-bit";
+    return text;
+}
+
 StereoAudio loadAudioFile (const juce::File& file, double maxSeconds)
 {
     auto decoded = isMp4File (file) ? decodeM4a (file) : readWithJuce (file, maxSeconds);

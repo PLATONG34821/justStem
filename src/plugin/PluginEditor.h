@@ -13,7 +13,7 @@
       name        "justStem" above the gauge (or an error message)
       readouts    TEMPO (left), the key gauge (centre; shows progress while splitting), LOUDNESS (right)
       stems       tabs: one row per stem (mute, solo, volume, drag-to-DAW), or the chords
-      player bar  play, seek, time, Follow DAW */
+      player bar  play, seek, time, Follow DAW (hidden while a song is being processed; the log takes its place) */
 class justStemEditor final : public juce::AudioProcessorEditor,
                                public juce::DragAndDropContainer,
                                public juce::FileDragAndDropTarget,
@@ -58,7 +58,8 @@ private:
 
     juce::TextEditor linkBox;
     juststem::ui::PillButton chooseButton { "Choose file", juststem::ui::icons::note() };
-    juce::TextButton splitButton { "Split" }, cancelButton { "Cancel" };
+    juce::TextButton splitButton { "Split" };
+    juststem::ui::PillButton cancelButton { "Cancel", juststem::ui::icons::close() };
     juststem::ui::PillButton newSongButton { "New song", juststem::ui::icons::plus() };
     juststem::ui::PillButton closeInputButton { {}, juststem::ui::icons::close() };
     bool wantInput = false; // New song pressed while a song is open
