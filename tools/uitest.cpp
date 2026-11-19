@@ -124,7 +124,21 @@ int main (int argc, char** argv)
         if (newSong != nullptr) newSong->triggerClick();
         pumpUntil ([] { return false; }, 200);
         check (link != nullptr && link->isVisible() && ! newSong->isVisible(), "New song shows the link box");
-        snapshot (*editor, outDir.getChildFile ("3b-new-song.png"));
+        if (auto* paste = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
+                auto* b = dynamic_cast<juce::Button*> (c);
+                return b != nullptr && b->getName() == "Paste";
+            })))
+        {
+            const auto saved = juce::SystemClipboard::getTextFromClipboard(); // put the user's clipboard back afterwards
+            juce::SystemClipboard::copyTextToClipboard ("  https://www.youtube.com/watch?v=test \n");
+            paste->triggerClick();
+            pumpUntil ([] { return false; }, 100);
+            check (link->getText() == "https://www.youtube.com/watch?v=test", "Paste button fills the link box");
+            snapshot (*editor, outDir.getChildFile ("3b-new-song.png"));
+            link->clear();
+            juce::SystemClipboard::copyTextToClipboard (saved);
+        }
+        else check (false, "Paste button shown");
         if (auto* back = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
                 auto* b = dynamic_cast<juce::Button*> (c);
                 return b != nullptr && b->getName() == "Back to song" && b->isVisible();

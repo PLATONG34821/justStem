@@ -215,11 +215,32 @@ namespace icons
     }
     juce::Path drive()
     {
+        // A cylinder seen from slightly above, with a band in the middle (the usual "storage" sign).
+        constexpr float pi = juce::MathConstants<float>::pi;
         juce::Path p;
-        p.addRoundedRectangle (0.06f, 0.24f, 0.88f, 0.52f, 0.12f);
-        p.startNewSubPath (0.20f, 0.50f);
-        p.lineTo (0.52f, 0.50f);
-        p.addEllipse (0.68f, 0.44f, 0.12f, 0.12f);
+        p.addEllipse (0.14f, 0.06f, 0.72f, 0.24f);
+        p.startNewSubPath (0.14f, 0.18f);
+        p.lineTo (0.14f, 0.82f);
+        p.startNewSubPath (0.86f, 0.18f);
+        p.lineTo (0.86f, 0.82f);
+        p.addCentredArc (0.5f, 0.50f, 0.36f, 0.12f, 0.0f, pi * 0.5f, pi * 1.5f, true);
+        p.addCentredArc (0.5f, 0.82f, 0.36f, 0.12f, 0.0f, pi * 0.5f, pi * 1.5f, true);
+        return p;
+    }
+    juce::Path paste()
+    {
+        juce::Path p;
+        p.startNewSubPath (0.34f, 0.14f); // board, open at the top behind the clip
+        p.lineTo (0.18f, 0.14f);
+        p.lineTo (0.18f, 0.94f);
+        p.lineTo (0.82f, 0.94f);
+        p.lineTo (0.82f, 0.14f);
+        p.lineTo (0.66f, 0.14f);
+        p.addRoundedRectangle (0.34f, 0.06f, 0.32f, 0.16f, 0.05f); // clip
+        p.startNewSubPath (0.32f, 0.48f); // lines of text
+        p.lineTo (0.68f, 0.48f);
+        p.startNewSubPath (0.32f, 0.68f);
+        p.lineTo (0.58f, 0.68f);
         return p;
     }
 } // namespace icons

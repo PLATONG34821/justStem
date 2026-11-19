@@ -118,7 +118,7 @@ void StoragePanel::resized()
     showFolderButton.setBounds (h.removeFromRight (120).withSizeKeepingCentre (120, 26));
 
     otherArea = r.removeFromBottom (3 * 44);
-    r.removeFromBottom (16);
+    r.removeFromBottom (28); // room for the busy warning above the footer
     // The scrollbar sits out in the card's margin, so the rows keep the full width and their
     // Delete buttons line up with the Clear / Remove buttons below.
     constexpr int rowH = 46, scrollGap = 12;
@@ -162,7 +162,7 @@ void StoragePanel::paint (juce::Graphics& g)
     {
         g.setColour (Palette::warn);
         g.setFont (font (Weight::Regular, 12.0f));
-        g.drawText ("Wait until the current song is finished to delete anything.", otherArea.withY (otherArea.getY() - 18).withHeight (16),
+        g.drawText ("Wait until the current song is finished to delete anything.", otherArea.withY (otherArea.getY() - 26).withHeight (16),
                     juce::Justification::centredLeft, false);
     }
 
@@ -171,12 +171,24 @@ void StoragePanel::paint (juce::Graphics& g)
     const Item items[] { { "AI model cache", "Rebuilt automatically (about 25 s, once)", cacheBytes },
                          { "YouTube tools", "yt-dlp and Deno, downloaded again when needed", toolsBytes },
                          { "Temporary downloads", "YouTube audio waiting to be split", downloadsBytes } };
+    // They sit in a darker footer, set apart from the songs.
+    {
+        const auto cardF = c.toFloat();
+        const auto footer = cardF.withTop ((float) otherArea.getY() - 8.0f);
+        juce::Path shape;
+        shape.addRoundedRectangle (footer.getX(), footer.getY(), footer.getWidth(), footer.getHeight(), 18.0f, 18.0f,
+                                   false, false, true, true); // square top, rounded bottom like the card
+        g.setColour (juce::Colours::black.withAlpha (0.28f));
+        g.fillPath (shape);
+        g.setColour (Palette::hairline);
+        g.drawHorizontalLine ((int) footer.getY(), cardF.getX() + 1.0f, cardF.getRight() - 1.0f);
+    }
     auto other = otherArea;
     for (const auto& item : items)
     {
         auto row = other.removeFromTop (44).withTrimmedRight (100);
         g.setColour (Palette::hairline);
-        g.drawHorizontalLine (row.getY(), (float) otherArea.getX(), (float) otherArea.getRight());
+        if (row.getY() > otherArea.getY()) g.drawHorizontalLine (row.getY(), (float) otherArea.getX(), (float) otherArea.getRight());
         g.setColour (Palette::text);
         g.setFont (font (Weight::Regular, 13.5f));
         g.drawText (juce::String (item.name) + "   " + size (item.bytes), row.removeFromTop (24).withTrimmedTop (4),

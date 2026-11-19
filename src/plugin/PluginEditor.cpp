@@ -122,6 +122,15 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     linkBox.onReturnKey = [this] { startFromInput(); };
     linkBox.onEscapeKey = [this] { if (wantInput) showInput (false); };
     addAndMakeVisible (linkBox);
+    // Many hosts take Cmd/Ctrl+V before the plug-in sees it, so pasting needs a button.
+    pasteButton.setName ("Paste");
+    pasteButton.setTooltip ("Paste a link from the clipboard");
+    pasteButton.onClick = [this] {
+        linkBox.setText (juce::SystemClipboard::getTextFromClipboard().trim(), false);
+        linkBox.grabKeyboardFocus();
+        linkBox.moveCaretToEnd();
+    };
+    addAndMakeVisible (pasteButton); // after linkBox, so it sits on top of the box's right end
     newSongButton.setTooltip ("Split another song (this one stays saved)");
     newSongButton.onClick = [this] { showInput (true); };
     closeInputButton.setTooltip ("Back to the open song");
@@ -212,6 +221,8 @@ void justStemEditor::resized()
         chooseButton.setBounds (top.removeFromRight (chooseButton.idealWidth (40)));
         top.removeFromRight (10);
         linkBox.setBounds (top);
+        const int pw = pasteButton.idealWidth (28);
+        pasteButton.setBounds (top.removeFromRight (pw + 6).withTrimmedRight (6).withSizeKeepingCentre (pw, 28));
         titleArea = {};
     }
     else
@@ -227,10 +238,11 @@ void justStemEditor::resized()
     tempoArea = readouts.removeFromLeft ((readouts.getWidth() - 236) / 2 - 20);
     loudArea = readouts.removeFromRight (tempoArea.getWidth());
 
-    // While working there's nothing to play, so the log gets the player's space.
+    // The player only shows with a song open; otherwise the log / drop hint gets its space.
     const bool busy = proc.isBusy();
-    playerBar = busy ? juce::Rectangle<int>() : r.removeFromBottom (40);
-    if (! busy) r.removeFromBottom (10);
+    const bool player = ! busy && proc.getSong() != nullptr;
+    playerBar = player ? r.removeFromBottom (40) : juce::Rectangle<int>();
+    if (player) r.removeFromBottom (10);
     r.removeFromTop (14);
     stemsHeader = r.removeFromTop (34);
     stemsArea = r;
@@ -377,7 +389,7 @@ void justStemEditor::paint (juce::Graphics& g)
     }
 
     // Time in the player bar.
-    if (busy) return;
+    if (song == nullptr) return;
     const auto& pl = proc.player();
     g.setColour (song ? Palette::dim : Palette::faint);
     g.setFont (font (Weight::Regular, 13.0f));
@@ -406,7 +418,8 @@ void justStemEditor::refreshAll()
     if (busy) wantInput = false; // a new song is on its way; show it when it's done
 
     const bool input = inputShown();
-    for (auto* c : std::initializer_list<juce::Component*> { &linkBox, &chooseButton, &splitButton }) c->setVisible (input);
+    for (auto* c : std::initializer_list<juce::Component*> { &linkBox, &pasteButton, &chooseButton, &splitButton }) c->setVisible (input);
+    pasteButton.setEnabled (! busy);
     newSongButton.setVisible (! input);
     closeInputButton.setVisible (input && song != nullptr);
     linkBox.setEnabled (! busy);
@@ -430,7 +443,7 @@ void justStemEditor::refreshAll()
     if (storagePanel != nullptr) storagePanel->refresh();
     for (auto* row : rows) row->setVisible (song != nullptr && ! chordsShown);
     followHost.setToggleState (proc.player().followsHost(), juce::dontSendNotification);
-    for (auto* c : std::initializer_list<juce::Component*> { &playButton, &position, &followHost }) c->setVisible (! busy);
+    for (auto* c : std::initializer_list<juce::Component*> { &playButton, &position, &followHost }) c->setVisible (song != nullptr);
 
     if (song != nullptr && song != shownSong)
     {

@@ -13,7 +13,7 @@
       name        "justStem" above the gauge (or an error message)
       readouts    TEMPO (left), the key gauge (centre; shows progress while splitting), LOUDNESS (right)
       stems       tabs: one row per stem (mute, solo, volume, drag-to-DAW), or the chords
-      player bar  play, seek, time, Follow DAW (hidden while a song is being processed; the log takes its place) */
+      player bar  play, seek, time, Follow DAW (only with a song open) */
 class justStemEditor final : public juce::AudioProcessorEditor,
                                public juce::DragAndDropContainer,
                                public juce::FileDragAndDropTarget,
@@ -60,6 +60,7 @@ private:
     juststem::ui::PillButton chooseButton { "Choose file", juststem::ui::icons::note() };
     juce::TextButton splitButton { "Split" };
     juststem::ui::PillButton cancelButton { "Cancel", juststem::ui::icons::close() };
+    juststem::ui::PillButton pasteButton { "Paste", juststem::ui::icons::paste() }; // DAWs often keep Cmd/Ctrl+V for themselves
     juststem::ui::PillButton newSongButton { "New song", juststem::ui::icons::plus() };
     juststem::ui::PillButton closeInputButton { {}, juststem::ui::icons::close() };
     bool wantInput = false; // New song pressed while a song is open
@@ -90,6 +91,10 @@ private:
 
     juststem::SongResultPtr shownSong;
     bool dropHover = false;
+
+    // Shows the buttons' tooltips. A child of the editor (not a desktop window), so it stays inside the
+    // plug-in window in every host. Declared last so it's created after, and destroyed before, the rest.
+    juce::TooltipWindow tooltips { this, 700 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (justStemEditor)
 };

@@ -57,7 +57,8 @@ namespace icons
     juce::Path minus();
     juce::Path close();
     juce::Path copy();
-    juce::Path drive();
+    juce::Path drive();  // storage: a stack of disks
+    juce::Path paste();  // clipboard
 } // namespace icons
 
 /** Stroke (or fill) an icon path scaled to fit `area`. */
