@@ -115,8 +115,6 @@ void ChordView::paint (juce::Graphics& g)
         g.setFont (font (Weight::Regular, 13.0f));
         g.drawText ("in " + juce::String (song->analysis.key.transposed (transpose).name()), r, juce::Justification::centredRight, false);
     }
-    g.setColour (Palette::hairline);
-    g.drawHorizontalLine (now.getBottom() + 2, (float) now.getX(), (float) now.getRight());
 
     // Grid of bars.
     g.saveState();

@@ -369,8 +369,6 @@ void justStemEditor::paint (juce::Graphics& g)
         g.setFont (font (Weight::Regular, 13.0f));
         g.drawText ("Transpose " + juce::String (t > 0 ? "+" : "") + juce::String (t), transposeArea, juce::Justification::centred, false);
     }
-    g.setColour (Palette::hairline);
-    g.drawHorizontalLine (stemsHeader.getBottom(), (float) stemsHeader.getX(), (float) stemsHeader.getRight());
 
     if (showLog)
     {

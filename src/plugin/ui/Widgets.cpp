@@ -203,9 +203,6 @@ void StemRow::refresh()
 
 void StemRow::paint (juce::Graphics& g)
 {
-    g.setColour (Palette::hairline);
-    g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
-
     const bool muted = player != nullptr && player->getMute (index);
     const float cy = (float) getHeight() * 0.5f;
     if (index >= 0)

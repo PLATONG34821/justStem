@@ -17,8 +17,6 @@ struct StoragePanel::SongRow final : public juce::Component
     }
     void paint (juce::Graphics& g) override
     {
-        g.setColour (Palette::hairline);
-        g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
         auto r = getLocalBounds().withTrimmedRight (100);
         g.setColour (Palette::text);
         g.setFont (font (Weight::Regular, 13.5f));
@@ -207,15 +205,11 @@ void StoragePanel::paint (juce::Graphics& g)
                                    false, false, true, true); // square top, rounded bottom like the card
         g.setColour (juce::Colours::black.withAlpha (0.28f));
         g.fillPath (shape);
-        g.setColour (Palette::hairline);
-        g.drawHorizontalLine ((int) footer.getY(), cardF.getX() + 1.0f, cardF.getRight() - 1.0f);
     }
     auto other = otherArea;
     for (const auto& item : items)
     {
         auto row = other.removeFromTop (44).withTrimmedRight (100);
-        g.setColour (Palette::hairline);
-        if (row.getY() > otherArea.getY()) g.drawHorizontalLine (row.getY(), (float) otherArea.getX(), (float) otherArea.getRight());
         g.setColour (Palette::text);
         g.setFont (font (Weight::Regular, 13.5f));
         g.drawText (juce::String (item.name) + "   " + size (item.bytes), row.removeFromTop (22).withTrimmedTop (2),
