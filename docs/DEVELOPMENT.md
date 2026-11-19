@@ -15,6 +15,11 @@ packages (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are d
      https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx
    .venv/bin/python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
    ```
+   Optional, for the BS-RoFormer 6-stem model (not used by the plug-in yet): rewrite it so CoreML
+   can run it on the GPU; see the top of `scripts/prepare_roformer_onnx.py`.
+   ```sh
+   .venv/bin/python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
+   ```
 2. Build:
    ```sh
    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

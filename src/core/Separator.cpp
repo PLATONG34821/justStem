@@ -78,8 +78,10 @@ struct Separator::Impl
         so.SetGraphOptimizationLevel (GraphOptimizationLevel::ORT_ENABLE_ALL);
         if (b == Backend::CoreML)
         {
+            // CPUAndGPU, not ALL: leaving out the Neural Engine loads a cached model in ~1 s instead
+            // of ~50 s and runs ~3x faster (M4, HT-Demucs 2.0 s vs 5.7 s for 12 s of audio).
             std::unordered_map<std::string, std::string> opts { { "ModelFormat", "MLProgram" },
-                                                                { "MLComputeUnits", "ALL" } };
+                                                                { "MLComputeUnits", "CPUAndGPU" } };
             if (! cacheDir.empty()) opts["ModelCacheDirectory"] = cacheDir;
             so.AppendExecutionProvider ("CoreML", opts);
         }
