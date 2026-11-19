@@ -22,6 +22,7 @@ public:
     void refresh();
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
 
@@ -38,7 +39,13 @@ private:
 
     juce::TextButton closeButton { "Close" }, deleteAllButton { "Delete all" }, showFolderButton { "Show folder" };
     juce::TextButton clearCacheButton { "Clear" }, removeToolsButton { "Remove" }, clearDownloadsButton { "Clear" };
-    juce::Viewport viewport;
+    /** Tells the panel when the list scrolls, so the edge fades follow. */
+    struct ListViewport final : juce::Viewport
+    {
+        std::function<void()> onScroll;
+        void visibleAreaChanged (const juce::Rectangle<int>&) override { if (onScroll) onScroll(); }
+    };
+    ListViewport viewport;
     juce::Component listContent;
     juce::OwnedArray<SongRow> rows;
     juce::Rectangle<int> songsHeader, otherArea;

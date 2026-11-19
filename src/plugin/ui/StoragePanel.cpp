@@ -65,6 +65,8 @@ StoragePanel::StoragePanel (std::function<juce::File()> inUse, std::function<boo
     viewport.setViewedComponent (&listContent, false);
     viewport.setScrollBarsShown (true, false);
     viewport.setScrollBarThickness (6);
+    viewport.setSingleStepSizes (46, 46); // a row per step
+    viewport.onScroll = [this] { repaint (viewport.getBounds()); };
     addAndMakeVisible (viewport);
     refresh();
 }
@@ -102,7 +104,7 @@ void StoragePanel::refresh()
     repaint();
 }
 
-juce::Rectangle<int> StoragePanel::card() const { return getLocalBounds().withSizeKeepingCentre (600, 500); }
+juce::Rectangle<int> StoragePanel::card() const { return getLocalBounds().withSizeKeepingCentre (600, 484); } // list fits 4 whole rows
 
 void StoragePanel::resized()
 {
@@ -121,14 +123,36 @@ void StoragePanel::resized()
     r.removeFromBottom (28); // room for the busy warning above the footer
     // The scrollbar sits out in the card's margin, so the rows keep the full width and their
     // Delete buttons line up with the Clear / Remove buttons below.
+    // Whole rows only, so the list doesn't stop halfway through a song (the rest goes to the gap above the footer).
     constexpr int rowH = 46, scrollGap = 12;
-    viewport.setBounds (r.withTrimmedTop (4).withTrimmedRight (-(scrollGap + viewport.getScrollBarThickness())));
+    auto list = r.withTrimmedTop (4);
+    list.setHeight (std::max (rowH, list.getHeight() / rowH * rowH));
+    viewport.setBounds (list.withTrimmedRight (-(scrollGap + viewport.getScrollBarThickness())));
     listContent.setSize (r.getWidth(), rows.size() * rowH);
     for (int i = 0; i < rows.size(); ++i) rows[i]->setBounds (0, i * rowH, listContent.getWidth(), rowH);
 
     auto other = otherArea;
     for (auto* b : { &clearCacheButton, &removeToolsButton, &clearDownloadsButton })
         b->setBounds (other.removeFromTop (44).removeFromRight (90).withSizeKeepingCentre (90, 26));
+}
+
+void StoragePanel::paintOverChildren (juce::Graphics& g)
+{
+    // Fade the list out at an edge that has more songs past it.
+    const auto v = viewport.getBounds().withTrimmedRight (viewport.getScrollBarThickness() + 12).toFloat();
+    const int pos = viewport.getViewPositionY(), hidden = listContent.getHeight() - viewport.getViewHeight();
+    const auto bg = Palette::bgTop.darker (0.25f); // the card colour
+    constexpr float fade = 18.0f;
+    if (pos > 0)
+    {
+        g.setGradientFill (juce::ColourGradient (bg, 0, v.getY(), bg.withAlpha (0.0f), 0, v.getY() + fade, false));
+        g.fillRect (v.withHeight (fade));
+    }
+    if (pos < hidden)
+    {
+        g.setGradientFill (juce::ColourGradient (bg.withAlpha (0.0f), 0, v.getBottom() - fade, bg, 0, v.getBottom(), false));
+        g.fillRect (v.withTrimmedTop (v.getHeight() - fade));
+    }
 }
 
 void StoragePanel::paint (juce::Graphics& g)
