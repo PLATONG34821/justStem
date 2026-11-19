@@ -33,11 +33,16 @@ void ChordView::setPosition (double seconds)
         const int row = bar / barsPerRow;
         if (row < firstRow || row >= firstRow + visibleRows()) scrollTo (row - 1); // keep one row of context above
     }
-    if (seg != currentSegment || moved)
+    if (seg != currentSegment)
     {
+        // Slide only when moving on to the next chord in normal playback; a seek just jumps.
+        animateFrom = (currentSegment >= 0 && seg == currentSegment + 1) ? currentSegment : -1;
+        changeMs = juce::Time::getMillisecondCounterHiRes();
         currentSegment = seg;
         repaint();
     }
+    else if (moved || (animateFrom >= 0 && juce::Time::getMillisecondCounterHiRes() - changeMs < slideMs + 50))
+        repaint();
 }
 
 void ChordView::scrollTo (int row)
@@ -90,30 +95,74 @@ void ChordView::paint (juce::Graphics& g)
         return;
     }
 
-    // Now / next.
-    auto r = now;
-    g.setColour (Palette::dim);
-    g.setFont (capsFont (11.0f));
-    g.drawText ("NOW", r.removeFromLeft (44), juce::Justification::centredLeft, false);
-    const auto nowName = currentSegment >= 0 ? name (currentSegment) : juce::String ("--");
-    g.setColour (Palette::text);
-    g.setFont (font (Weight::Light, 30.0f));
-    g.drawText (nowName, r.removeFromLeft (170), juce::Justification::centredLeft, false);
-    juce::StringArray next;
-    for (int i = currentSegment + 1; i < (int) chords.segments.size() && next.size() < 3; ++i) next.add (name (i));
-    if (! next.isEmpty())
+    // The progression as one centred line, "A#m  ->  B  ->  F#  ->  G#m  ->  A#m": the chord playing now is
+    // big and bright in the middle, the one before fades out on the left, the next three dim to the right.
+    // When the chord changes the line slides left, and the new chord grows into place.
     {
-        g.setColour (Palette::dim);
-        g.setFont (capsFont (11.0f));
-        g.drawText ("NEXT", r.removeFromLeft (48), juce::Justification::centredLeft, false);
-        g.setFont (font (Weight::Regular, 17.0f));
-        g.drawText (next.joinIntoString (juce::String::fromUTF8 ("   \xe2\x86\x92   ")), r.removeFromLeft (360), juce::Justification::centredLeft, true);
-    }
-    if (transpose != 0)
-    {
-        g.setColour (Palette::dim);
-        g.setFont (font (Weight::Regular, 13.0f));
-        g.drawText ("in " + juce::String (song->analysis.key.transposed (transpose).name()), r, juce::Justification::centredRight, false);
+        constexpr float bigSize = 30.0f, smallSize = 17.0f;
+        const double sinceChange = juce::Time::getMillisecondCounterHiRes() - changeMs;
+        const float t = animateFrom >= 0 ? (float) juce::jlimit (0.0, 1.0, sinceChange / slideMs) : 1.0f;
+        const float e = 1.0f - std::pow (1.0f - t, 3.0f); // ease out
+
+        struct Item { int segment; float size; juce::Colour colour; };
+        std::vector<Item> items;
+        const int count = (int) chords.segments.size();
+        for (int k = -1; k <= 3; ++k)
+        {
+            const int s = currentSegment + k;
+            if (currentSegment < 0 || s < 0 || s >= count) continue;
+            // Size and brightness by distance from "now"; the old and new chord trade them while sliding.
+            float size = smallSize, alpha = k < 0 ? 0.35f : k == 1 ? 0.75f : k == 2 ? 0.55f : k == 3 ? 0.38f : 1.0f;
+            if (k == 0) size = smallSize + (bigSize - smallSize) * e;
+            if (k == -1) { size = bigSize + (smallSize - bigSize) * e; alpha = 1.0f + (0.35f - 1.0f) * e; }
+            items.push_back ({ s, size, (k == 0 ? Palette::text : Palette::dim).withAlpha (alpha) });
+        }
+
+        const auto arrow = juce::String::fromUTF8 ("\xe2\x86\x92");
+        const auto arrowFont = font (Weight::Regular, 15.0f);
+        const float arrowW = juce::GlyphArrangement::getStringWidth (arrowFont, arrow), gap = 18.0f;
+        auto widthOf = [&] (const Item& it) {
+            return juce::GlyphArrangement::getStringWidth (font (it.size >= bigSize - 0.5f ? Weight::Light : Weight::Regular, it.size), name (it.segment));
+        };
+
+        // x of each item's left edge, with "now" centred.
+        std::vector<float> xs (items.size());
+        float x = 0;
+        int nowIndex = -1;
+        for (size_t n = 0; n < items.size(); ++n)
+        {
+            if (items[n].segment == currentSegment) nowIndex = (int) n;
+            xs[n] = x;
+            x += widthOf (items[n]) + gap + arrowW + gap;
+        }
+        if (nowIndex >= 0)
+        {
+            const float cx = (float) now.getCentreX();
+            float shift = cx - (xs[(size_t) nowIndex] + widthOf (items[(size_t) nowIndex]) * 0.5f);
+            // While sliding, start where the previous chord was centred.
+            if (nowIndex > 0 && e < 1.0f)
+            {
+                const float step = (xs[(size_t) nowIndex] + widthOf (items[(size_t) nowIndex]) * 0.5f)
+                                 - (xs[(size_t) nowIndex - 1] + widthOf (items[(size_t) nowIndex - 1]) * 0.5f);
+                shift += step * (1.0f - e);
+            }
+            const float baseline = (float) now.getCentreY() + 10.0f;
+            for (size_t n = 0; n < items.size(); ++n)
+            {
+                const auto& it = items[n];
+                const float ix = xs[n] + shift;
+                const auto f = font (it.size >= bigSize - 0.5f ? Weight::Light : Weight::Regular, it.size);
+                g.setColour (chords.segments[(size_t) it.segment].chord.isNone() ? Palette::faint : it.colour);
+                g.setFont (f);
+                g.drawSingleLineText (name (it.segment), juce::roundToInt (ix), juce::roundToInt (baseline));
+                if (n + 1 < items.size())
+                {
+                    g.setColour (Palette::faint.withAlpha (n < (size_t) nowIndex ? 0.5f : 0.9f));
+                    g.setFont (arrowFont);
+                    g.drawSingleLineText (arrow, juce::roundToInt (ix + widthOf (it) + gap), juce::roundToInt (baseline - 2.0f));
+                }
+            }
+        }
     }
 
     // Grid of bars.
@@ -134,15 +183,15 @@ void ChordView::paint (juce::Graphics& g)
             const bool current = b == currentBar;
             if (current)
             {
-                g.setColour (juce::Colours::white.withAlpha (0.06f));
-                g.fillRoundedRectangle (cell.toFloat().reduced (2.0f, 3.0f), 6.0f);
+                // Just a progress line under the current bar (the playing chord is also coloured).
                 const double f = juce::jlimit (0.0, 1.0, (position - bar.start) / std::max (0.01, bar.end - bar.start));
                 g.setColour (Palette::accentTo.withAlpha (0.8f));
                 g.fillRect (juce::Rectangle<float> ((float) cell.getX() + 2.0f, (float) cell.getBottom() - 5.0f,
                                                     (float) ((cell.getWidth() - 4) * f), 2.0f));
             }
-            g.setColour (Palette::hairline.withAlpha (0.25f));
-            g.fillRect (cell.getX(), cell.getY() + 8, 1, cell.getHeight() - 16);
+            // A short, faint bar-line tick, so it doesn't read like a letter next to the chords.
+            g.setColour (Palette::hairline.withAlpha (0.18f));
+            g.fillRect (cell.getX(), cell.getCentreY() - 5, 1, 10);
 
             // Chord names where they start in the bar (a held chord is repeated at the bar line).
             const int inner = cell.getWidth() - 12;

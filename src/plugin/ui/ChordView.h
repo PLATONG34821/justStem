@@ -7,7 +7,7 @@
 
 namespace juststem::ui
 {
-/** The chord progression: the chord playing now and the next ones, then the song as a grid of
+/** The chord progression: one centred line (previous -> now -> next three) that slides as the chords change, then the song as a grid of
     bars (4 per row) that follows playback. Click a bar to jump there. */
 class ChordView final : public juce::Component
 {
@@ -40,6 +40,9 @@ private:
     int transpose = 0;
     double position = 0;
     int currentBar = -1, currentSegment = -1, firstRow = 0;
+    int animateFrom = -1;        // the chord we're sliding away from, or -1 (no slide)
+    double changeMs = 0;         // when the chord last changed
+    static constexpr double slideMs = 280;
     juce::Rectangle<int> now, grid;
 };
 } // namespace juststem::ui
