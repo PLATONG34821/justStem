@@ -38,9 +38,9 @@ function(juststem_package target)
             COMMAND ${CMAKE_COMMAND} -E make_directory "${contents}/Frameworks" "${contents}/Resources"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ORT_RUNTIME_FILES} "${contents}/Frameworks/"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different "${JUSTSTEM_MODEL}" "${contents}/Resources/"
-            # CI runs log "timestamps differ by 181 seconds - check your system clock" for this file just before
-            # the signing step fails. Touching it first gives it the current time (unconfirmed fix; see CI).
-            COMMAND ${CMAKE_COMMAND} -E touch "${contents}/Frameworks/libonnxruntime.1.dylib"
+            # On CI, re-signing Microsoft's signed dylib prints "timestamps differ by 181 seconds" and the
+            # chain stops there (touch did not help). Drop the existing signature first (unconfirmed; see CI).
+            COMMAND codesign --remove-signature "${contents}/Frameworks/libonnxruntime.1.dylib"
             COMMAND codesign --force --sign - "${contents}/Frameworks/libonnxruntime.1.dylib"
             COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:${target}>"
             VERBATIM)

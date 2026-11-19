@@ -19,7 +19,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Linux packages (JUCE needs these)
         if: runner.os == 'Linux'
@@ -35,16 +35,23 @@ jobs:
 
       - name: MSVC environment (Windows)
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
+        shell: pwsh
+        # Inline instead of ilammy/msvc-dev-cmd, which still runs on Node 20. Loads the vcvars64 environment
+        # into later steps.
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { "$($Matches[1])=$($Matches[2])" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV }
+          }
 
       # The model is built from the public export (see scripts/prepare_demucs_onnx.py), cached
       # until the script changes.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Model cache
         id: model
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: models/htdemucs_6s_web2.onnx
           key: model-${{ hashFiles('scripts/prepare_demucs_onnx.py') }}
@@ -67,7 +74,7 @@ jobs:
       - name: Test separation
         run: build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_web2.onnx 12
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: justStem-${{ matrix.name }}
           path: |
