@@ -16,8 +16,22 @@ namespace paths
           macOS    ~/Library/Application Support/justStem
           Windows  %APPDATA%\justStem
           Linux    ~/.config/justStem */
+    /** JUSTSTEM_DATA_DIR (for tests and screenshots): keep everything in that folder instead, so a run
+        doesn't touch the user's songs or caches. Empty in normal use. */
+    inline juce::File dataOverride()
+    {
+        const auto v = juce::SystemStats::getEnvironmentVariable ("JUSTSTEM_DATA_DIR", {});
+        return v.isNotEmpty() && juce::File::isAbsolutePath (v) ? juce::File (v) : juce::File();
+    }
+
     inline juce::File supportRoot()
     {
+        if (const auto o = dataOverride(); o != juce::File())
+        {
+            const auto dir = o.getChildFile ("support");
+            dir.createDirectory();
+            return dir;
+        }
         auto dir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory);
        #if JUCE_MAC
         dir = dir.getChildFile ("Application Support");
@@ -42,7 +56,9 @@ namespace paths
     /** <user's Music folder>/justStem: one folder of stems per song. */
     inline juce::File stems()
     {
-        auto dir = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("justStem");
+        const auto o = dataOverride();
+        auto dir = (o != juce::File() ? o.getChildFile ("Music") : juce::File::getSpecialLocation (juce::File::userMusicDirectory))
+                       .getChildFile ("justStem");
         dir.createDirectory();
         return dir;
     }

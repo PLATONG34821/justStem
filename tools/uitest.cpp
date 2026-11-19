@@ -159,8 +159,10 @@ int main (int argc, char** argv)
 
     std::printf ("Preview audio (host at 48 kHz)\n");
     auto& pl = proc->player();
+    // Where playback tests start: a minute in, or earlier in a short song (with room to play on).
+    const double testPosition = std::min (60.0, proc->getSong()->durationSeconds * 0.45);
     check (renderRms (*proc, 20) == 0.0, "silent while stopped");
-    pl.seek (60.0);
+    pl.seek (testPosition);
     pl.setPlaying (true);
     const double all = renderRms (*proc, 200);
     check (all > 0.01, "plays all stems (RMS " + juce::String (all, 4) + ")");
@@ -172,7 +174,7 @@ int main (int argc, char** argv)
     renderRms (*proc, 2);
     const double vox = renderRms (*proc, 200);
     check (vox > 0.001 && vox < all, "solo vocals is quieter than the full mix (" + juce::String (vox, 4) + " < " + juce::String (all, 4) + ")");
-    check (pl.positionSeconds() > 60.0, "position advances (" + juce::String (pl.positionSeconds(), 2) + " s)");
+    check (pl.positionSeconds() > testPosition, "position advances (" + juce::String (pl.positionSeconds(), 2) + " s)");
     pl.setSolo (0, false);
     pl.setVolume (1, 0.5f);
     pl.setPlaying (false);
@@ -217,11 +219,11 @@ int main (int argc, char** argv)
             return e;
         };
         proc->setTranspose (0);
-        pl.seek (60.0);
+        pl.seek (testPosition);
         pl.setPlaying (true);
         const auto plain = envelope (render (*proc, 400));
         proc->setTranspose (2);
-        pl.seek (60.0);
+        pl.seek (testPosition);
         const auto shiftedAudio = render (*proc, 400);
         const auto shifted = envelope (shiftedAudio);
         const double listened = pl.positionSeconds();
@@ -238,7 +240,7 @@ int main (int argc, char** argv)
         rmsShifted = std::sqrt (rmsShifted / (double) (shiftedAudio.size() * 3 / 4));
         check (std::abs (bestLag) <= 1, "shifted preview in time with the original (" + juce::String (bestLag * 10) + " ms)");
         check (rmsShifted > 0.05, "shifted preview plays (RMS " + juce::String (rmsShifted, 3) + ")");
-        check (std::fabs (listened - (60.0 + 400 * 512 / 48000.0)) < 0.02, "position shows what you hear (" + juce::String (listened, 2) + " s)");
+        check (std::fabs (listened - (testPosition + 400 * 512 / 48000.0)) < 0.02, "position shows what you hear (" + juce::String (listened, 2) + " s)");
         pl.setPlaying (false);
 
         const auto dir = outDir.getChildFile ("transposed stems");

@@ -323,9 +323,11 @@ void justStemEditor::resized()
     followHost.setBounds (bar.removeFromRight (DashboardLookAndFeel::toggleWidth (followHost)));
     bar.removeFromRight (24);
     const auto song = proc.getSong();
-    const auto longest = formatTime (song != nullptr ? song->durationSeconds : 0.0);
+    // Sized for the duration's digit count with every digit as a wide "0" (Inter's digits differ in width).
+    auto pattern = formatTime (song != nullptr ? song->durationSeconds : 0.0);
+    for (const char* d = "123456789"; *d != 0; ++d) pattern = pattern.replaceCharacter ((juce::juce_wchar) *d, '0');
     timeArea = bar.removeFromRight ((int) std::ceil (juce::GlyphArrangement::getStringWidth (font (Weight::Regular, 13.0f),
-                                                                                            longest + " / " + longest)) + 2);
+                                                                                            pattern + " / " + pattern)) + 4);
     bar.removeFromRight (16);
     position.setBounds (bar);
 }
