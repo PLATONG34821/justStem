@@ -186,7 +186,8 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
 
     stemsTab.onClick = [this] { showChords (false); };
     chordsTab.onClick = [this] { showChords (true); };
-    chordView.onSeek = [this] (double t) { proc.player().seek (t); };
+    // A plug-in can't move the DAW's playhead, so while following the DAW, seeking happens in the DAW.
+    chordView.onSeek = [this] (double t) { if (! proc.player().followsHost()) proc.player().seek (t); };
     transposeDown.onClick = [this] { proc.setTranspose (proc.getTranspose() - 1); };
     transposeUp.onClick = [this] { proc.setTranspose (proc.getTranspose() + 1); };
     transposeDown.setTooltip ("Transpose the chords and the preview down a semitone");
@@ -547,6 +548,11 @@ void justStemEditor::updatePlayerBar()
     playButton.setEnabled (manual);
     playButton.setIcon (manual && pl.isPlaying() ? icons::pause() : icons::play());
     position.setEnabled (hasSong);
+    // Following the DAW: the bar shows the DAW's position but can't move it (plug-ins can't seek the host).
+    const bool follow = pl.followsHost();
+    position.setInterceptsMouseClicks (! follow, false);
+    position.setTooltip (follow ? "Following your DAW: move the DAW's playhead to jump" : juce::String());
+    chordView.setMouseCursor (follow ? juce::MouseCursor::NormalCursor : juce::MouseCursor::PointingHandCursor);
     if (hasSong && ! position.isMouseButtonDown()) position.setValue (pl.positionSeconds(), juce::dontSendNotification);
     repaint (timeArea);
 }
