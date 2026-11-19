@@ -52,6 +52,64 @@ void paintReadout (juce::Graphics& g, juce::Rectangle<int> r, const juce::String
 }
 } // namespace
 
+namespace
+{
+/** Saves pitch-shifted stems on a background thread, with a progress window and Cancel. Deletes itself. */
+class TransposedSave final : public juce::ThreadWithProgressWindow
+{
+public:
+    TransposedSave (SongResultPtr s, int semis, juce::File folder)
+        : juce::ThreadWithProgressWindow ("Saving stems transposed " + juce::String (semis > 0 ? "+" : "") + juce::String (semis), true, true),
+          song (std::move (s)), semitones (semis), dir (std::move (folder))
+    {
+        setStatusMessage ("Pitch-shifting 6 stems and the instrumental...");
+    }
+
+    void run() override
+    {
+        try
+        {
+            done = saveTransposedStems (*song, semitones, dir, [this] (double f) {
+                setProgress (f);
+                return ! threadShouldExit();
+            });
+        }
+        catch (const std::exception& e)
+        {
+            error = e.what();
+        }
+    }
+
+    void threadComplete (bool) override
+    {
+        if (done) dir.revealToUser();
+        else
+        {
+            dir.deleteRecursively(); // cancelled or failed: don't leave half a set behind
+            if (error.isNotEmpty())
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save the stems", error);
+        }
+        delete this;
+    }
+
+private:
+    SongResultPtr song;
+    int semitones;
+    juce::File dir;
+    bool done = false;
+    juce::String error;
+};
+} // namespace
+
+void CoverToolsEditor::saveTransposed (SongResultPtr song, int semitones, const juce::File& dest)
+{
+    const auto key = song->analysis.key.transposed (semitones);
+    const auto dir = dest.getChildFile (juce::File::createLegalFileName (song->title + " stems (" + (semitones > 0 ? "+" : "")
+                                                                         + juce::String (semitones) + ", " + juce::String (key.name()) + ")"))
+                         .getNonexistentSibling();
+    (new TransposedSave (std::move (song), semitones, dir))->launchThread();
+}
+
 // ============================================================================ setup
 CoverToolsEditor::CoverToolsEditor (CoverToolsProcessor& p) : AudioProcessorEditor (&p), proc (p)
 {
@@ -91,8 +149,8 @@ CoverToolsEditor::CoverToolsEditor (CoverToolsProcessor& p) : AudioProcessorEdit
     chordView.onSeek = [this] (double t) { proc.player().seek (t); };
     transposeDown.onClick = [this] { proc.setTranspose (proc.getTranspose() - 1); };
     transposeUp.onClick = [this] { proc.setTranspose (proc.getTranspose() + 1); };
-    transposeDown.setTooltip ("Transpose the chords down a semitone");
-    transposeUp.setTooltip ("Transpose the chords up a semitone");
+    transposeDown.setTooltip ("Transpose the chords and the preview down a semitone");
+    transposeUp.setTooltip ("Transpose the chords and the preview up a semitone");
     copyButton.setTooltip ("Copy the chord chart as text");
     copyButton.onClick = [this] { copyChords(); };
     for (auto* c : std::initializer_list<juce::Component*> { &stemsTab, &chordsTab, &chordView, &transposeDown, &transposeUp, &copyButton })
@@ -149,22 +207,20 @@ void CoverToolsEditor::resized()
     auto header = stemsHeader;
     stemsTab.setBounds (header.getX(), header.getY(), 64, header.getHeight());
     chordsTab.setBounds (header.getX() + 84, header.getY(), 74, header.getHeight());
-    if (chordsShown && transposeUp.isVisible())
+    if (transposeUp.isVisible()) // a song is open
     {
-        copyButton.setBounds (header.removeFromRight (128).withSizeKeepingCentre (128, 26));
+        if (chordsShown) copyButton.setBounds (header.removeFromRight (128).withSizeKeepingCentre (128, 26));
+        else
+        {
+            saveAllButton.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
+            header.removeFromRight (8);
+            revealButton.setBounds (header.removeFromRight (150).withSizeKeepingCentre (150, 26));
+        }
         header.removeFromRight (16);
         transposeUp.setBounds (header.removeFromRight (30).withSizeKeepingCentre (30, 26));
         transposeArea = header.removeFromRight (104);
         transposeDown.setBounds (header.removeFromRight (30).withSizeKeepingCentre (30, 26));
         header.removeFromRight (16);
-    }
-    else
-    {
-        saveAllButton.setBounds (header.removeFromRight (96).withSizeKeepingCentre (96, 26));
-        header.removeFromRight (8);
-        revealButton.setBounds (header.removeFromRight (150).withSizeKeepingCentre (150, 26));
-        if (! revealButton.isVisible()) header = stemsHeader; // Storage moves to the right edge when there's no song
-        else header.removeFromRight (8);
     }
     storageButton.setBounds (header.removeFromRight (104).withSizeKeepingCentre (104, 26));
     chordView.setBounds (stemsArea.withTrimmedTop (6));
@@ -293,7 +349,11 @@ void CoverToolsEditor::refreshAll()
     chordsTab.setVisible (song != nullptr);
     stemsTab.setToggleState (! chordsShown, juce::dontSendNotification);
     chordsTab.setToggleState (chordsShown, juce::dontSendNotification);
-    for (auto* b : { &transposeDown, &transposeUp, &copyButton }) b->setVisible (song != nullptr && chordsShown);
+    for (auto* b : { &transposeDown, &transposeUp }) b->setVisible (song != nullptr);
+    copyButton.setVisible (song != nullptr && chordsShown);
+    const int t = proc.getTranspose();
+    saveAllButton.setButtonText (t == 0 ? "Save all" : "Save all " + juce::String (t > 0 ? "+" : "") + juce::String (t));
+    saveAllButton.setTooltip (t == 0 ? "Copy all the stems to a folder" : "Save all the stems pitch-shifted to the transposed key");
     chordView.setVisible (song != nullptr && chordsShown);
     chordView.setTranspose (proc.getTranspose());
     resized(); // Storage button position depends on the buttons above
@@ -396,9 +456,10 @@ void CoverToolsEditor::saveAll()
     if (song == nullptr) return;
     chooser = std::make_unique<juce::FileChooser> ("Save all stems to...", juce::File::getSpecialLocation (juce::File::userDesktopDirectory));
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
-                          [song] (const juce::FileChooser& fc) {
+                          [song, semitones = proc.getTranspose()] (const juce::FileChooser& fc) {
                               const auto dest = fc.getResult();
                               if (! dest.isDirectory()) return;
+                              if (semitones != 0) return saveTransposed (song, semitones, dest);
                               auto dir = dest.getChildFile (juce::File::createLegalFileName (song->title) + " stems");
                               dir.createDirectory();
                               for (auto stem : stemOrder) song->stemFile (stem).copyFileTo (dir.getChildFile (song->stemFile (stem).getFileName()));

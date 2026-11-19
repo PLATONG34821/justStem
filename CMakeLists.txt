@@ -29,17 +29,31 @@ FetchContent_Declare(faad2
     EXCLUDE_FROM_ALL)
 FetchContent_MakeAvailable(faad2)
 
+# Signalsmith Stretch (MIT): pitch shifting for Transpose. Header-only; Linear (MIT) is its FFT layer.
+FetchContent_Declare(signalsmith-linear
+    URL https://github.com/Signalsmith-Audio/linear/archive/refs/tags/0.6.4.tar.gz
+    URL_HASH SHA256=2cb10d84b96c626255ab46c4aa4c80f64ae532be487063cff6a08903c1445a56
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    SYSTEM)
+FetchContent_Declare(signalsmith-stretch
+    URL https://github.com/Signalsmith-Audio/signalsmith-stretch/archive/refs/tags/1.4.0.tar.gz
+    URL_HASH SHA256=077235709ecf2a358545e3ca7bdf32859f70f5c9afb4493e078bd753c9aff284
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    SYSTEM)
+FetchContent_MakeAvailable(signalsmith-linear signalsmith-stretch)
+
 # ---------------------------------------------------------------- core: separation + analysis (no JUCE)
 add_library(covertools_core STATIC
     src/core/Separator.cpp
     src/core/Analysis.cpp
     src/core/Chords.cpp
     src/core/Dsp.cpp
+    src/core/PitchShift.cpp
     src/core/Resampler.cpp)
 target_include_directories(covertools_core PUBLIC src/core)
-target_link_libraries(covertools_core PUBLIC onnxruntime::onnxruntime)
+target_link_libraries(covertools_core PUBLIC onnxruntime::onnxruntime PRIVATE signalsmith-stretch)
 if(MSVC)
-    target_compile_options(covertools_core PRIVATE /W4 /utf-8)
+    target_compile_options(covertools_core PRIVATE /W4 /utf-8 /bigobj) # bigobj: Signalsmith templates
 else()
     target_compile_options(covertools_core PRIVATE -Wall -Wextra)
 endif()

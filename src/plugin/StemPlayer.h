@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../core/PitchShift.h"
 #include "SongResult.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -36,7 +37,10 @@ public:
     void setFollowHost (bool f) { followHost = f; }
     bool followsHost() const { return followHost; }
     void seek (double seconds) { seekRequest = seconds; }
-    double positionSeconds() const { return (double) position.load() / sampleRate; }
+    /** Where the listener is: playback reads ahead of this by the pitch shifter's delay. */
+    double positionSeconds() const { return (double) std::max<juce::int64> (0, position.load() - readAhead.load()) / sampleRate; }
+    /** Pitch-shift the preview (semitones, 0 = off). The tempo doesn't change. */
+    void setTranspose (int semitones) { transpose = semitones; }
     double durationSeconds() const { return (double) length.load() / sampleRate; }
 
     void setVolume (int stem, float v) { volume[(size_t) stem] = v; }
@@ -56,12 +60,17 @@ private:
     std::atomic<bool> playing { false }, followHost { false };
     std::atomic<double> seekRequest { -1 };
     std::atomic<juce::int64> position { 0 }, length { 0 };
+    std::atomic<juce::int64> readAhead { 0 }; // 44.1 kHz samples; the shifter's delay while it's on
+    std::atomic<int> transpose { 0 };
+    PitchShifter shifter;
+    int shiftedBy = 0;                        // audio thread: the transpose the shifter is set to
+    bool wasActive = false;
     std::array<std::atomic<float>, numStems> volume;
     std::array<std::atomic<bool>, numStems> mute, solo;
     std::array<float, numStems> currentGain {};
 
     std::vector<float> mixL, mixR;   // 44.1 kHz scratch
     juce::LagrangeInterpolator interpL, interpR;
-    juce::AudioBuffer<float> out;
+    juce::AudioBuffer<float> out, shifted;
 };
 } // namespace covertools

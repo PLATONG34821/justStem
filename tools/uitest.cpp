@@ -1,5 +1,6 @@
 // covertools_uitest <model.onnx> <song> <output folder>: drives the real plug-in code without a DAW.
 // Renders the editor to PNGs, runs a full split, checks the preview audio and state save/reload.
+#include "../src/io/AudioFiles.h"
 #include "../src/plugin/PluginEditor.h"
 #include "../src/plugin/PluginProcessor.h"
 
@@ -40,6 +41,21 @@ static double renderRms (CoverToolsProcessor& p, int blocks)
         for (int ch = 0; ch < 2; ++ch) sum += buf.getRMSLevel (ch, 0, 512) * buf.getRMSLevel (ch, 0, 512);
     }
     return std::sqrt (sum / (2.0 * blocks));
+}
+
+/** Render `blocks` blocks of 512 at the prepared rate; returns the left channel. */
+static std::vector<float> render (CoverToolsProcessor& p, int blocks)
+{
+    juce::AudioBuffer<float> buf (2, 512);
+    juce::MidiBuffer midi;
+    std::vector<float> out;
+    for (int b = 0; b < blocks; ++b)
+    {
+        buf.clear();
+        p.processBlock (buf, midi);
+        out.insert (out.end(), buf.getReadPointer (0), buf.getReadPointer (0) + 512);
+    }
+    return out;
 }
 
 int main (int argc, char** argv)
@@ -149,6 +165,62 @@ int main (int argc, char** argv)
     std::printf ("%s", chart.upToFirstOccurrenceOf ("\n\n", false, false).toRawUTF8());
     std::printf ("\n%s\n", chart.fromFirstOccurrenceOf ("\n\n", false, false).upToFirstOccurrenceOf ("\n", false, false).toRawUTF8());
     snapshot (*editor, outDir.getChildFile ("5-chords.png"));
+
+    std::printf ("Transposed preview (+2) and transposed save\n");
+    {
+        // Same passage without and with the shift: the loudness envelopes must line up (no delay).
+        auto envelope = [] (const std::vector<float>& x) {
+            std::vector<double> e;
+            for (std::size_t i = 0; i + 480 <= x.size(); i += 480) // 10 ms at 48 kHz
+            {
+                double v = 0;
+                for (std::size_t k = i; k < i + 480; ++k) v += (double) x[k] * x[k];
+                e.push_back (std::sqrt (v / 480));
+            }
+            return e;
+        };
+        proc->setTranspose (0);
+        pl.seek (60.0);
+        pl.setPlaying (true);
+        const auto plain = envelope (render (*proc, 400));
+        proc->setTranspose (2);
+        pl.seek (60.0);
+        const auto shiftedAudio = render (*proc, 400);
+        const auto shifted = envelope (shiftedAudio);
+        const double listened = pl.positionSeconds();
+        int bestLag = 0;
+        double best = -1;
+        for (int lag = -20; lag <= 20; ++lag) // +-200 ms
+        {
+            double c = 0;
+            for (int i = 50; i < (int) plain.size() - 50; ++i) c += plain[(size_t) i] * shifted[(size_t) (i + lag)];
+            if (c > best) { best = c; bestLag = lag; }
+        }
+        double rmsShifted = 0;
+        for (std::size_t i = shiftedAudio.size() / 4; i < shiftedAudio.size(); ++i) rmsShifted += (double) shiftedAudio[i] * shiftedAudio[i];
+        rmsShifted = std::sqrt (rmsShifted / (double) (shiftedAudio.size() * 3 / 4));
+        check (std::abs (bestLag) <= 1, "shifted preview in time with the original (" + juce::String (bestLag * 10) + " ms)");
+        check (rmsShifted > 0.05, "shifted preview plays (RMS " + juce::String (rmsShifted, 3) + ")");
+        check (std::fabs (listened - (60.0 + 400 * 512 / 48000.0)) < 0.02, "position shows what you hear (" + juce::String (listened, 2) + " s)");
+        pl.setPlaying (false);
+
+        const auto dir = outDir.getChildFile ("transposed stems");
+        dir.deleteRecursively();
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        double lastProgress = 0;
+        const bool ok = covertools::saveTransposedStems (*s, 2, dir, [&] (double f) { lastProgress = f; return true; });
+        const double secs = (juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0;
+        int files = 0;
+        bool sameLength = true;
+        for (const auto& f : dir.findChildFiles (juce::File::findFiles, false, "*.wav"))
+        {
+            ++files;
+            sameLength = sameLength && covertools::loadAudioFile (f).size() == s->stems.at (covertools::Stem::Vocals).size();
+        }
+        check (ok && files == 7 && sameLength && lastProgress > 0.99,
+               juce::String (files) + " transposed WAVs, same length as the originals, in " + juce::String (secs, 1) + " s");
+        dir.deleteRecursively();
+    }
 
     std::printf ("Save and reload, like reopening a DAW project\n");
     juce::MemoryBlock state;

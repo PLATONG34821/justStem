@@ -1,4 +1,5 @@
 #include "SongResult.h"
+#include "../core/PitchShift.h"
 #include "../io/AudioFiles.h"
 
 #include <stdexcept>
@@ -23,6 +24,31 @@ void saveSong (const SongResult& song)
     }
     writeWav (song.instrumentalFile(), instrumental);
     saveInfo (song);
+}
+
+bool saveTransposedStems (const SongResult& song, int semitones, const juce::File& dir, const std::function<bool (double)>& progress)
+{
+    if (! dir.createDirectory()) throw std::runtime_error ("Couldn't create " + dir.getFullPathName().toStdString());
+    StereoAudio instrumental;
+    for (std::size_t i = 0; i < stemOrder.size(); ++i)
+    {
+        const auto stem = stemOrder[i];
+        const auto shifted = pitchShift (song.stems.at (stem), (float) semitones, sampleRate, [&] (double f) {
+            return progress (((double) i + f) / (double) stemOrder.size());
+        });
+        if (shifted.size() == 0 && song.stems.at (stem).size() > 0) return false; // cancelled
+        writeWav (dir.getChildFile (song.stemFile (stem).getFileName()), shifted);
+        if (stem == Stem::Vocals) continue;
+        instrumental.left.resize (shifted.size(), 0.0f);
+        instrumental.right.resize (shifted.size(), 0.0f);
+        for (std::size_t k = 0; k < shifted.size(); ++k)
+        {
+            instrumental.left[k] += shifted.left[k];
+            instrumental.right[k] += shifted.right[k];
+        }
+    }
+    writeWav (dir.getChildFile (song.instrumentalFile().getFileName()), instrumental);
+    return true;
 }
 
 void saveInfo (const SongResult& song)

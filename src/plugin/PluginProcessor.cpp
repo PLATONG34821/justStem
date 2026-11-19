@@ -114,6 +114,7 @@ void CoverToolsProcessor::setStateInformation (const void* data, int size)
     if (! state.hasType ("CoverTools")) return;
     stemPlayer.setFollowHost (state["followHost"]);
     transpose = juce::jlimit (-11, 11, (int) state["transpose"]);
+    stemPlayer.setTranspose (transpose);
     for (int i = 0; i < numStems && i < state.getNumChildren(); ++i)
     {
         const auto s = state.getChild (i);

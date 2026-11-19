@@ -4,6 +4,7 @@
 
 #include <juce_core/juce_core.h>
 
+#include <functional>
 #include <memory>
 
 namespace covertools
@@ -27,6 +28,11 @@ using SongResultPtr = std::shared_ptr<const SongResult>;
 
 /** Write the stem WAVs, the instrumental and info.json into song.folder. Throws std::runtime_error. */
 void saveSong (const SongResult& song);
+
+/** Write the stems and the instrumental pitch-shifted by `semitones` (same names, same length)
+    into `dir`. `progress` gets 0..1 and returns false to cancel. Returns false if cancelled.
+    Throws std::runtime_error. */
+bool saveTransposedStems (const SongResult& song, int semitones, const juce::File& dir, const std::function<bool (double)>& progress);
 
 /** Write (or rewrite) song.folder/info.json: title, analysis, beats and chords. */
 void saveInfo (const SongResult& song);

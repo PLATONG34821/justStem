@@ -6,7 +6,9 @@ audio file or a YouTube link) and it:
 - splits it into **vocals, drums, bass, guitar, piano and other**, plus an instrumental,
   saved as 24-bit WAVs you can drag straight onto DAW tracks;
 - finds the **key** (with relative key, Camelot code and tuning), **tempo** and **loudness** (LUFS);
-- finds the **chords**, bar by bar, with a transpose control and a text chart to copy;
+- finds the **chords**, bar by bar, with a text chart to copy;
+- **transposes**: the chords, the stem preview (pitch-shifted live, same tempo, in time with
+  your DAW) and, with Save all, a full set of pitch-shifted stems;
 - previews the stems in sync with your session (mute / solo / volume per stem).
 
 Everything runs on your computer. The AI model (HT-Demucs 6-stem) ships inside the plug-in.
@@ -56,6 +58,7 @@ src/core/      Separation and analysis. Plain C++ + ONNX Runtime, no JUCE.
   Analysis.*     key, tempo, loudness (EBU R128)
   Chords.*       beat tracking, bar lines and chord recognition
   Dsp.*          shared spectral peaks and onset envelope
+  PitchShift.*   real-time and offline pitch shifting (Signalsmith Stretch)
   Resampler.*    sample-rate conversion to 44.1 kHz (polyphase, exact timing)
 src/io/        Files and the outside world (JUCE).
   AudioFiles.*   decode audio files to 44.1 kHz stereo (gapless); write WAVs
@@ -119,10 +122,12 @@ build/covertools_uitest_artefacts/Release/covertools_uitest models/htdemucs_6s_w
 
 - `analyze-selftest`: the resampler against exact sine waves and an aliasing test, loudness against
   the EBU reference signals, key detection in all 24 keys, tempo from 72 to 174 BPM, and beats,
-  bar lines and chords (7ths, sus, dim, slash chords) in a synthetic band recording in 4 keys.
+  bar lines and chords (7ths, sus, dim, slash chords) in a synthetic band recording in 4 keys,
+  and pitch shifting (pitch within 5 cents, no timing offset, same level).
 - `selftest`: separates a synthetic track and scores each stem against the original parts.
 - `covertools_uitest`: runs the real plug-in code without a DAW. It renders the window to PNGs,
-  splits a song, checks the preview audio, the chord view and transpose, and saves / reloads the
+  splits a song, checks the preview audio, the chord view, the transposed preview (in time with
+  the original) and transposed stem saving, and saves / reloads the
   plug-in state (including a song saved before chord detection existed).
 
 `covertools_cli` can also `separate`, `analyze` or `import` real songs, or print the `chords` of a
@@ -144,6 +149,15 @@ for the bass note, and the drums for the beats. Vocals are left out (they carry 
 
 4/4 is assumed. Expect most chords right on pop and rock; dense or jazzy harmony is harder.
 
+## Transpose
+
+The − / + control (±11 semitones, saved with the DAW project) moves the chord names and the
+preview. The preview is pitch-shifted live; the shifter delays its output a little, so
+playback reads that far ahead and stays in time with the DAW. With Transpose on, **Save all**
+writes a pitch-shifted set of stems + instrumental to a new folder (about 12 s for a 5-minute
+song); your original stems aren't changed. Shifts within ±3 semitones sound most natural,
+especially on vocals.
+
 ## Licences
 
 CoverTools is licensed under the GNU AGPL-3.0 (see `LICENSE`), as required by JUCE's free licence.
@@ -151,6 +165,8 @@ CoverTools is licensed under the GNU AGPL-3.0 (see `LICENSE`), as required by JU
 - [JUCE](https://juce.com): AGPL-3.0 / commercial
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime): MIT
 - [Inter](https://rsms.me/inter/) font (UI typeface, embedded): SIL Open Font License 1.1, see `resources/fonts/OFL-LICENSE.txt`
+- [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) and
+  [Signalsmith Linear](https://github.com/Signalsmith-Audio/linear) (pitch shifting): MIT
 - [FAAD2](https://github.com/knik0/faad2) (AAC decoder): GPL-2.0-or-later, used under GPL-3.0 with the AGPL
 - [DirectML](https://github.com/microsoft/DirectML) (Windows builds only): Microsoft's proprietary,
   redistributable `DirectML.dll` (Microsoft Software License Terms). Check that bundling it suits

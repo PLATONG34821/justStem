@@ -9,8 +9,12 @@ void StemPlayer::prepare (double rate, int maxBlock)
     mixL.assign ((size_t) need, 0.0f);
     mixR.assign ((size_t) need, 0.0f);
     out.setSize (2, maxBlock);
+    shifted.setSize (2, maxBlock);
     interpL.reset();
     interpR.reset();
+    shifter.prepare (2, rate, maxBlock);
+    shiftedBy = 0;
+    readAhead = 0;
 }
 
 void StemPlayer::setSong (SongResultPtr s)
@@ -41,6 +45,18 @@ void StemPlayer::process (juce::AudioBuffer<float>& buffer, double hostSeconds)
     const int numOut = buffer.getNumSamples();
     const juce::int64 len = length;
 
+    // Transpose: the shifter delays its output, so playback reads that far ahead and what you
+    // hear stays at `position - readAhead` (in time with the DAW).
+    const int t = transpose;
+    if (t != shiftedBy)
+    {
+        const auto ahead = (juce::int64) std::llround (shifter.latency() * sampleRate / hostRate);
+        if (shiftedBy == 0) { shifter.reset(); position = position + ahead; readAhead = ahead; }
+        if (t == 0) { position = std::max<juce::int64> (0, position - readAhead); readAhead = 0; }
+        else shifter.setSemitones ((float) t);
+        shiftedBy = t;
+    }
+
     // Follow the DAW: play while the host plays, at the host's position.
     bool active = playing;
     if (followHost)
@@ -48,16 +64,19 @@ void StemPlayer::process (juce::AudioBuffer<float>& buffer, double hostSeconds)
         active = hostSeconds >= 0;
         if (active)
         {
-            const auto want = (juce::int64) (hostSeconds * sampleRate);
+            const auto want = (juce::int64) (hostSeconds * sampleRate) + readAhead;
             if (std::abs (want - position.load()) > 2048) { position = want; interpL.reset(); interpR.reset(); }
         }
     }
     if (const double s = seekRequest.exchange (-1); s >= 0)
     {
-        position = juce::jlimit ((juce::int64) 0, len, (juce::int64) (s * sampleRate));
+        position = juce::jlimit ((juce::int64) 0, len, (juce::int64) (s * sampleRate)) + readAhead;
         interpL.reset();
         interpR.reset();
+        if (shiftedBy != 0) shifter.reset();
     }
+    if (active && ! wasActive && shiftedBy != 0) shifter.reset(); // no stale audio from before a pause
+    wasActive = active;
     if (! active) return;
 
     juce::int64 pos = position;
@@ -95,6 +114,16 @@ void StemPlayer::process (juce::AudioBuffer<float>& buffer, double hostSeconds)
     const int used = interpL.process (ratio, mixL.data(), out.getWritePointer (0), numOut);
     interpR.process (ratio, mixR.data(), out.getWritePointer (1), numOut);
     position = pos + used;
+    // Pitch shift, in pieces no larger than the block size the shifter was prepared for.
+    for (int done = 0, chunk = shifted.getNumSamples(); shiftedBy != 0 && chunk > 0 && done < numOut; done += chunk)
+    {
+        const int n = std::min (chunk, numOut - done);
+        const float* ins[] { out.getReadPointer (0, done), out.getReadPointer (1, done) };
+        float* outs[] { shifted.getWritePointer (0), shifted.getWritePointer (1) };
+        shifter.process (ins, outs, n);
+        out.copyFrom (0, done, shifted, 0, 0, n);
+        out.copyFrom (1, done, shifted, 1, 0, n);
+    }
 
     if (buffer.getNumChannels() >= 2)
     {

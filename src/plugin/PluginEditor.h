@@ -41,6 +41,7 @@ private:
     void startFromInput();
     void chooseFile();
     void saveAll();
+    static void saveTransposed (covertools::SongResultPtr, int semitones, const juce::File& dest);
     void showStorage();
     void showChords (bool);
     void copyChords();

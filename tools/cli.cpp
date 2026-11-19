@@ -6,6 +6,8 @@
 //   covertools_cli analyze <audio file> [model.onnx]   (with a model: analyse the separated stems)
 //   covertools_cli chords <song folder>                 (stems saved by the plug-in)
 #include "../src/core/Analysis.h"
+#include "../src/core/Fft.h"
+#include "../src/core/PitchShift.h"
 #include "../src/core/Resampler.h"
 #include "../src/core/Separator.h"
 #include "../src/io/AudioFiles.h"
@@ -387,6 +389,48 @@ static int analyzeSelftest()
         check (chordName (bbOverD, eb) == "Bb/D" && chordName (bbOverD, eb, 1) == "B/D#" && chordName ({ 6, ChordQuality::Minor7, -1 }, eb) == "Gbm7"
                    && chordName ({}, eb) == "N.C.",
                "chord spelling: Bb/D in Eb, B/D# up a semitone, N.C.");
+    }
+
+    std::printf ("Pitch shift (Transpose)\n");
+    {
+        // A 440 Hz tone that starts at 1.0 s, in 60 s of audio.
+        const int n = sampleRate * 60;
+        StereoAudio x;
+        x.left.assign ((size_t) n, 0.0f);
+        for (int i = sampleRate; i < n; ++i) x.left[(size_t) i] = 0.3f * (float) std::sin (2 * std::numbers::pi * 440.0 * i / sampleRate);
+        x.right = x.left;
+        auto rms = [] (const std::vector<float>& v, std::size_t from, std::size_t to) {
+            double e = 0;
+            for (std::size_t i = from; i < to; ++i) e += (double) v[i] * v[i];
+            return std::sqrt (e / (double) (to - from));
+        };
+        auto freqAt = [] (const std::vector<float>& v, int from) { // FFT peak with parabolic interpolation
+            constexpr int fftN = 32768;
+            std::vector<float> w ((size_t) fftN), mag ((size_t) fftN / 2 + 1);
+            for (int i = 0; i < fftN; ++i) w[(size_t) i] = v[(size_t) (from + i)] * (float) (0.5 - 0.5 * std::cos (2 * std::numbers::pi * i / fftN));
+            RealFft (fftN).magnitudes (w.data(), mag.data());
+            const int k = (int) (std::max_element (mag.begin() + 1, mag.end() - 1) - mag.begin());
+            const double a = std::log (mag[(size_t) k - 1]), b = std::log (mag[(size_t) k]), c = std::log (mag[(size_t) k + 1]);
+            return (k + 0.5 * (a - c) / (a - 2 * b + c)) * sampleRate / fftN;
+        };
+        for (int semis : { 2, -3, 5 })
+        {
+            const auto t0 = juce::Time::getMillisecondCounterHiRes();
+            const auto y = pitchShift (x, (float) semis, sampleRate);
+            const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+            const double want = 440.0 * std::pow (2.0, semis / 12.0), got = freqAt (y.left, sampleRate * 20);
+            const double cents = 1200 * std::log2 (got / want);
+            // Timing: where the output first reaches half its level, versus 1.0 s.
+            std::size_t onset = 0;
+            while (onset < y.size() && std::fabs (y.left[onset]) < 0.15f) ++onset;
+            const double offsetMs = ((double) onset / sampleRate - 1.0) * 1000;
+            const double gainDb = 20 * std::log10 (rms (y.left, (size_t) sampleRate * 10, (size_t) sampleRate * 50) / rms (x.left, (size_t) sampleRate * 10, (size_t) sampleRate * 50));
+            check (std::fabs (cents) < 5 && std::fabs (offsetMs) < 15 && std::fabs (gainDb) < 1.5,
+                   (semis > 0 ? "+" : "") + std::to_string (semis) + " semitones: " + juce::String (got, 1).toStdString() + " Hz (want "
+                       + juce::String (want, 1).toStdString() + ", " + juce::String (cents, 1).toStdString() + " cents), starts "
+                       + juce::String (offsetMs, 1).toStdString() + " ms off, level " + juce::String (gainDb, 2).toStdString() + " dB, "
+                       + std::to_string ((int) (60000.0 / ms)) + "x realtime");
+        }
     }
 
     std::printf ("%s\n", failures == 0 ? "ALL PASSED" : (std::to_string (failures) + " FAILED").c_str());
