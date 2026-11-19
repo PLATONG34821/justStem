@@ -253,7 +253,9 @@ static int analyzeSelftest()
     {
         std::uint32_t seed = 7;
         auto rnd = [&] { seed = seed * 1664525u + 1013904223u; return (double) (seed >> 8) / (1 << 24) * 2 - 1; };
-        for (double bpm : { 72.0, 90.0, 100.0, 115.0, 120.0, 128.0, 140.0, 160.0, 174.0 })
+        const std::vector<double> tempos { 72.0, 90.0, 100.0, 115.0, 120.0, 128.0, 140.0, 160.0, 174.0 };
+        int rightOctave = 0;
+        for (double bpm : tempos)
         {
             const int n = sampleRate * 30;
             std::vector<float> x ((size_t) n, 0.0f);
@@ -277,9 +279,15 @@ static int analyzeSelftest()
             double best = r.bpm, err = 1e9;
             for (double f : { 0.5, 1.0, 2.0 }) if (std::fabs (r.bpm * f - bpm) < err) { err = std::fabs (r.bpm * f - bpm); best = r.bpm * f; }
             const bool sameOctave = std::fabs (r.bpm - bpm) < 0.5;
+            rightOctave += sameOctave ? 1 : 0;
             check (err < 0.2, juce::String (bpm, 0).toStdString() + " BPM -> " + juce::String (r.bpm, 2).toStdString()
                                   + (sameOctave ? "" : " (octave: " + juce::String (best, 2).toStdString() + " via half/double)"));
         }
+        // The octave guess can't be right for every tempo (72 reads as 144, 174 as 87: both are
+        // legitimate feels), so guard against regressions instead: at least as many right as today.
+        constexpr int minRightOctave = 7;
+        check (rightOctave >= minRightOctave, "octave right for " + std::to_string (rightOctave) + " of "
+                                                  + std::to_string (tempos.size()) + " tempos (need " + std::to_string (minRightOctave) + ")");
     }
     std::printf ("Beats and chords (synthetic band: drums, bass, re-struck chords; 7ths, sus, dim, slash chords)\n");
     {
