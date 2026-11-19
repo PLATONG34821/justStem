@@ -7,7 +7,7 @@ using namespace juststem::ui;
 
 namespace
 {
-constexpr int windowW = 900, windowH = 660, margin = 28;
+constexpr int windowW = 900, windowH = 620, margin = 28;
 
 juce::String formatTime (double s)
 {
@@ -27,6 +27,21 @@ juce::String displayName (Stem s)
         case Stem::Other: return "Other";
     }
     return {};
+}
+
+// The "justStem" wordmark (light "just", bold "Stem") and the song title share the top bar's baseline.
+juce::Font wordmarkLight() { return font (Weight::Light, 23.0f, 0.01f); }
+juce::Font wordmarkBold() { return font (Weight::SemiBold, 23.0f, 0.01f); }
+juce::Font titleFont() { return font (Weight::Regular, 15.0f); }
+int wordmarkWidth()
+{
+    return (int) std::ceil (juce::GlyphArrangement::getStringWidth (wordmarkLight(), "just")
+                            + juce::GlyphArrangement::getStringWidth (wordmarkBold(), "Stem"));
+}
+int topBaseline (juce::Rectangle<int> row)
+{
+    const auto f = titleFont();
+    return juce::roundToInt ((float) row.getCentreY() + (f.getAscent() - f.getDescent()) * 0.5f);
 }
 
 juce::String bpmText (float bpm)
@@ -116,18 +131,20 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
 {
     setLookAndFeel (&lnf);
 
-    linkBox.setTextToShowWhenEmpty ("Paste a YouTube link, or drop a song anywhere", Palette::faint);
+    linkBox.setTextToShowWhenEmpty ("Paste a YouTube link", Palette::faint); // dropping a song is hinted below
     linkBox.setFont (font (Weight::Regular, 14.0f));
     linkBox.setIndents (16, 0);
     linkBox.setJustification (juce::Justification::centredLeft);
     linkBox.onReturnKey = [this] { startFromInput(); };
     linkBox.onEscapeKey = [this] { if (wantInput) showInput (false); };
+    linkBox.onTextChange = [this] { refreshPasteButton(); }; // Paste only while the box is empty, so it never covers a link
     addAndMakeVisible (linkBox);
     // Many hosts take Cmd/Ctrl+V before the plug-in sees it, so pasting needs a button.
     pasteButton.setName ("Paste");
     pasteButton.setTooltip ("Paste a link from the clipboard");
     pasteButton.onClick = [this] {
         linkBox.setText (juce::SystemClipboard::getTextFromClipboard().trim(), false);
+        refreshPasteButton();
         linkBox.grabKeyboardFocus();
         linkBox.moveCaretToEnd();
     };
@@ -205,9 +222,12 @@ justStemEditor::~justStemEditor()
 // ============================================================================ layout
 void justStemEditor::resized()
 {
-    auto r = getLocalBounds().reduced (margin, 22);
+    auto r = getLocalBounds().reduced (margin, 0).withTrimmedTop (12).withTrimmedBottom (22); // less air at the top
 
+    // Top bar: song title (or the link box) on the left, "justStem" centred over the gauge, buttons on the right.
     auto top = r.removeFromTop (40);
+    topRow = top;
+    wordmarkArea = juce::Rectangle<int> (wordmarkWidth() + 4, top.getHeight()).withCentre ({ getWidth() / 2, top.getCentreY() });
     storageButton.setBounds (top.removeFromRight (40));
     top.removeFromRight (10);
     if (inputShown())
@@ -217,22 +237,29 @@ void justStemEditor::resized()
             closeInputButton.setBounds (top.removeFromRight (40));
             top.removeFromRight (8);
         }
-        splitButton.setBounds (top.removeFromRight (96));
+        splitButton.setBounds (top.removeFromRight (84));
         top.removeFromRight (8);
         chooseButton.setBounds (top.removeFromRight (chooseButton.idealWidth (40)));
-        top.removeFromRight (10);
-        linkBox.setBounds (top);
-        const int pw = pasteButton.idealWidth (28);
-        pasteButton.setBounds (top.removeFromRight (pw + 6).withTrimmedRight (6).withSizeKeepingCentre (pw, 28));
-        titleArea = {};
+        top.removeFromRight (16);
     }
     else
     {
         newSongButton.setBounds (top.removeFromRight (newSongButton.idealWidth (40)));
         top.removeFromRight (16);
-        titleArea = top;
     }
-    statusLine = r.removeFromTop (26);
+    // The name needs room on both sides; when the buttons reach it (e.g. a narrow layout) it's left out.
+    if (top.getRight() < wordmarkArea.getRight() + 16) wordmarkArea = {};
+    const auto left = wordmarkArea.isEmpty() ? top : top.withRight (wordmarkArea.getX() - 16);
+    if (inputShown())
+    {
+        linkBox.setBounds (left);
+        const int pw = pasteButton.idealWidth (28);
+        pasteButton.setBounds (left.withLeft (left.getRight() - pw - 6).withTrimmedRight (6).withSizeKeepingCentre (pw, 28));
+        titleArea = {};
+    }
+    else titleArea = left;
+    // The gauge tucks up under the top bar: its ring only comes near the bar in the middle, below "justStem".
+    r.setTop (r.getY() - 6);
 
     auto readouts = r.removeFromTop (236);
     gauge.setBounds (readouts.withSizeKeepingCentre (236, 236));
@@ -304,36 +331,37 @@ void justStemEditor::paint (juce::Graphics& g)
     const bool busy = proc.isBusy();
     const auto song = busy ? nullptr : proc.getSong();
 
-    // Under the top bar: an error if there is one, otherwise the name, centred over the gauge.
-    // (While working, progress is on the gauge and in the log, so it isn't repeated here.)
-    if (! busy && proc.lastError().isNotEmpty())
+    // "justStem" and the song title, on one baseline in the top bar.
+    const int baseline = topBaseline (topRow);
+    if (! wordmarkArea.isEmpty())
     {
-        g.setColour (Palette::bad);
-        g.setFont (font (Weight::Regular, 12.5f));
-        g.drawFittedText (proc.lastError(), statusLine.withTrimmedLeft (16), juce::Justification::centredLeft, 1, 0.8f);
-    }
-    else
-    {
-        const auto light = font (Weight::Light, 17.0f, 0.02f), bold = font (Weight::SemiBold, 17.0f, 0.02f);
-        const float w1 = juce::GlyphArrangement::getStringWidth (light, "just"), w2 = juce::GlyphArrangement::getStringWidth (bold, "Stem");
-        const float x = (float) gauge.getBounds().getCentreX() - (w1 + w2) * 0.5f;
-        const auto row = statusLine.toFloat();
+        const int x = wordmarkArea.getX() + 2;
         g.setColour (Palette::text.withAlpha (0.85f));
-        g.setFont (light);
-        g.drawText ("just", juce::Rectangle<float> (x, row.getY(), w1 + 2, row.getHeight()), juce::Justification::centredLeft, false);
-        g.setFont (bold);
-        g.drawText ("Stem", juce::Rectangle<float> (x + w1, row.getY(), w2 + 2, row.getHeight()), juce::Justification::centredLeft, false);
+        g.setFont (wordmarkLight());
+        g.drawSingleLineText ("just", x, baseline);
+        g.setFont (wordmarkBold());
+        g.drawSingleLineText ("Stem", x + juce::roundToInt (juce::GlyphArrangement::getStringWidth (wordmarkLight(), "just")), baseline);
     }
-
-    // The open song's title, in the top bar while the link box is hidden.
     if (song != nullptr && ! titleArea.isEmpty())
     {
         auto t = titleArea;
-        drawIcon (g, icons::note(), t.removeFromLeft (18).toFloat().withSizeKeepingCentre (16, 16), Palette::dim);
-        t.removeFromLeft (12);
+        drawIcon (g, icons::note(), t.removeFromLeft (16).toFloat().withSizeKeepingCentre (14, 14), Palette::dim);
+        t.removeFromLeft (10);
         g.setColour (Palette::text);
-        g.setFont (font (Weight::Light, 19.0f));
-        g.drawText (song->title, t, juce::Justification::centredLeft, true);
+        g.setFont (titleFont());
+        // drawText can't take a baseline, so place the box so its centred text lands on it.
+        const auto f = titleFont();
+        const int y = baseline - juce::roundToInt ((f.getAscent() - f.getDescent()) * 0.5f) - t.getHeight() / 2;
+        g.drawText (song->title, t.withY (y), juce::Justification::centredLeft, true);
+    }
+
+    // An error, in red in the free space above TEMPO (while working, progress is on the gauge and in the log).
+    if (! busy && proc.lastError().isNotEmpty())
+    {
+        auto area = tempoArea.withBottom (gauge.getY() + juce::roundToInt (gauge.lines().caption) - 18);
+        g.setColour (Palette::bad);
+        g.setFont (font (Weight::Regular, 12.5f));
+        g.drawFittedText (proc.lastError(), area, juce::Justification::topLeft, 3, 0.9f);
     }
 
     // Tempo and loudness, either side of the gauge (which shows the key), on the gauge's text lines.
@@ -423,8 +451,8 @@ void justStemEditor::refreshAll()
     if (busy) wantInput = false; // a new song is on its way; show it when it's done
 
     const bool input = inputShown();
-    for (auto* c : std::initializer_list<juce::Component*> { &linkBox, &pasteButton, &chooseButton, &splitButton }) c->setVisible (input);
-    pasteButton.setEnabled (! busy);
+    for (auto* c : std::initializer_list<juce::Component*> { &linkBox, &chooseButton, &splitButton }) c->setVisible (input);
+    refreshPasteButton();
     newSongButton.setVisible (! input);
     closeInputButton.setVisible (input && song != nullptr);
     linkBox.setEnabled (! busy);
@@ -515,7 +543,6 @@ void justStemEditor::timerCallback()
     if (proc.isBusy())
     {
         updateGauge();
-        repaint (statusLine);
         repaint (stemsArea); // the log
     }
     else
@@ -573,6 +600,11 @@ void justStemEditor::filesDropped (const juce::StringArray& files, int, int)
     dropHover = false;
     repaint();
     if (files.size() == 1 && ! proc.isBusy()) proc.startFile (juce::File (files[0]));
+}
+
+void justStemEditor::refreshPasteButton()
+{
+    pasteButton.setVisible (inputShown() && ! proc.isBusy() && linkBox.isEmpty());
 }
 
 // ============================================================================ new song

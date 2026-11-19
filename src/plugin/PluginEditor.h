@@ -9,8 +9,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 /** The plug-in window, top to bottom:
-      top bar     YouTube link, Choose file, Split, Storage; once a song is open: its title, New song, Storage
-      name        "justStem" above the gauge (or an error message)
+      top bar     YouTube link | "justStem" | Choose file, Split, Storage; with a song open: its title | "justStem" | New song, Storage
       readouts    TEMPO (left), the key gauge (centre; shows progress while splitting), LOUDNESS (right)
       stems       tabs: one row per stem (mute, solo, volume, drag-to-DAW), or the chords
       player bar  play, seek, time, Follow DAW (only with a song open) */
@@ -49,12 +48,13 @@ private:
     /** The link box (and Choose file / Split) are shown with no song open, while working, or after New song. */
     bool inputShown() const;
     void showInput (bool);
+    void refreshPasteButton();
 
     justStemProcessor& proc;
     juststem::ui::DashboardLookAndFeel lnf;
 
     // layout regions (set in resized)
-    juce::Rectangle<int> statusLine, titleArea, tempoArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea, transposeArea;
+    juce::Rectangle<int> topRow, wordmarkArea, titleArea, tempoArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea, transposeArea;
 
     juce::TextEditor linkBox;
     juststem::ui::PillButton chooseButton { "Choose file", juststem::ui::icons::note() };

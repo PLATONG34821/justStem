@@ -134,6 +134,7 @@ int main (int argc, char** argv)
             paste->triggerClick();
             pumpUntil ([] { return false; }, 100);
             check (link->getText() == "https://www.youtube.com/watch?v=test", "Paste button fills the link box");
+            check (! paste->isVisible(), "Paste button hides once the box has a link");
             snapshot (*editor, outDir.getChildFile ("3b-new-song.png"));
             link->clear();
             juce::SystemClipboard::copyTextToClipboard (saved);
