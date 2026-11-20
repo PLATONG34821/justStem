@@ -174,9 +174,12 @@ int main (int argc, char** argv)
     const auto& a = s->analysis;
     std::printf ("  title \"%s\", key %s, %.2f BPM, %.1f LUFS, folder %s\n", s->title.toRawUTF8(), a.key.name().c_str(), a.tempo.bpm,
                  a.loudness.integratedLufs, s->folder.getFullPathName().toRawUTF8());
-    int wavs = 0;
-    for (auto stem : juststem::stemOrder) wavs += s->stemFile (stem).existsAsFile() ? 1 : 0;
-    check (wavs == 6 && s->instrumentalFile().existsAsFile(), juce::String (wavs) + " stem WAVs + instrumental written");
+    int flacs = 0;
+    for (auto stem : juststem::stemOrder) flacs += s->stemFile (stem).existsAsFile() && s->stemFile (stem).hasFileExtension ("flac") ? 1 : 0;
+    check (flacs == 6 && s->instrumentalFile().existsAsFile(), juce::String (flacs) + " stem FLACs + instrumental written");
+    check (s->audioHash.isNotEmpty() && juststem::findSavedSong (s->audioHash, s->model) == s->folder
+               && juststem::findSavedSong (s->audioHash, "another model") == juce::File(),
+           "the same song with the same model is found among the saved songs");
 
     std::printf ("Preview audio (host at 48 kHz)\n");
     auto& pl = proc->player();
@@ -320,13 +323,15 @@ int main (int argc, char** argv)
         check (! finished && cancelMs < 1500, "Cancel stops a transposed save (" + juce::String (juce::roundToInt (cancelMs)) + " ms)");
         cancelDir.deleteRecursively();
 
-        // Save all without Transpose: copies of the saved WAVs.
+        // Save all without Transpose: WAVs of the saved stems (lossless, so the same samples).
         const auto copies = outDir.getChildFile ("copied stems");
         copies.deleteRecursively();
         const bool copied = juststem::copyStems (*s, copies, [] (double) { return true; });
-        int same = copies.getChildFile (s->instrumentalFile().getFileName()).getSize() == s->instrumentalFile().getSize() ? 1 : 0;
-        for (auto stem : juststem::stemOrder) same += copies.getChildFile (s->stemFile (stem).getFileName()).getSize() == s->stemFile (stem).getSize() ? 1 : 0;
-        check (copied && same == 7, "Save all copies the 6 stems and the instrumental");
+        int same = copies.getChildFile ("instrumental.wav").existsAsFile() ? 1 : 0;
+        for (auto stem : juststem::stemOrder)
+            same += juststem::loadAudioFile (copies.getChildFile (juce::String (juststem::stemWavName (stem)))).left
+                            == juststem::loadAudioFile (s->stemFile (stem)).left ? 1 : 0;
+        check (copied && same == 7, "Save all writes the 6 stems and the instrumental as WAVs");
         copies.deleteRecursively();
     }
 
@@ -398,7 +403,7 @@ int main (int argc, char** argv)
         auto drums = s->stems.at (juststem::Stem::Drums);
         drums.left.resize ((size_t) juststem::sampleRate * 10);
         drums.right.resize (drums.left.size());
-        juststem::writeWav (s->stemFile (juststem::Stem::Drums), drums);
+        juststem::writeFlac (s->stemFile (juststem::Stem::Drums), drums);
         const auto edited = juststem::loadSong (s->folder);
         bool sameLength = true;
         for (const auto& [stem, audio] : edited->stems) sameLength = sameLength && audio.size() == s->stems.at (juststem::Stem::Vocals).size();

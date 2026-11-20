@@ -1,7 +1,10 @@
 #include "SongResult.h"
 #include "../core/Pitch.h"
 #include "../core/PitchShift.h"
+#include "../io/AppPaths.h"
 #include "../io/AudioFiles.h"
+
+#include <juce_cryptography/juce_cryptography.h>
 
 #include <algorithm>
 #include <array>
@@ -28,31 +31,59 @@ void addInto (StereoAudio& sum, const StereoAudio& stem)
 }
 } // namespace
 
+juce::String audioFingerprint (const StereoAudio& audio)
+{
+    juce::MemoryBlock data;
+    data.append (audio.left.data(), audio.left.size() * sizeof (float));
+    data.append (audio.right.data(), audio.right.size() * sizeof (float));
+    return juce::SHA256 (data).toHexString();
+}
+
+juce::File findSavedSong (const juce::String& audioHash, const juce::String& model)
+{
+    if (audioHash.isEmpty()) return {};
+    for (const auto& entry : juce::RangedDirectoryIterator (paths::stems(), false, "*", juce::File::findDirectories))
+    {
+        SongResult saved;
+        saved.folder = entry.getFile();
+        const auto info = juce::JSON::parse (saved.infoFile());
+        if (! info.isObject() || info["audioHash"].toString() != audioHash || info["model"].toString() != model) continue;
+        bool complete = saved.instrumentalFile().existsAsFile();
+        for (auto stem : stemOrder) complete = complete && saved.stemFile (stem).existsAsFile();
+        if (complete) return saved.folder;
+    }
+    return {};
+}
+
 void saveSong (const SongResult& song)
 {
     StereoAudio instrumental;
     for (auto stem : stemOrder)
     {
         const auto& s = song.stems.at (stem);
-        writeWav (song.stemFile (stem), s);
+        writeFlac (song.folder.getChildFile (juce::String (stemFileName (stem))), s);
         if (stem != Stem::Vocals) addInto (instrumental, s);
     }
-    writeWav (song.instrumentalFile(), instrumental);
+    writeFlac (song.folder.getChildFile ("instrumental.flac"), instrumental);
     saveInfo (song);
 }
 
 bool copyStems (const SongResult& song, const juce::File& dir, const std::function<bool (double)>& progress)
 {
     if (! dir.createDirectory()) throw std::runtime_error ("Couldn't create " + dir.getFullPathName().toStdString());
-    std::vector<juce::File> files;
-    for (auto stem : stemOrder) files.push_back (song.stemFile (stem));
-    files.push_back (song.instrumentalFile());
-    for (std::size_t i = 0; i < files.size(); ++i)
+    // From the stems in memory (the saved ones are FLAC; WAV opens in every DAW).
+    constexpr double files = numStems + 1;
+    StereoAudio instrumental;
+    for (std::size_t i = 0; i < stemOrder.size(); ++i)
     {
-        if (! progress ((double) i / (double) files.size())) return false;
-        if (! files[i].copyFileTo (dir.getChildFile (files[i].getFileName())))
-            throw std::runtime_error ("Couldn't copy " + files[i].getFileName().toStdString() + " to " + dir.getFullPathName().toStdString());
+        if (! progress ((double) i / files)) return false;
+        const auto stem = stemOrder[i];
+        const auto& s = song.stems.at (stem);
+        writeWav (dir.getChildFile (juce::String (stemWavName (stem))), s);
+        if (stem != Stem::Vocals) addInto (instrumental, s);
     }
+    if (! progress ((double) numStems / files)) return false;
+    writeWav (dir.getChildFile ("instrumental.wav"), instrumental);
     progress (1.0);
     return true;
 }
@@ -98,11 +129,11 @@ bool saveTransposedStems (const SongResult& song, int semitones, const juce::Fil
         if (cancelled) return false; // the other threads stop at their next progress check
         if (i + atOnce < stemOrder.size()) start (i + atOnce);
         const auto stem = stemOrder[i];
-        writeWav (dir.getChildFile (song.stemFile (stem).getFileName()), shifted);
+        writeWav (dir.getChildFile (juce::String (stemWavName (stem))), shifted);
         if (stem != Stem::Vocals) addInto (instrumental, shifted);
         report();
     }
-    writeWav (dir.getChildFile (song.instrumentalFile().getFileName()), instrumental);
+    writeWav (dir.getChildFile ("instrumental.wav"), instrumental);
     progress (1.0);
     return true;
 }
@@ -115,6 +146,7 @@ void saveInfo (const SongResult& song)
     info->setProperty ("title", song.title);
     info->setProperty ("durationSeconds", song.durationSeconds);
     info->setProperty ("model", song.model);
+    info->setProperty ("audioHash", song.audioHash);
     info->setProperty ("keyTonic", a.key.tonic);
     info->setProperty ("keyMinor", a.key.minor);
     info->setProperty ("keyConfidence", a.key.confidence);
@@ -145,6 +177,7 @@ std::shared_ptr<SongResult> loadSong (const juce::File& folder)
     song->title = info["title"].toString();
     song->durationSeconds = (double) info["durationSeconds"];
     song->model = info["model"].toString();
+    song->audioHash = info["audioHash"].toString();
     // info.json can be edited or damaged: values used as indices are brought into range.
     const auto pitchClass = [] (int p) { return p < 0 ? -1 : wrapPitchClass (p); }; // -1: none
     a.key.tonic = wrapPitchClass ((int) info["keyTonic"]);

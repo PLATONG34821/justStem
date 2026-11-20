@@ -220,10 +220,23 @@ SongResultPtr SongJob::process()
     addLog ("Decoded " + text::minutesSeconds (song->durationSeconds) + " of audio in " + seconds (decodeMs)
             + " (working at 44.1 kHz stereo, " + juce::String (rmsDb (mix), 1) + " dB RMS)");
 
-    // On macOS the first run of each model also compiles it for CoreML; later runs reuse it.
-    setStatus ("Preparing AI model", -1);
     if (! modelFile.existsAsFile()) throw std::runtime_error ("The AI model is missing from the plug-in. Please reinstall justStem.");
     const auto& spec = model::forFile (modelFile.getFullPathName().toStdString());
+
+    // The same song split before with this model: reuse its stems instead of splitting (and storing) it again.
+    setStatus ("Looking for this song in saved stems", -1);
+    song->audioHash = audioFingerprint (mix);
+    if (const auto saved = findSavedSong (song->audioHash, text::from (spec.name)); saved != juce::File())
+    {
+        addLog ("Already split earlier, so its saved stems are used: " + saved.getFullPathName());
+        setStatus ("Loading saved stems", -1);
+        auto existing = loadSong (saved);
+        addLog ("Loaded \"" + existing->title + "\" (nothing new written)");
+        return existing;
+    }
+
+    // On macOS the first run of each model also compiles it for CoreML; later runs reuse it.
+    setStatus ("Preparing AI model", -1);
     addLog ("Model: " + modelFile.getFileName() + " (" + text::from (spec.name) + ", 6 stems, "
             + juce::File::descriptionOfSizeInBytes (modelFile.getSize()) + ")");
     song->model = text::from (spec.name);
@@ -328,8 +341,8 @@ SongResultPtr SongJob::process()
         throw;
     }
     juce::int64 bytes = 0;
-    for (const auto& f : song->folder.findChildFiles (juce::File::findFiles, false, "*.wav")) bytes += f.getSize();
-    addLog ("Saved 6 stems + instrumental (24-bit WAV, " + juce::File::descriptionOfSizeInBytes (bytes) + ") in "
+    for (const auto& f : song->folder.findChildFiles (juce::File::findFiles, false, "*.flac")) bytes += f.getSize();
+    addLog ("Saved 6 stems + instrumental (24-bit FLAC, " + juce::File::descriptionOfSizeInBytes (bytes) + ") in "
             + seconds (nowMs() - saveStart));
     addLog ("Folder: " + song->folder.getFullPathName());
     addLog ("Done in " + text::minutesSeconds ((nowMs() - startMs) / 1000.0) + " (decode " + seconds (decodeMs) + ", model " + seconds (modelMs)

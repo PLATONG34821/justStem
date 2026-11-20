@@ -85,7 +85,7 @@ src/core/      Separation and analysis. Plain C++ + ONNX Runtime, no JUCE.
   PitchShift.*   real-time and offline pitch shifting (Signalsmith Stretch)
   Resampler.*    sample-rate conversion to 44.1 kHz (polyphase, exact timing)
 src/io/        Files and the outside world (JUCE).
-  AudioFiles.*   decode audio files to 44.1 kHz stereo (gapless); write WAVs
+  AudioFiles.*   decode audio files to 44.1 kHz stereo (gapless); write WAV and FLAC
   M4aDecoder.*   M4A / MP4 reader (classic and fragmented) + FAAD2 AAC decoding
   YouTube.*      download a video's audio with yt-dlp
   ToolInstaller.* download and verify yt-dlp and Deno
@@ -112,7 +112,7 @@ cmake/         ONNX Runtime download (per OS), packaging.
 
 | What | Where |
 |---|---|
-| Stems for each song (7 WAVs + `info.json`) | `<your Music folder>/justStem/<song title>/` |
+| Stems for each song (7 FLACs + `info.json`; older songs have WAVs) | `<your Music folder>/justStem/<song title>/` |
 | yt-dlp and Deno (downloaded on the first YouTube link) | `<app data>/justStem/bin/` |
 | CoreML's compiled model (macOS; makes later loads fast) | `<app data>/justStem/coreml-cache/` |
 | YouTube audio while it's being decoded (a folder per download, deleted after) | `<app data>/justStem/downloads/` |

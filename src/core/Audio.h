@@ -39,8 +39,11 @@ constexpr std::string_view stemName (Stem s)
     return "";
 }
 
-/** The stem's WAV in a song folder: "vocals.wav". */
-inline std::string stemFileName (Stem s) { return std::string (stemName (s)) + ".wav"; }
+/** The stem's file in a song folder: "vocals.flac" (songs saved before 0.0.3 have "vocals.wav"). */
+inline std::string stemFileName (Stem s) { return std::string (stemName (s)) + ".flac"; }
+
+/** The stem's name when exported for a DAW: "vocals.wav". */
+inline std::string stemWavName (Stem s) { return std::string (stemName (s)) + ".wav"; }
 
 using StemMap = std::map<Stem, StereoAudio>;
 } // namespace juststem

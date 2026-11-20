@@ -21,6 +21,10 @@ StereoAudio loadAudioFile (const juce::File& file, double maxSeconds = maxSongSe
 /** Write 44.1 kHz stereo as a WAV file (replacing it). Throws std::runtime_error. */
 void writeWav (const juce::File& file, const StereoAudio& audio, int bitsPerSample = 24);
 
+/** Write 44.1 kHz stereo as a FLAC file (replacing it): lossless, about half the size of a WAV.
+    Throws std::runtime_error. */
+void writeFlac (const juce::File& file, const StereoAudio& audio, int bitsPerSample = 24);
+
 /** A short description of a file's format for logs, e.g. "MP3, 48 kHz, stereo", from its header only.
     Just the format name when the header can't be read here (M4A). */
 juce::String describeAudioFile (const juce::File& file);

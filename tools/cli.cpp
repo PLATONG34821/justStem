@@ -50,7 +50,7 @@ static int separateFile (const std::string& model, const juce::File& in, const j
     for (const auto& [stem, audio] : stems)
     {
         const auto file = outDir.getChildFile (juce::String (stemFileName (stem)));
-        writeWav (file, audio);
+        writeFlac (file, audio);
         std::printf ("wrote %s\n", file.getFullPathName().toRawUTF8());
     }
     return 0;
@@ -102,14 +102,16 @@ static int analyzeFile (const juce::File& in, const std::string& model)
     return 0;
 }
 
-/** Analyse a song folder written by the plug-in (its stem WAVs), without separating again. */
+/** Analyse a song folder written by the plug-in (its stem files), without separating again. */
 static int analyzeFolder (const juce::File& folder)
 {
     StemMap stems;
     StereoAudio mix;
     for (auto stem : stemOrder)
     {
-        auto audio = loadAudioFile (folder.getChildFile (juce::String (stemFileName (stem))));
+        auto file = folder.getChildFile (juce::String (stemFileName (stem)));
+        if (! file.existsAsFile()) file = folder.getChildFile (juce::String (stemWavName (stem))); // saved before 0.0.3
+        auto audio = loadAudioFile (file);
         mix.left.resize (std::max (mix.size(), audio.size()), 0.0f);
         mix.right.resize (mix.left.size(), 0.0f);
         for (std::size_t i = 0; i < audio.size(); ++i) { mix.left[i] += audio.left[i]; mix.right[i] += audio.right[i]; }
