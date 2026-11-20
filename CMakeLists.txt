@@ -104,7 +104,8 @@ juce_add_binary_data(juststem_fonts SOURCES
 # Settings shared by every JUCE target. The plug-in needs them PUBLIC (JUCE's format wrappers
 # must see the same configuration); the developer tools use PRIVATE.
 function(juststem_juce_settings target scope)
-    target_compile_definitions(${target} ${scope} JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_USE_MP3AUDIOFORMAT=1)
+    # JUCE_USE_CURL is set by JUCE from each target's NEEDS_CURL (Linux only).
+    target_compile_definitions(${target} ${scope} JUCE_WEB_BROWSER=0 JUCE_USE_MP3AUDIOFORMAT=1)
     target_link_libraries(${target} PRIVATE
         juststem_core
         juce::juce_audio_utils
@@ -126,6 +127,7 @@ juce_add_plugin(justStem
     FORMATS ${JUSTSTEM_FORMATS}
     PRODUCT_NAME "justStem"
     IS_SYNTH FALSE
+    NEEDS_CURL TRUE  # Linux: HTTPS (downloading yt-dlp and Deno) needs libcurl
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
@@ -157,7 +159,7 @@ juststem_package(justStem_Standalone)
 
 # ---------------------------------------------------------------- developer tools (not shipped)
 # juststem_cli: separate / analyse / import from the command line, plus self-tests.
-juce_add_console_app(juststem_cli PRODUCT_NAME "juststem_cli")
+juce_add_console_app(juststem_cli PRODUCT_NAME "juststem_cli" NEEDS_CURL TRUE) # `import` downloads too
 target_sources(juststem_cli PRIVATE tools/cli.cpp ${JUSTSTEM_IO_SOURCES})
 juststem_juce_settings(juststem_cli PRIVATE)
 target_link_libraries(juststem_cli PRIVATE juce::juce_recommended_config_flags)
