@@ -226,42 +226,42 @@ LoudnessResult measureLoudness (const std::vector<float>& left, const std::vecto
     const auto coef = kWeightingCoefficients (sr);
     const std::size_t n = left.size();
 
+    // Gating blocks are 400 ms with 75% overlap, i.e. four 100 ms steps, so only the K-weighted
+    // power of each step is kept (not a copy of the whole song).
+    const std::size_t step = (std::size_t) std::max (1, sr / 10), block = 4 * step;
+    std::vector<double> stepPower (n / step, 0.0); // whole steps only
     float peak = 0;
-    std::vector<double> sq[2];
     for (int ch = 0; ch < 2; ++ch)
     {
         const auto& x = ch == 0 ? left : right;
-        sq[ch].resize (n);
         double s1[2] {}, s2[2] {};
-        for (std::size_t i = 0; i < n; ++i)
+        std::size_t i = 0;
+        for (std::size_t k = 0; i < n; ++k)
         {
-            peak = std::max (peak, std::fabs (x[i]));
-            double v = x[i];
-            for (int st = 0; st < 2; ++st) // transposed direct form II
+            double power = 0;
+            for (const std::size_t end = std::min (n, i + step); i < end; ++i)
             {
-                const auto& k = coef[(size_t) st];
-                const double y = k[0] * v + s1[st];
-                s1[st] = k[1] * v - k[3] * y + s2[st];
-                s2[st] = k[2] * v - k[4] * y;
-                v = y;
+                peak = std::max (peak, std::fabs (x[i]));
+                double v = x[i];
+                for (int st = 0; st < 2; ++st) // transposed direct form II
+                {
+                    const auto& c = coef[(size_t) st];
+                    const double y = c[0] * v + s1[st];
+                    s1[st] = c[1] * v - c[3] * y + s2[st];
+                    s2[st] = c[2] * v - c[4] * y;
+                    v = y;
+                }
+                power += v * v;
             }
-            sq[ch][i] = v * v;
+            if (k < stepPower.size()) stepPower[k] += power;
         }
     }
     r.samplePeakDb = (float) (20.0 * std::log10 (std::max (peak, 1e-10f)));
 
-    // 400 ms blocks with 75% overlap.
-    const std::size_t block = (std::size_t) (0.4 * sr), step = block / 4;
     if (n < block) return r;
-    std::vector<double> cum[2];
-    for (int ch = 0; ch < 2; ++ch)
-    {
-        cum[ch].assign (n + 1, 0.0);
-        for (std::size_t i = 0; i < n; ++i) cum[ch][i + 1] = cum[ch][i] + sq[ch][i];
-    }
     std::vector<double> z;
-    for (std::size_t s = 0; s + block <= n; s += step)
-        z.push_back ((cum[0][s + block] - cum[0][s] + cum[1][s + block] - cum[1][s]) / (double) block);
+    for (std::size_t j = 0; j + 4 <= stepPower.size(); ++j)
+        z.push_back ((stepPower[j] + stepPower[j + 1] + stepPower[j + 2] + stepPower[j + 3]) / (double) block);
 
     auto lufs = [] (double power) { return -0.691 + 10.0 * std::log10 (std::max (power, 1e-20)); };
     double sumAbs = 0;
