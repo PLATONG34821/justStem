@@ -2,6 +2,8 @@
 #include "../../core/Separator.h"
 #include "../Text.h"
 
+#include <algorithm>
+
 namespace juststem::ui
 {
 namespace
@@ -82,9 +84,11 @@ StoragePanel::StoragePanel (std::function<juce::File()> inUse, std::function<boo
     clearDownloadsButton.setTooltip ("Clear temporary downloads");
     showFolderButton.onClick = [] { paths::stems().revealToUser(); };
     deleteAllButton.onClick = [this] {
+        // The song open in the plug-in isn't deleted, so it isn't counted either.
+        const auto deletable = (int) std::count_if (rows.begin(), rows.end(), [] (const SongRow* r) { return ! r->used; });
         confirm ("Delete all songs?",
-                 "The stems of " + juce::String ((int) rows.size()) + " song(s) will be moved to the Trash. "
-                     "The song open in this plug-in is kept.",
+                 "The stems of " + juce::String (deletable) + (deletable == 1 ? " song" : " songs") + " will be moved to the Trash."
+                     + (deletable < rows.size() ? " The song open in this plug-in is kept." : ""),
                  "Move to Trash", [this] {
                      for (auto* row : rows)
                          if (! row->used) storage::moveSongToTrash (row->song);
