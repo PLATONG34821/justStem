@@ -180,7 +180,7 @@ stems + instrumental to a new folder, three stems at a time (about 4 s for a 5-m
   say it was an edited checkpoint first shared on Discord, with no information on who trained it
   or on what. Mirrors such as `enerjazzer/BS-ROFO-SW-Fixed` are also `license: unknown`.
   justStem treats the weights as CC-BY-NC-SA-4.0 (non-commercial, share-alike) as its own
-  cautious choice, not an inherited licence. Don't bundle them in releases; let users build
-  HQ mode themselves.
+  cautious choice, not an inherited licence. Releases from 0.0.2 bundle them, so those builds
+  are for non-commercial use.
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) and [Deno](https://deno.com) (MIT),
   downloaded at runtime, not bundled
