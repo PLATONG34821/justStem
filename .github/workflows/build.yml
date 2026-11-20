@@ -1,10 +1,16 @@
 # Builds and tests justStem on macOS, Windows and Linux, and uploads the plug-ins.
+# Pushing a tag like v0.0.3 also bundles the HQ model, zips each plug-in like the earlier releases
+# (justStem-<version>-<OS>-<format>.zip) and creates a draft GitHub release with them, to review
+# and publish by hand.
 name: build
 
 on:
   push:
   pull_request:
   workflow_dispatch:
+
+env:
+  RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
   build:
@@ -64,6 +70,24 @@ jobs:
             https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx
           python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
 
+      # Releases also bundle the HQ model (see scripts/prepare_roformer_onnx.py; non-commercial,
+      # see docs/DEVELOPMENT.md). Packaging.cmake bundles it when the file exists.
+      - name: HQ model cache
+        if: env.RELEASE == 'true'
+        id: hqmodel
+        uses: actions/cache@v5
+        with:
+          path: models/bs_roformer_sw_6stem_opt.onnx
+          key: hqmodel-${{ hashFiles('scripts/prepare_roformer_onnx.py') }}
+      - name: Build the HQ model
+        if: env.RELEASE == 'true' && steps.hqmodel.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          python -m pip install onnx onnxruntime numpy onnxconverter-common
+          curl -L -o bs_roformer_sw_6stem_fp16.onnx \
+            https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx/resolve/main/bs_roformer_sw_6stem_fp16.onnx
+          python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
+
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -82,3 +106,55 @@ jobs:
             build/justStem_artefacts/Release/AU
             build/justStem_artefacts/Release/Standalone
           if-no-files-found: error
+
+      # Release zips: one per plug-in format, the bundle at the top of the zip.
+      - name: Zip for release
+        if: env.RELEASE == 'true'
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          cmake_ver=$(sed -n 's/^project(justStem VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          if [ "$ver" != "$cmake_ver" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match the CMake version $cmake_ver"; exit 1
+          fi
+          test -f models/bs_roformer_sw_6stem_opt.onnx || { echo "::error::HQ model missing"; exit 1; }
+          out="$PWD/release"; mkdir -p "$out"
+          cd build/justStem_artefacts/Release
+          pack() { # <folder> <bundle> <format>
+            local zip="$out/justStem-$ver-${{ matrix.name }}-$3.zip"
+            if [ "$RUNNER_OS" = macOS ]; then ditto -c -k --keepParent "$1/$2" "$zip"
+            elif [ "$RUNNER_OS" = Windows ]; then (cd "$1" && 7z a -tzip -bd "$zip" "$2" >/dev/null)
+            else (cd "$1" && zip -qry "$zip" "$2"); fi
+          }
+          pack VST3 justStem.vst3 VST3
+          if [ "$RUNNER_OS" = macOS ]; then pack AU justStem.component AU; fi
+          ls -l "$out"
+      - name: Upload release zips
+        if: env.RELEASE == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.name }}
+          path: release/*.zip
+          compression-level: 0 # already zipped
+          if-no-files-found: error
+
+  # A draft release with the zips, once every platform built and passed its tests.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l release
+          gh release create "$GITHUB_REF_NAME" release/*.zip --repo "$GITHUB_REPOSITORY" --draft \
+            --title "justStem ${GITHUB_REF_NAME#v}" --generate-notes
