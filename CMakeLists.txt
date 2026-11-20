@@ -94,6 +94,7 @@ set(JUSTSTEM_PLUGIN_SOURCES
     src/plugin/ui/SongTitle.cpp
     src/plugin/ui/StoragePanel.cpp
     src/plugin/ui/Theme.cpp
+    src/plugin/ui/UpdatePopup.cpp
     src/plugin/ui/Widgets.cpp)
 
 # Inter (SIL Open Font License), embedded so the UI looks the same on every OS.

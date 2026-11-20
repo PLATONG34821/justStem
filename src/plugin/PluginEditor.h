@@ -6,6 +6,7 @@
 #include "ui/SongTitle.h"
 #include "ui/StoragePanel.h"
 #include "ui/Theme.h"
+#include "ui/UpdatePopup.h"
 #include "ui/Widgets.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -77,6 +78,8 @@ private:
     juststem::ui::PillButton storageButton { {}, juststem::ui::icons::drive() };
     juststem::ui::PillButton updateButton { "Update", juststem::ui::icons::download() }; // only when a newer release is out
     std::unique_ptr<juststem::ui::StoragePanel> storagePanel;
+    std::unique_ptr<juststem::ui::UpdatePopup> updatePopup; // once per new version, until Later / Download
+    void showUpdatePopup (const juce::String& version);
 
     juststem::ui::TabButton stemsTab { "Stems" }, chordsTab { "Chords" };
     juststem::ui::ChordView chordView;

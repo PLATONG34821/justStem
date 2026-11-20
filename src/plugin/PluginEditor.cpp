@@ -115,6 +115,9 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     storageButton.onClick = [this] { showStorage(); };
     addAndMakeVisible (storageButton);
     updateButton.setName ("Update");
+    // Filled in the gauge's light blue (the other pills are outlines) so it stands out.
+    updateButton.setColour (juce::TextButton::buttonColourId, Palette::accentTo);
+    updateButton.setColour (juce::TextButton::textColourOffId, Palette::bgBottom);
     updateButton.onClick = [] { juststem::UpdateCheck::releasePage().launchInDefaultBrowser(); };
     addChildComponent (updateButton); // shown by timerCallback once the check finds a newer release
 
@@ -246,6 +249,7 @@ void justStemEditor::resized()
     }
     chordView.setBounds (stemsArea.withTrimmedTop (6));
     if (storagePanel != nullptr) storagePanel->setBounds (getLocalBounds());
+    if (updatePopup != nullptr) updatePopup->setBounds (getLocalBounds());
 
     auto list = stemsArea;
     const int rowH = list.getHeight() / rows.size();
@@ -473,9 +477,11 @@ void justStemEditor::timerCallback()
     if (! updateButton.isVisible())
         if (const auto v = proc.updates().newerVersion(); v.isNotEmpty())
         {
+            updateButton.setButtonText ("Update to " + v);
             updateButton.setTooltip ("justStem " + v + " is out: open the download page");
             updateButton.setVisible (true);
             resized();
+            if (! UpdateCheck::wasDismissed (v)) showUpdatePopup (v);
         }
     if (proc.isBusy())
     {
@@ -594,4 +600,22 @@ void justStemEditor::copyChords()
     juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer<justStemEditor> (this)] {
         if (safe != nullptr) safe->copyButton.setButtonText ({});
     });
+}
+
+void justStemEditor::showUpdatePopup (const juce::String& version)
+{
+    updatePopup = std::make_unique<UpdatePopup> (version);
+    const auto close = [this, version] {
+        UpdateCheck::dismiss (version);
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<justStemEditor> (this)] {
+            if (safe != nullptr) safe->updatePopup.reset();
+        });
+    };
+    updatePopup->onLater = close;
+    updatePopup->onDownload = [close] {
+        UpdateCheck::releasePage().launchInDefaultBrowser();
+        close();
+    };
+    addAndMakeVisible (*updatePopup);
+    updatePopup->setBounds (getLocalBounds());
 }

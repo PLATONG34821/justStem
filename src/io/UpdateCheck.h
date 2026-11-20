@@ -23,6 +23,10 @@ public:
     /** The GitHub page with the latest release, to open in a browser. */
     static juce::URL releasePage();
 
+    /** The user pressed Later or Download for `version`: don't announce it again (the Update pill stays). */
+    static void dismiss (const juce::String& version);
+    static bool wasDismissed (const juce::String& version);
+
     /** True if `latest` (e.g. "v0.1.0") is a higher version than `current` (e.g. "0.0.2"). */
     static bool isNewer (const juce::String& latest, const juce::String& current);
 

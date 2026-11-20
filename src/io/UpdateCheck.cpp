@@ -15,6 +15,8 @@ constexpr juce::int64 checkEveryMs = 24 * 60 * 60 * 1000;
 
 juce::File cacheFile() { return paths::supportRoot().getChildFile ("update-check.json"); }
 
+juce::File dismissedFile() { return paths::supportRoot().getChildFile ("update-dismissed.txt"); }
+
 juce::String stripV (const juce::String& tag) { return tag.trim().trimCharactersAtStart ("vV"); }
 } // namespace
 
@@ -39,6 +41,13 @@ juce::String UpdateCheck::newerVersion() const
 juce::URL UpdateCheck::releasePage()
 {
     return juce::URL ("https://github.com/" + juce::String (repo) + "/releases/latest");
+}
+
+void UpdateCheck::dismiss (const juce::String& version) { dismissedFile().replaceWithText (version); }
+
+bool UpdateCheck::wasDismissed (const juce::String& version)
+{
+    return dismissedFile().loadFileAsString().trim() == version;
 }
 
 bool UpdateCheck::isNewer (const juce::String& latest, const juce::String& current)
