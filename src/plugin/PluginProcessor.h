@@ -2,6 +2,7 @@
 
 #include "SongJob.h"
 #include "StemPlayer.h"
+#include "../io/UpdateCheck.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -73,6 +74,9 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
+    /** Whether a newer release is out (checked once a day, shared by every instance). */
+    const juststem::UpdateCheck& updates() const { return *updateCheck; }
+
 private:
     void startJob (juststem::SongJob::Kind, const juce::String& source);
 
@@ -84,6 +88,7 @@ private:
     juce::StringArray lastLog;
     int transpose = 0;
     bool hq = false;
+    juce::SharedResourcePointer<juststem::UpdateCheck> updateCheck;
     std::shared_ptr<bool> alive = std::make_shared<bool> (true); // guards async job callbacks
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (justStemProcessor)
