@@ -220,6 +220,23 @@ int main (int argc, char** argv)
     pumpUntil ([] { return false; }, 200);
     auto* view = findChild<juststem::ui::ChordView> (*editor);
     check (view != nullptr && view->isVisible(), "chord view shown");
+    if (auto* cv = dynamic_cast<juststem::ui::ChordView*> (view))
+    {
+        auto wheel = [cv] (float dx, float dy, bool smooth) {
+            const auto now = juce::Time::getCurrentTime();
+            const juce::MouseEvent e (juce::Desktop::getInstance().getMainMouseSource(), {}, {}, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                      cv, cv, now, {}, now, 1, false);
+            cv->mouseWheelMove (e, { dx, dy, false, smooth, false });
+        };
+        const int row = cv->firstVisibleRow();
+        wheel (0.3f, 0.0f, true); // a sideways trackpad swipe
+        const bool sidewaysIgnored = cv->firstVisibleRow() == row;
+        for (int i = 0; i < 4; ++i) wheel (0.0f, -0.02f, true); // trackpad steps adding up to just over a row
+        const int afterTrackpad = cv->firstVisibleRow();
+        wheel (0.0f, -0.234f, false); // a mouse-wheel click
+        check (sidewaysIgnored && afterTrackpad == row + 1 && cv->firstVisibleRow() == row + 2,
+               "chord grid scrolling: sideways ignored, a row per row-height of trackpad travel, a row per wheel click");
+    }
     for (int i = 0; i < 2; ++i)
         if (auto* up = findButton (*editor, "Transpose up"); up != nullptr && up->isVisible())
             up->triggerClick();

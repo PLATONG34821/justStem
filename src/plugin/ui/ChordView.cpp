@@ -237,6 +237,17 @@ void ChordView::mouseUp (const juce::MouseEvent& e)
 
 void ChordView::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
 {
-    scrollTo (firstRow + (w.deltaY < 0 ? 1 : -1));
+    if (std::abs (w.deltaY) <= std::abs (w.deltaX)) return; // a sideways swipe isn't for this view
+    if (! w.isSmooth) // a mouse wheel: a row per click
+    {
+        scrollTo (firstRow + (w.deltaY < 0 ? 1 : -1));
+        return;
+    }
+    // A trackpad sends many small steps (JUCE reports its travel in points x 0.5 / 256): a row once
+    // they add up to a row's height, like dragging the grid.
+    constexpr float perRow = (float) rowH * 0.5f / 256.0f;
+    wheelTravel += w.deltaY;
+    for (; wheelTravel <= -perRow; wheelTravel += perRow) scrollTo (firstRow + 1);
+    for (; wheelTravel >= perRow; wheelTravel -= perRow) scrollTo (firstRow - 1);
 }
 } // namespace juststem::ui
