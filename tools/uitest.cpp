@@ -78,8 +78,9 @@ int main (int argc, char** argv)
     if (argc < 4) { std::fprintf (stderr, "usage: juststem_uitest <model.onnx> <song> <output folder> [--hq]\n"); return 2; }
     const bool hq = argc > 4 && std::string (argv[4]) == "--hq";
     juce::ScopedJuceInitialiser_GUI gui;
-    const juce::File model (juce::String::fromUTF8 (argv[1])), song (juce::String::fromUTF8 (argv[2])),
-        outDir (juce::String::fromUTF8 (argv[3]));
+    // UTF-8 paths, relative to the current folder unless absolute.
+    auto fileArg = [] (const char* arg) { return juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (arg)); };
+    const juce::File model = fileArg (argv[1]), song = fileArg (argv[2]), outDir = fileArg (argv[3]);
     outDir.createDirectory();
 
     auto proc = std::make_unique<justStemProcessor> (model);

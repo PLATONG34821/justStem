@@ -22,6 +22,12 @@
 
 using namespace juststem;
 
+/** A path from the command line (UTF-8; relative to the current folder unless absolute). */
+static juce::File fileArg (const char* arg)
+{
+    return juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (arg));
+}
+
 /** Developer tools keep their own CoreML cache, so they don't add copies to the plug-in's. */
 static std::string devCoremlCache()
 {
@@ -144,7 +150,7 @@ static int separateFile (const std::string& model, const juce::File& in, const j
 static int importSong (const juce::String& source, const juce::File& outWav)
 {
     std::atomic<bool> cancel { false };
-    juce::File file (source);
+    juce::File file = juce::File::getCurrentWorkingDirectory().getChildFile (source);
     juce::String title;
     if (isYouTubeLink (source))
     {
@@ -517,12 +523,12 @@ int main (int argc, char** argv)
     try
     {
         if (cmd == "analyze-selftest") return analyzeSelftest();
-        if (cmd == "analyze" && argc >= 3) return analyzeFile (juce::File (juce::String::fromUTF8 (argv[2])), argc > 3 ? argv[3] : "");
-        if (cmd == "chords" && argc >= 3) return analyzeFolder (juce::File (juce::String::fromUTF8 (argv[2])));
+        if (cmd == "analyze" && argc >= 3) return analyzeFile (fileArg (argv[2]), argc > 3 ? argv[3] : "");
+        if (cmd == "chords" && argc >= 3) return analyzeFolder (fileArg (argv[2]));
         if (argc < 3) return 2;
         if (cmd == "selftest") return selftest (argv[2], argc > 3 ? std::atoi (argv[3]) : 12, argc > 4 ? (float) std::atof (argv[4]) : 0.0f);
-        if (cmd == "import" && argc >= 4) return importSong (juce::String::fromUTF8 (argv[2]), juce::File (juce::String::fromUTF8 (argv[3])));
-        if (cmd == "separate" && argc >= 5) return separateFile (argv[2], juce::File (argv[3]), juce::File (argv[4]));
+        if (cmd == "import" && argc >= 4) return importSong (juce::String::fromUTF8 (argv[2]), fileArg (argv[3]));
+        if (cmd == "separate" && argc >= 5) return separateFile (argv[2], fileArg (argv[3]), fileArg (argv[4]));
     }
     catch (const std::exception& e)
     {
