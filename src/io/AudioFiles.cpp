@@ -137,19 +137,33 @@ StereoAudio loadAudioFile (const juce::File& file, double maxSeconds)
     return out;
 }
 
-void writeWav (const juce::File& file, const StereoAudio& audio, int bitsPerSample)
+namespace
+{
+void writeWith (juce::AudioFormat& format, const juce::File& file, const StereoAudio& audio, int bitsPerSample)
 {
     file.deleteFile();
     std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());
     if (stream == nullptr) throw std::runtime_error ("Can't write " + file.getFullPathName().toStdString());
-    juce::WavAudioFormat wav;
-    auto writer = wav.createWriterFor (stream, juce::AudioFormatWriterOptions {}
-                                                   .withSampleRate (sampleRate)
-                                                   .withNumChannels (2)
-                                                   .withBitsPerSample (bitsPerSample));
-    if (writer == nullptr) throw std::runtime_error ("Can't create a WAV writer");
+    auto writer = format.createWriterFor (stream, juce::AudioFormatWriterOptions {}
+                                                      .withSampleRate (sampleRate)
+                                                      .withNumChannels (2)
+                                                      .withBitsPerSample (bitsPerSample));
+    if (writer == nullptr) throw std::runtime_error ("Can't create a " + format.getFormatName().toStdString() + " writer");
     const float* channels[] { audio.left.data(), audio.right.data() };
     if (! writer->writeFromFloatArrays (channels, 2, (int) audio.size()))
         throw std::runtime_error ("Error while writing " + file.getFullPathName().toStdString());
+}
+} // namespace
+
+void writeWav (const juce::File& file, const StereoAudio& audio, int bitsPerSample)
+{
+    juce::WavAudioFormat wav;
+    writeWith (wav, file, audio, bitsPerSample);
+}
+
+void writeFlac (const juce::File& file, const StereoAudio& audio, int bitsPerSample)
+{
+    juce::FlacAudioFormat flac;
+    writeWith (flac, file, audio, bitsPerSample);
 }
 } // namespace juststem

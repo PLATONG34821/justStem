@@ -386,7 +386,7 @@ void justStemEditor::refreshAll()
     copyButton.setVisible (song != nullptr && chordsShown);
     const int t = proc.getTranspose();
     saveAllButton.setButtonText (t == 0 ? juce::String() : juce::String (t > 0 ? "+" : "") + juce::String (t)); // icon only, plus the shift when transposed
-    saveAllButton.setTooltip (t == 0 ? "Copy all the stems to a folder" : "Save all the stems pitch-shifted to the transposed key");
+    saveAllButton.setTooltip (t == 0 ? "Save all the stems to a folder as WAVs" : "Save all the stems pitch-shifted to the transposed key");
     chordView.setVisible (song != nullptr && chordsShown);
     chordView.setTranspose (proc.getTranspose());
     resized(); // the top bar and the stems header depend on what's visible

@@ -328,8 +328,8 @@ SongResultPtr SongJob::process()
         throw;
     }
     juce::int64 bytes = 0;
-    for (const auto& f : song->folder.findChildFiles (juce::File::findFiles, false, "*.wav")) bytes += f.getSize();
-    addLog ("Saved 6 stems + instrumental (24-bit WAV, " + juce::File::descriptionOfSizeInBytes (bytes) + ") in "
+    for (const auto& f : song->folder.findChildFiles (juce::File::findFiles, false, "*.flac")) bytes += f.getSize();
+    addLog ("Saved 6 stems + instrumental (24-bit FLAC, " + juce::File::descriptionOfSizeInBytes (bytes) + ") in "
             + seconds (nowMs() - saveStart));
     addLog ("Folder: " + song->folder.getFullPathName());
     addLog ("Done in " + text::minutesSeconds ((nowMs() - startMs) / 1000.0) + " (decode " + seconds (decodeMs) + ", model " + seconds (modelMs)

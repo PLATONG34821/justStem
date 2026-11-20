@@ -34,25 +34,29 @@ void saveSong (const SongResult& song)
     for (auto stem : stemOrder)
     {
         const auto& s = song.stems.at (stem);
-        writeWav (song.stemFile (stem), s);
+        writeFlac (song.folder.getChildFile (juce::String (stemFileName (stem))), s);
         if (stem != Stem::Vocals) addInto (instrumental, s);
     }
-    writeWav (song.instrumentalFile(), instrumental);
+    writeFlac (song.folder.getChildFile ("instrumental.flac"), instrumental);
     saveInfo (song);
 }
 
 bool copyStems (const SongResult& song, const juce::File& dir, const std::function<bool (double)>& progress)
 {
     if (! dir.createDirectory()) throw std::runtime_error ("Couldn't create " + dir.getFullPathName().toStdString());
-    std::vector<juce::File> files;
-    for (auto stem : stemOrder) files.push_back (song.stemFile (stem));
-    files.push_back (song.instrumentalFile());
-    for (std::size_t i = 0; i < files.size(); ++i)
+    // From the stems in memory (the saved ones are FLAC; WAV opens in every DAW).
+    constexpr double files = numStems + 1;
+    StereoAudio instrumental;
+    for (std::size_t i = 0; i < stemOrder.size(); ++i)
     {
-        if (! progress ((double) i / (double) files.size())) return false;
-        if (! files[i].copyFileTo (dir.getChildFile (files[i].getFileName())))
-            throw std::runtime_error ("Couldn't copy " + files[i].getFileName().toStdString() + " to " + dir.getFullPathName().toStdString());
+        if (! progress ((double) i / files)) return false;
+        const auto stem = stemOrder[i];
+        const auto& s = song.stems.at (stem);
+        writeWav (dir.getChildFile (juce::String (stemWavName (stem))), s);
+        if (stem != Stem::Vocals) addInto (instrumental, s);
     }
+    if (! progress ((double) numStems / files)) return false;
+    writeWav (dir.getChildFile ("instrumental.wav"), instrumental);
     progress (1.0);
     return true;
 }
@@ -98,11 +102,11 @@ bool saveTransposedStems (const SongResult& song, int semitones, const juce::Fil
         if (cancelled) return false; // the other threads stop at their next progress check
         if (i + atOnce < stemOrder.size()) start (i + atOnce);
         const auto stem = stemOrder[i];
-        writeWav (dir.getChildFile (song.stemFile (stem).getFileName()), shifted);
+        writeWav (dir.getChildFile (juce::String (stemWavName (stem))), shifted);
         if (stem != Stem::Vocals) addInto (instrumental, shifted);
         report();
     }
-    writeWav (dir.getChildFile (song.instrumentalFile().getFileName()), instrumental);
+    writeWav (dir.getChildFile ("instrumental.wav"), instrumental);
     progress (1.0);
     return true;
 }

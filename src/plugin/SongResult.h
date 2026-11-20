@@ -11,7 +11,7 @@
 
 namespace juststem
 {
-/** A split song: its stems (in memory and as WAVs in `folder`) and its analysis.
+/** A split song: its stems (in memory and as FLACs in `folder`) and its analysis.
     Immutable once published, so the audio thread can read it without locks. */
 struct SongResult
 {
@@ -24,17 +24,26 @@ struct SongResult
 
     bool isHQ() const { return model == text::from (model::hq.name); }
 
-    juce::File stemFile (Stem s) const { return folder.getChildFile (juce::String (stemFileName (s))); }
-    juce::File instrumentalFile() const { return folder.getChildFile ("instrumental.wav"); } // everything except vocals
+    /** The stem's FLAC, or its WAV in a song saved before stems were FLAC. */
+    juce::File stemFile (Stem s) const { return savedFile (juce::String (std::string (stemName (s)))); }
+    juce::File instrumentalFile() const { return savedFile ("instrumental"); } // everything except vocals
     juce::File infoFile() const { return folder.getChildFile ("info.json"); }
+
+private:
+    juce::File savedFile (const juce::String& name) const
+    {
+        const auto flac = folder.getChildFile (name + ".flac");
+        const auto wav = folder.getChildFile (name + ".wav");
+        return ! flac.existsAsFile() && wav.existsAsFile() ? wav : flac;
+    }
 };
 
 using SongResultPtr = std::shared_ptr<const SongResult>;
 
-/** Write the stem WAVs, the instrumental and info.json into song.folder. Throws std::runtime_error. */
+/** Write the stem FLACs, the instrumental and info.json into song.folder. Throws std::runtime_error. */
 void saveSong (const SongResult& song);
 
-/** Copy the stem WAVs and the instrumental into `dir` (created). `progress` gets 0..1 and returns false
+/** Write the stems and the instrumental into `dir` (created) as 24-bit WAVs. `progress` gets 0..1 and returns false
     to cancel. Returns false if cancelled. Throws std::runtime_error. */
 bool copyStems (const SongResult& song, const juce::File& dir, const std::function<bool (double)>& progress);
 
