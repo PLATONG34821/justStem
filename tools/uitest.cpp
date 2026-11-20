@@ -395,6 +395,21 @@ int main (int argc, char** argv)
         check (sameLength && edited->stems.at (juststem::Stem::Drums).left.back() == 0.0f, "a shortened stem is padded to the others' length on reload");
     }
 
+    std::printf ("A damaged info.json\n");
+    {
+        auto info = juce::JSON::parse (s->infoFile());
+        if (auto* obj = info.getDynamicObject())
+        {
+            obj->setProperty ("keyTonic", 99);
+            obj->setProperty ("firstDownbeat", -7);
+        }
+        s->infoFile().replaceWithText (juce::JSON::toString (info));
+        const auto damaged = juststem::loadSong (s->folder);
+        const auto& k = damaged->analysis.key;
+        const bool inRange = k.tonic >= 0 && k.tonic < 12 && damaged->analysis.chords.firstDownbeat >= 0;
+        check (inRange, "values out of range in info.json are brought into range" + (inRange ? " (key " + juce::String (k.name()) + ")" : juce::String()));
+    }
+
     editor.reset();
     proc2.reset();
     s->folder.deleteRecursively(); // the test's own stems

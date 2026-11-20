@@ -1,4 +1,5 @@
 #include "SongResult.h"
+#include "../core/Pitch.h"
 #include "../core/PitchShift.h"
 #include "../io/AudioFiles.h"
 
@@ -108,22 +109,25 @@ std::shared_ptr<SongResult> loadSong (const juce::File& folder)
     song->title = info["title"].toString();
     song->durationSeconds = (double) info["durationSeconds"];
     song->model = info["model"].toString();
-    a.key.tonic = (int) info["keyTonic"];
+    // info.json can be edited or damaged: values used as indices are brought into range.
+    const auto pitchClass = [] (int p) { return p < 0 ? -1 : wrapPitchClass (p); }; // -1: none
+    a.key.tonic = wrapPitchClass ((int) info["keyTonic"]);
     a.key.minor = (bool) info["keyMinor"];
     a.key.confidence = (float) (double) info["keyConfidence"];
-    a.key.votes = (int) info["keyVotes"];
+    a.key.votes = juce::jlimit (0, 3, (int) info["keyVotes"]);
     a.key.tuningCents = (float) (double) info["tuningCents"];
     a.tempo.bpm = (float) (double) info["bpm"];
     a.loudness.integratedLufs = (float) (double) info["lufs"];
     a.loudness.samplePeakDb = (float) (double) info["peakDb"];
     if (const auto* beats = info["beats"].getArray())
         for (const auto& b : *beats) a.chords.beats.push_back ((double) b);
-    a.chords.firstDownbeat = (int) info["firstDownbeat"];
+    a.chords.firstDownbeat = juce::jlimit (0, ChordResult::beatsPerBar - 1, (int) info["firstDownbeat"]);
     if (const auto* chords = info["chords"].getArray())
         for (const auto& c : *chords)
             if (c.size() == 5)
                 a.chords.segments.push_back ({ (double) c[0], (double) c[1],
-                                               { (int) c[2], (ChordQuality) juce::jlimit (0, numChordQualities - 1, (int) c[3]), (int) c[4] } });
+                                               { pitchClass ((int) c[2]), (ChordQuality) juce::jlimit (0, numChordQualities - 1, (int) c[3]),
+                                                 pitchClass ((int) c[4]) } });
 
     for (auto stem : stemOrder)
         song->stems[stem] = loadAudioFile (song->stemFile (stem));
