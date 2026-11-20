@@ -4,7 +4,7 @@
 
 You need CMake ≥ 3.28, Ninja and a C++20 compiler: the Xcode command-line tools on macOS, Visual
 Studio 2022 (run from a "Developer" command prompt) on Windows, GCC or Clang on Linux plus JUCE's
-packages (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are downloaded by CMake
+packages and libcurl for HTTPS (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are downloaded by CMake
 (pinned versions, checked against their SHA-256).
 
 1. Build the model once (needs Python 3); see the top of `scripts/prepare_demucs_onnx.py`. The
@@ -54,23 +54,28 @@ build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.o
   timing offset, same level).
 - `selftest`: separates a synthetic track and scores each stem against the original parts.
 - `juststem_uitest`: runs the real plug-in code without a DAW. It renders every screen to PNGs
-  (the README screenshots come from it), splits a song, and checks the preview audio (including a
-  host block larger than the one it prepared for), New song and Paste, the Storage panel, the chord
-  view, the transposed preview (in time with the original), transposed stem saving, and saving /
-  reloading the plug-in state.
+  (the README screenshots come from it), splits a song, and checks:
+  - the preview audio, including a host block larger than prepared and preparing again while
+    transposed, and the transposed preview (in time with the original);
+  - the UI: New song and Paste, the Storage panel, the chord view and its scrolling;
+  - saving: Save all (copies), transposed stems (and Cancel), saving / reloading the plug-in state
+    and refreshing an open window when it's restored;
+  - the awkward cases: an error naming a file in Thai, closing the plug-in mid-job, a stem edited
+    outside justStem, a damaged `info.json`.
 
 Set `JUSTSTEM_DATA_DIR` to an absolute folder to keep a run's songs and caches there instead of
 in your Music folder and app data (useful for tests and screenshots).
 
 `juststem_cli` can also `separate`, `analyze` or `import` real songs, or print the `chords` of a
-song folder the plug-in saved; see the top of `tools/cli.cpp`. Paths can be relative and contain
+song folder the plug-in saved; see the top of `tools/cli.cpp` (the self-tests are in
+`tools/selftest.cpp`). Paths can be relative and contain
 any characters (they're read as UTF-8).
 
 ## Code layout
 
 ```
 src/core/      Separation and analysis. Plain C++ + ONNX Runtime, no JUCE.
-  Audio.h        shared types: StereoAudio, Stem, sample rate
+  Audio.h        shared types: StereoAudio, Stem (and its file name), sample rate
   Pitch.h        note names and pitch classes
   Separator.*    runs the model (HT-Demucs, or BS-RoFormer in HQ mode) in crossfaded chunks
                  (CoreML / DirectML / CPU); each model's settings are in its ModelSpec
@@ -93,8 +98,8 @@ src/plugin/    The plug-in.
   StemPlayer.*       real-time stem preview (lock-free on the audio thread)
   Text.h             text helpers: BPM, m:ss, stem names
   ui/                theme (Inter font, colours, icons, buttons), widgets (key gauge, stem rows,
-                     segmented tabs), the song title, the player bar, the chord view and the
-                     Storage panel
+                     segmented tabs), the song title, the player bar, the chord view, the Storage
+                     panel and Save all (SaveStems)
 tools/         Developer tools, not shipped (see Testing).
 scripts/       Builds the model file.
 resources/     Embedded fonts, and the font and icon licences.
@@ -110,7 +115,7 @@ cmake/         ONNX Runtime download (per OS), packaging.
 | Stems for each song (7 WAVs + `info.json`) | `<your Music folder>/justStem/<song title>/` |
 | yt-dlp and Deno (downloaded on the first YouTube link) | `<app data>/justStem/bin/` |
 | CoreML's compiled model (macOS; makes later loads fast) | `<app data>/justStem/coreml-cache/` |
-| YouTube audio while it's being processed | `<app data>/justStem/downloads/` |
+| YouTube audio while it's being decoded (a folder per download, deleted after) | `<app data>/justStem/downloads/` |
 
 `<app data>` is `~/Library/Application Support` on macOS, `%APPDATA%` on Windows and `~/.config`
 on Linux. A DAW project only stores the song folder's path and the mute / solo / volume /
@@ -123,6 +128,9 @@ files). The same decoders are used on every OS: JUCE's readers, plus our own MP4
 for AAC. Decoding is gapless: the encoder delay and padding recorded in the file (iTunes
 `iTunSMPB`, MP4 edit lists, LAME / ffmpeg MP3 tags) are removed, so the stems line up
 sample-exactly with the original file in a DAW.
+
+Songs can be up to 15 minutes (`maxSongSeconds`). Longer files are refused before they're decoded,
+and longer YouTube videos (and live streams) before they're downloaded.
 
 ## How chords are found
 
@@ -146,7 +154,7 @@ the bass instead.
 
 The preview is pitch-shifted live; the shifter delays its output a little, so playback reads that
 far ahead and stays in time with the DAW. With Transpose on, Save all writes a pitch-shifted set of
-stems + instrumental to a new folder (about 12 s for a 5-minute song).
+stems + instrumental to a new folder, three stems at a time (about 4 s for a 5-minute song on an M4).
 
 ## Third-party licences
 
