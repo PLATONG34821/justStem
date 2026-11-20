@@ -75,6 +75,7 @@ private:
     juststem::ui::PillButton revealButton { {}, juststem::ui::icons::folder() };
     juststem::ui::PillButton saveAllButton { {}, juststem::ui::icons::download() };
     juststem::ui::PillButton storageButton { {}, juststem::ui::icons::drive() };
+    juststem::ui::PillButton updateButton { "Update", juststem::ui::icons::download() }; // only when a newer release is out
     std::unique_ptr<juststem::ui::StoragePanel> storagePanel;
 
     juststem::ui::TabButton stemsTab { "Stems" }, chordsTab { "Chords" };

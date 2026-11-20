@@ -79,6 +79,7 @@ set(JUSTSTEM_IO_SOURCES
     src/io/M4aDecoder.cpp
     src/io/Storage.cpp
     src/io/ToolInstaller.cpp
+    src/io/UpdateCheck.cpp
     src/io/YouTube.cpp)
 
 set(JUSTSTEM_PLUGIN_SOURCES
@@ -107,7 +108,8 @@ juce_add_binary_data(juststem_fonts SOURCES
 # the target needs besides juce_cryptography (the src/io layer's), e.g. juce::juce_audio_utils for a UI.
 function(juststem_juce_settings target scope)
     # JUCE_USE_CURL is set by JUCE from each target's NEEDS_CURL (Linux only).
-    target_compile_definitions(${target} ${scope} JUCE_WEB_BROWSER=0 JUCE_USE_MP3AUDIOFORMAT=1)
+    target_compile_definitions(${target} ${scope} JUCE_WEB_BROWSER=0 JUCE_USE_MP3AUDIOFORMAT=1
+        JUSTSTEM_VERSION="${PROJECT_VERSION}") # for the update check
     target_link_libraries(${target} PRIVATE
         juststem_core
         juce::juce_cryptography

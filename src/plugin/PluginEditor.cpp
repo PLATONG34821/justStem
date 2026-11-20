@@ -114,6 +114,9 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     storageButton.setTooltip ("Storage: see how much space justStem uses and free it");
     storageButton.onClick = [this] { showStorage(); };
     addAndMakeVisible (storageButton);
+    updateButton.setName ("Update");
+    updateButton.onClick = [] { juststem::UpdateCheck::releasePage().launchInDefaultBrowser(); };
+    addChildComponent (updateButton); // shown by timerCallback once the check finds a newer release
 
     stemsTab.onClick = [this] { showChords (false); };
     chordsTab.onClick = [this] { showChords (true); };
@@ -154,6 +157,11 @@ void justStemEditor::resized()
     wordmarkArea = juce::Rectangle<int> (wordmarkWidth() + 4, top.getHeight()).withCentre ({ getWidth() / 2, top.getCentreY() });
     storageButton.setBounds (top.removeFromRight (40));
     top.removeFromRight (10);
+    if (updateButton.isVisible())
+    {
+        updateButton.setBounds (top.removeFromRight (updateButton.idealWidth (40)));
+        top.removeFromRight (8);
+    }
     if (inputShown())
     {
         if (closeInputButton.isVisible()) // back to the song: where New song was, the same size
@@ -462,6 +470,13 @@ void justStemEditor::updatePlayerBar()
 
 void justStemEditor::timerCallback()
 {
+    if (! updateButton.isVisible())
+        if (const auto v = proc.updates().newerVersion(); v.isNotEmpty())
+        {
+            updateButton.setTooltip ("justStem " + v + " is out: open the download page");
+            updateButton.setVisible (true);
+            resized();
+        }
     if (proc.isBusy())
     {
         updateGauge();
