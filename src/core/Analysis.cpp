@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <future>
 #include <numbers>
 
 namespace juststem
@@ -329,10 +330,11 @@ std::vector<float> rhythmOnsets (const SongParts& parts)
     return dsp::onsetEnvelope (rhythm, sampleRate);
 }
 
-ChordResult songChords (const SongParts& parts, float bpm, const KeyResult& key, const std::vector<float>& onsets)
+/** The chords, from peaks and rhythm onsets worked out alongside each other. */
+ChordResult songChords (const SongParts& parts, const ChordPeaks& peaks, const std::vector<float>& onsets, float bpm, const KeyResult& key)
 {
     const double length = (double) parts.drums.size() / sampleRate;
-    return detectChordsOnBeats (parts.harmonic, parts.bass, trackBeats (onsets, length, sampleRate, bpm), sampleRate, bpm, key);
+    return detectChordsOnBeats (peaks, length, trackBeats (onsets, length, sampleRate, bpm), sampleRate, bpm, key);
 }
 } // namespace
 
@@ -341,17 +343,24 @@ SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems)
     // Key from everything except drums; tempo and beats from the drums (from the other instruments
     // when there are none); loudness from the original mix; chords from the chord instruments and
     // the bass. Without stems, all of them use the mix.
+    // The slow steps don't depend on each other, so they run at the same time (the results are the
+    // same as one after another).
     const SongParts parts (mix, stems);
-    const auto onsets = rhythmOnsets (parts);
-    SongAnalysis a { detectKey (parts.nonDrums, sampleRate), tempoFromOnsets (onsets, sampleRate),
-                     measureLoudness (mix.left, mix.right, sampleRate), {} };
-    a.chords = songChords (parts, a.tempo.bpm, a.key, onsets);
+    auto onsets = std::async (std::launch::async, [&] { return rhythmOnsets (parts); });
+    auto key = std::async (std::launch::async, [&] { return detectKey (parts.nonDrums, sampleRate); });
+    auto loudness = std::async (std::launch::async, [&] { return measureLoudness (mix.left, mix.right, sampleRate); });
+    const auto peaks = chordPeaks (parts.harmonic, parts.bass, sampleRate);
+    const auto rhythm = onsets.get();
+    SongAnalysis a { key.get(), tempoFromOnsets (rhythm, sampleRate), loudness.get(), {} };
+    a.chords = songChords (parts, peaks, rhythm, a.tempo.bpm, a.key);
     return a;
 }
 
 ChordResult detectSongChords (const StereoAudio& mix, const StemMap& stems, float bpm, const KeyResult& key)
 {
     const SongParts parts (mix, stems);
-    return songChords (parts, bpm, key, rhythmOnsets (parts));
+    auto onsets = std::async (std::launch::async, [&] { return rhythmOnsets (parts); });
+    const auto peaks = chordPeaks (parts.harmonic, parts.bass, sampleRate);
+    return songChords (parts, peaks, onsets.get(), bpm, key);
 }
 } // namespace juststem

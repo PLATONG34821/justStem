@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Audio.h"
+#include "Dsp.h"
 
 #include <string>
 #include <vector>
@@ -63,7 +64,16 @@ std::vector<double> trackBeats (const std::vector<float>& onsets, double lengthS
 ChordResult detectChords (const std::vector<float>& harmonic, const std::vector<float>& bass, const std::vector<float>& rhythm,
                           int rate, float bpm, const KeyResult& key);
 
-/** detectChords with the beats already known (from trackBeats); a plain grid at `bpm` when empty. */
-ChordResult detectChordsOnBeats (const std::vector<float>& harmonic, const std::vector<float>& bass, std::vector<double> beats,
-                                 int rate, float bpm, const KeyResult& key);
+/** The spectral peaks chords are found from: the chord instruments' and the bass line's. The slow part
+    of chord detection, and independent of the beats and the key, so it can run alongside them. */
+struct ChordPeaks
+{
+    dsp::PeakFrames harmonic, bass;
+};
+ChordPeaks chordPeaks (const std::vector<float>& harmonic, const std::vector<float>& bass, int rate);
+
+/** detectChords with the peaks and the beats (from trackBeats) already known; a plain grid at `bpm`
+    when `beats` is empty. */
+ChordResult detectChordsOnBeats (const ChordPeaks&, double lengthSeconds, std::vector<double> beats, int rate, float bpm,
+                                 const KeyResult& key);
 } // namespace juststem

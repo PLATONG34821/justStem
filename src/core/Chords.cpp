@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <future>
 #include <numbers>
 
 namespace juststem
@@ -164,18 +165,25 @@ std::vector<double> trackBeats (const std::vector<float>& env, double length, in
 }
 
 // ------------------------------------------------------------------------------------ chords
+ChordPeaks chordPeaks (const std::vector<float>& harmonic, const std::vector<float>& bass, int rate)
+{
+    // Independent of each other: the bass (the larger FFT, the slower) on a second thread.
+    auto bassPeaks = std::async (std::launch::async, [&] { return dsp::spectralPeaks (bass, rate, 16384, 2048, 30.0f, 300.0f); });
+    auto harmonicPeaks = dsp::spectralPeaks (harmonic, rate, 8192, 2048, 60.0f, 2500.0f);
+    return { std::move (harmonicPeaks), bassPeaks.get() };
+}
+
 ChordResult detectChords (const std::vector<float>& harmonic, const std::vector<float>& bass, const std::vector<float>& rhythm,
                           int rate, float bpm, const KeyResult& key)
 {
-    return detectChordsOnBeats (harmonic, bass, trackBeats (dsp::onsetEnvelope (rhythm, rate), (double) rhythm.size() / rate, rate, bpm),
-                                rate, bpm, key);
+    auto beats = trackBeats (dsp::onsetEnvelope (rhythm, rate), (double) rhythm.size() / rate, rate, bpm);
+    return detectChordsOnBeats (chordPeaks (harmonic, bass, rate), (double) harmonic.size() / rate, std::move (beats), rate, bpm, key);
 }
 
-ChordResult detectChordsOnBeats (const std::vector<float>& harmonic, const std::vector<float>& bass, std::vector<double> beats,
-                                 int rate, float bpm, const KeyResult& key)
+ChordResult detectChordsOnBeats (const ChordPeaks& peaks, double length, std::vector<double> beats, int rate, float bpm,
+                                 const KeyResult& key)
 {
     ChordResult result;
-    const double length = (double) harmonic.size() / rate;
     if (length <= 0) return result;
 
     result.beats = std::move (beats);
@@ -193,7 +201,7 @@ ChordResult detectChordsOnBeats (const std::vector<float>& harmonic, const std::
     };
 
     // Chroma of the chord instruments per unit: each spectral peak counts for its nearest semitone.
-    const auto hp = dsp::spectralPeaks (harmonic, rate, 8192, 2048, 60.0f, 2500.0f);
+    const auto& hp = peaks.harmonic;
     const double ref = 440.0 * std::pow (2.0, hp.tuning / 12.0);
     std::vector<Chroma> chroma ((size_t) units, Chroma {});
     std::vector<float> activity ((size_t) units, 0.0f);
@@ -209,7 +217,7 @@ ChordResult detectChordsOnBeats (const std::vector<float>& harmonic, const std::
         }
     }
     // Bass note per frame: the lowest strong peak (overtones of a bass note sit above it).
-    const auto bp = dsp::spectralPeaks (bass, rate, 16384, 2048, 30.0f, 300.0f);
+    const auto& bp = peaks.bass;
     std::vector<Chroma> bassChroma ((size_t) units, Chroma {});
     std::vector<float> bassActivity ((size_t) units, 0.0f);
     for (std::size_t i = 0; i < bp.frames.size(); ++i)
