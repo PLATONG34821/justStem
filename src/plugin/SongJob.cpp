@@ -206,11 +206,9 @@ SongResultPtr SongJob::process()
     const juce::File coremlCache (juce::String::fromUTF8 (separator.cacheFolder().c_str()));
     const bool cached = coremlCache.isDirectory()
                         && coremlCache.getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0;
-    // Typical compile times on an M4 (HQ measured at 129 s, standard at 25-35 s); slower Macs take longer.
-    const double compileSeconds = &spec == &model::hq ? 150.0 : 35.0;
+    const double compileSeconds = spec.coremlCompileSeconds;
     addLog (cached ? "Using the CoreML model compiled on an earlier run"
-                   : "First run on this Mac: compiling the model for CoreML (only once; about "
-                         + (compileSeconds >= 60 ? juce::String (compileSeconds / 60.0, 1) + " min" : juce::String ((int) compileSeconds) + " s") + ")");
+                   : "First run on this Mac: compiling the model for CoreML (only once; about " + text::roughDuration (compileSeconds) + ")");
     // Compiling happens when the first chunk runs; the first progress report ends the countdown.
     if (! cached) setTimedStatus ("Compiling AI model", compileSeconds);
 #endif

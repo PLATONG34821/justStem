@@ -27,6 +27,12 @@ inline juce::String bpm (double value)
     return std::abs (r - std::round (r)) < 0.05 ? juce::String ((int) std::round (r)) : juce::String (r, 1);
 }
 
+/** A rough duration: "35 s", "2.5 min". */
+inline juce::String roughDuration (double seconds)
+{
+    return seconds >= 60 ? juce::String (seconds / 60.0, 1) + " min" : juce::String ((int) seconds) + " s";
+}
+
 /** "m:ss" (negative times show as 0:00). */
 inline juce::String minutesSeconds (double seconds)
 {

@@ -26,6 +26,9 @@ struct ModelSpec
     std::array<Stem, numStems> outputStems;
     /** Divide the mix by its standard deviation before the model (and multiply the stems back). */
     bool normaliseInput;
+    /** How long CoreML takes to compile the model the first time, for the progress countdown (macOS).
+        Typical on an M4 (HT-Demucs 25-35 s, BS-RoFormer measured at 129 s); slower Macs take longer. */
+    double coremlCompileSeconds;
 };
 
 namespace model
@@ -33,13 +36,13 @@ namespace model
     /** Fast: HT-Demucs 6-stem, built by scripts/prepare_demucs_onnx.py. Always bundled. */
     inline constexpr ModelSpec fast { "htdemucs_6s_opt.onnx", "HT-Demucs", ModelInput::Waveform, 343'980,
                                       { Stem::Drums, Stem::Bass, Stem::Other, Stem::Vocals, Stem::Guitar, Stem::Piano },
-                                      true };
+                                      true, 35.0 };
     /** HQ: BS-RoFormer SW 6-stem, built by scripts/prepare_roformer_onnx.py. Bundled when present at
         build time. fp16 maths (fast on GPUs, ~1.7x slower on the CPU fallback).
         STFT: 2048-point, hop 512, periodic Hann window, centred (reflect padding). */
     inline constexpr ModelSpec hq { "bs_roformer_sw_6stem_opt.onnx", "BS-RoFormer", ModelInput::Spectrogram, 176'400,
                                     { Stem::Bass, Stem::Drums, Stem::Other, Stem::Vocals, Stem::Guitar, Stem::Piano },
-                                    false };
+                                    false, 150.0 };
 
     /** The spec whose file name matches the end of `path`; HT-Demucs if none does. */
     const ModelSpec& forFile (std::string_view path);

@@ -1,4 +1,6 @@
 #include "StoragePanel.h"
+#include "../../core/Separator.h"
+#include "../Text.h"
 
 namespace juststem::ui
 {
@@ -12,6 +14,12 @@ constexpr int songRowH = 46;   // a saved song in the list
 constexpr int otherRowH = 44;  // the cache / tools / downloads rows in the footer
 constexpr int scrollGap = 12;  // between the list and its scrollbar, out in the card's margin
 constexpr float radius = 18.0f;
+
+/** The one-time CoreML compile, for each model: "35 s, 2.5 min in HQ mode". */
+juce::String compileTimes()
+{
+    return text::roughDuration (model::fast.coremlCompileSeconds) + ", " + text::roughDuration (model::hq.coremlCompileSeconds) + " in HQ mode";
+}
 
 juce::Colour cardColour() { return Palette::bgTop.darker (0.25f); }
 
@@ -84,7 +92,7 @@ StoragePanel::StoragePanel (std::function<juce::File()> inUse, std::function<boo
                  });
     };
     clearCacheButton.onClick = [this] {
-        confirm ("Clear the AI model cache?", "It's rebuilt automatically the next time you split a song (about 35 seconds, or about 2.5 minutes in HQ mode, once).",
+        confirm ("Clear the AI model cache?", "It's rebuilt automatically the next time you split a song (once; about " + compileTimes() + ").",
                  "Clear", [this] { storage::clearFolder (paths::coremlCache()); refresh(); });
     };
     removeToolsButton.onClick = [this] {
@@ -235,8 +243,8 @@ void StoragePanel::paint (juce::Graphics& g)
     }
 
     // Cache / tools / downloads rows.
-    struct Item { const char* name; const char* note; juce::int64 bytes; };
-    const Item items[] { { "AI model cache", "Rebuilt automatically on the next split (35 s, 2.5 min for HQ)", cacheBytes },
+    struct Item { const char* name; juce::String note; juce::int64 bytes; };
+    const Item items[] { { "AI model cache", "Rebuilt automatically on the next split (" + compileTimes() + ")", cacheBytes },
                          { "YouTube tools", "yt-dlp and Deno, downloaded again when needed", toolsBytes },
                          { "Temporary downloads", "YouTube audio waiting to be split", downloadsBytes } };
     // They sit in a darker footer, set apart from the songs.
