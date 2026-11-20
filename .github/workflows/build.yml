@@ -69,7 +69,7 @@ jobs:
       - name: Build
         run: cmake --build build
 
-      - name: Test analysis (resampler, loudness, key, tempo)
+      - name: Test analysis (resampler, loudness, key, tempo, chords, pitch shift)
         run: build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
       - name: Test separation
         run: build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx 12
