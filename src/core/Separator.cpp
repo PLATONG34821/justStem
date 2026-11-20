@@ -289,11 +289,17 @@ Separator::Separator (std::string modelPath, std::string cacheDir)
     : impl (std::make_unique<Impl>()), modelSpec (model::forFile (modelPath))
 {
     impl->path = std::move (modelPath);
+#if defined (__APPLE__)
     impl->cacheDir = cacheDir.empty() ? std::string() : coremlCacheFolder (impl->path, cacheDir);
+#else
+    (void) cacheDir; // only CoreML compiles and caches models
+#endif
     impl->spec = &modelSpec;
 }
 
 Separator::~Separator() = default;
+
+const std::string& Separator::cacheFolder() const { return impl->cacheDir; }
 
 StemMap Separator::separate (const StereoAudio& mix,
                              const std::function<void (const SeparationProgress&)>& onProgress,

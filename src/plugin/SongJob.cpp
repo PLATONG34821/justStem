@@ -211,10 +211,17 @@ SongResultPtr SongJob::process()
     const auto& spec = model::forFile (modelFile.getFullPathName().toStdString());
     addLog ("Model: " + modelFile.getFileName() + " (" + juce::String (std::string (spec.name)) + ", 6 stems, "
             + juce::File::descriptionOfSizeInBytes (modelFile.getSize()) + ")");
-    // One cache folder per model file version, so "already compiled" is known for each.
-    const juce::File coremlCache (juce::String::fromUTF8 (Separator::coremlCacheFolder (
-        modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString()).c_str()));
+    song->model = juce::String (std::string (spec.name));
 #if JUCE_MAC
+    // CoreML keeps the compiled model in one cache folder per model file version, so "already
+    // compiled" is known for each. Other OSes have no compile step and no cache.
+    const std::string coremlBase = paths::coremlCache().getFullPathName().toStdString();
+#else
+    const std::string coremlBase;
+#endif
+    Separator separator (modelFile.getFullPathName().toStdString(), coremlBase);
+#if JUCE_MAC
+    const juce::File coremlCache (juce::String::fromUTF8 (separator.cacheFolder().c_str()));
     const bool cached = coremlCache.isDirectory()
                         && coremlCache.getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0;
     // Typical compile times on an M4 (HQ measured at 129 s, standard at 25-35 s); slower Macs take longer.
@@ -225,8 +232,6 @@ SongResultPtr SongJob::process()
     // Compiling happens when the first chunk runs; the first progress report ends the countdown.
     if (! cached) setTimedStatus ("Compiling AI model", compileSeconds);
 #endif
-    song->model = juce::String (std::string (spec.name));
-    Separator separator (modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString());
 
     // The model is loaded when the first chunk runs, so the first progress report marks it ready.
     const auto splitStart = nowMs();
