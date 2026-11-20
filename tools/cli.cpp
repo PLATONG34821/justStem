@@ -399,6 +399,23 @@ static int analyzeSelftest()
                 check (same >= 0.85 * samples, label + "exact chords " + std::to_string (100 * same / samples) + "%, root+major/minor "
                                                    + std::to_string (100 * sameTriad / samples) + "%");
                 if (transpose == 0 && bpm == 96.0) std::printf ("%s", chordChart (r, length, key).c_str());
+
+                if (transpose == 0)
+                {
+                    // The same band without drums, through analyzeSong as the plug-in runs it: the tempo
+                    // and the beats come from the chords and the bass instead of a silent drums stem.
+                    StemMap stems;
+                    stems[Stem::Piano] = { harmonic, harmonic };
+                    stems[Stem::Bass] = { bass, bass };
+                    stems[Stem::Drums] = { std::vector<float> (harmonic.size(), 0.0f), std::vector<float> (harmonic.size(), 0.0f) };
+                    StereoAudio mixNoDrums { harmonic, harmonic };
+                    for (std::size_t i = 0; i < bass.size(); ++i) { mixNoDrums.left[i] += bass[i]; mixNoDrums.right[i] += bass[i]; }
+                    const auto a = analyzeSong (mixNoDrums, stems);
+                    double err = 1e9;
+                    for (double f : { 0.5, 1.0, 2.0 }) err = std::min (err, std::fabs (a.tempo.bpm * f - bpm));
+                    check (err < 0.5 && a.chords.beats.size() > (size_t) totalBeats / 2,
+                           label + "no drums: tempo " + juce::String (a.tempo.bpm, 2).toStdString() + " BPM from the other instruments");
+                }
             }
         KeyResult eb;
         eb.tonic = 3;

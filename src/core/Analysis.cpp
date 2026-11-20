@@ -317,46 +317,42 @@ struct SongParts
     }
 };
 
-/** Chords from the parts. `drumOnsets`: onsetEnvelope (parts.drums) when already worked out. */
-ChordResult songChords (const SongParts& parts, float bpm, const KeyResult& key, const std::vector<float>* drumOnsets)
+/** The onset envelope that tempo and beats are found in: the drums', or for a song without drums
+    (a near-silent drums stem) the chord instruments' and the bass's. */
+std::vector<float> rhythmOnsets (const SongParts& parts)
 {
     const std::size_t n = parts.drums.size();
-    const double length = (double) n / sampleRate;
     double drumEnergy = 0;
     for (float v : parts.drums) drumEnergy += (double) v * v;
-    std::vector<float> computed;
-    const std::vector<float>* onsets = drumOnsets;
-    if (n > 0 && std::sqrt (drumEnergy / (double) n) < 1e-3)
-    {
-        // Songs without drums: find the beats in everything else.
-        std::vector<float> rhythm (n);
-        for (std::size_t i = 0; i < n; ++i) rhythm[i] = parts.harmonic[i] + parts.bass[i];
-        computed = dsp::onsetEnvelope (rhythm, sampleRate);
-        onsets = &computed;
-    }
-    else if (onsets == nullptr)
-    {
-        computed = dsp::onsetEnvelope (parts.drums, sampleRate);
-        onsets = &computed;
-    }
-    return detectChordsOnBeats (parts.harmonic, parts.bass, trackBeats (*onsets, length, sampleRate, bpm), sampleRate, bpm, key);
+    if (n == 0 || std::sqrt (drumEnergy / (double) n) >= 1e-3) return dsp::onsetEnvelope (parts.drums, sampleRate);
+    std::vector<float> rhythm (n);
+    for (std::size_t i = 0; i < n; ++i) rhythm[i] = parts.harmonic[i] + parts.bass[i];
+    return dsp::onsetEnvelope (rhythm, sampleRate);
+}
+
+ChordResult songChords (const SongParts& parts, float bpm, const KeyResult& key, const std::vector<float>& onsets)
+{
+    const double length = (double) parts.drums.size() / sampleRate;
+    return detectChordsOnBeats (parts.harmonic, parts.bass, trackBeats (onsets, length, sampleRate, bpm), sampleRate, bpm, key);
 }
 } // namespace
 
 SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems)
 {
-    // Key from everything except drums; tempo and beats from the drums; loudness from the original
-    // mix; chords from the chord instruments and the bass. Without stems, all of them use the mix.
+    // Key from everything except drums; tempo and beats from the drums (from the other instruments
+    // when there are none); loudness from the original mix; chords from the chord instruments and
+    // the bass. Without stems, all of them use the mix.
     const SongParts parts (mix, stems);
-    const auto drumOnsets = dsp::onsetEnvelope (parts.drums, sampleRate);
-    SongAnalysis a { detectKey (parts.nonDrums, sampleRate), tempoFromOnsets (drumOnsets, sampleRate),
+    const auto onsets = rhythmOnsets (parts);
+    SongAnalysis a { detectKey (parts.nonDrums, sampleRate), tempoFromOnsets (onsets, sampleRate),
                      measureLoudness (mix.left, mix.right, sampleRate), {} };
-    a.chords = songChords (parts, a.tempo.bpm, a.key, &drumOnsets);
+    a.chords = songChords (parts, a.tempo.bpm, a.key, onsets);
     return a;
 }
 
 ChordResult detectSongChords (const StereoAudio& mix, const StemMap& stems, float bpm, const KeyResult& key)
 {
-    return songChords (SongParts (mix, stems), bpm, key, nullptr);
+    const SongParts parts (mix, stems);
+    return songChords (parts, bpm, key, rhythmOnsets (parts));
 }
 } // namespace juststem

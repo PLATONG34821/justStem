@@ -52,8 +52,8 @@ struct SongAnalysis
     ChordResult chords;
 };
 
-/** Key (from the non-drum stems), tempo (from the drums), loudness (from the mix) and chords.
-    Pass an empty StemMap to analyse the mix alone. */
+/** Key (from the non-drum stems), tempo (from the drums, or from the other instruments in a song
+    without drums), loudness (from the mix) and chords. Pass an empty StemMap to analyse the mix alone. */
 SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems);
 
 /** The chords alone (as analyzeSong finds them), for a known tempo and key: from the separated stems
