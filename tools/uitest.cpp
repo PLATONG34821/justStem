@@ -310,6 +310,13 @@ int main (int argc, char** argv)
                juce::String (files) + " transposed WAVs, same length as the originals, in " + juce::String (secs, 1) + " s");
         dir.deleteRecursively();
 
+        const auto cancelDir = outDir.getChildFile ("cancelled stems");
+        const auto c0 = juce::Time::getMillisecondCounterHiRes();
+        const bool finished = juststem::saveTransposedStems (*s, 2, cancelDir, [] (double) { return false; });
+        const double cancelMs = juce::Time::getMillisecondCounterHiRes() - c0;
+        check (! finished && cancelMs < 1500, "Cancel stops a transposed save (" + juce::String (juce::roundToInt (cancelMs)) + " ms)");
+        cancelDir.deleteRecursively();
+
         // Save all without Transpose: copies of the saved WAVs.
         const auto copies = outDir.getChildFile ("copied stems");
         copies.deleteRecursively();

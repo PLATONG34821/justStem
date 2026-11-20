@@ -4,6 +4,10 @@
 #include "../io/AudioFiles.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <future>
 #include <stdexcept>
 #include <vector>
 
@@ -56,18 +60,50 @@ bool copyStems (const SongResult& song, const juce::File& dir, const std::functi
 bool saveTransposedStems (const SongResult& song, int semitones, const juce::File& dir, const std::function<bool (double)>& progress)
 {
     if (! dir.createDirectory()) throw std::runtime_error ("Couldn't create " + dir.getFullPathName().toStdString());
+
+    // The stems are independent, so a few are shifted at once (three at a time, which keeps the extra
+    // memory to three shifted stems). They're written in order on this thread, which also reports the
+    // progress and passes a cancel on to the threads. The files are the same as one at a time.
+    constexpr std::size_t atOnce = 3;
+    std::array<std::atomic<double>, numStems> fraction {};
+    std::atomic<bool> cancelled { false };
+    std::array<std::future<StereoAudio>, numStems> shifting;
+    // However this returns (done, cancelled, or an error writing), shifting still going stops before
+    // `shifting` waits for it.
+    struct StopOnExit
+    {
+        std::atomic<bool>& flag;
+        ~StopOnExit() { flag = true; }
+    } stopOnExit { cancelled };
+    auto start = [&] (std::size_t i) {
+        shifting[i] = std::async (std::launch::async, [&, i] {
+            return pitchShift (song.stems.at (stemOrder[i]), (float) semitones, sampleRate, [&, i] (double f) {
+                fraction[i] = f;
+                return ! cancelled.load();
+            });
+        });
+    };
+    auto report = [&] {
+        double sum = 0;
+        for (const auto& f : fraction) sum += f.load();
+        if (! progress (sum / (double) numStems)) cancelled = true;
+    };
+    for (std::size_t i = 0; i < std::min (atOnce, stemOrder.size()); ++i) start (i);
+
     StereoAudio instrumental;
     for (std::size_t i = 0; i < stemOrder.size(); ++i)
     {
+        while (shifting[i].wait_for (std::chrono::milliseconds (100)) != std::future_status::ready) report();
+        const auto shifted = shifting[i].get();
+        if (cancelled) return false; // the other threads stop at their next progress check
+        if (i + atOnce < stemOrder.size()) start (i + atOnce);
         const auto stem = stemOrder[i];
-        const auto shifted = pitchShift (song.stems.at (stem), (float) semitones, sampleRate, [&] (double f) {
-            return progress (((double) i + f) / (double) stemOrder.size());
-        });
-        if (shifted.size() == 0 && song.stems.at (stem).size() > 0) return false; // cancelled
         writeWav (dir.getChildFile (song.stemFile (stem).getFileName()), shifted);
         if (stem != Stem::Vocals) addInto (instrumental, shifted);
+        report();
     }
     writeWav (dir.getChildFile (song.instrumentalFile().getFileName()), instrumental);
+    progress (1.0);
     return true;
 }
 
