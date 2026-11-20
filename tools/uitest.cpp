@@ -80,6 +80,9 @@ int main (int argc, char** argv)
     snapshot (*editor, outDir.getChildFile ("1-idle.png"));
 
     proc->startFile (song);
+    // On a first run (no compiled CoreML model) the gauge counts down while the model compiles.
+    pumpUntil ([&] { auto s = proc->jobStatus(); return (s.secondsLeft >= 0 && s.fraction > 0.1) || s.step.startsWith ("Splitting"); }, 600000);
+    if (proc->jobStatus().secondsLeft >= 0) snapshot (*editor, outDir.getChildFile ("2a-compiling.png"));
     pumpUntil ([&] { auto s = proc->jobStatus(); return s.step.startsWith ("Splitting") && s.fraction > 0.3; }, 600000);
     snapshot (*editor, outDir.getChildFile ("2-progress.png"));
     const auto t0 = juce::Time::getMillisecondCounterHiRes();

@@ -73,7 +73,23 @@ SongJob::~SongJob()
 SongJob::Status SongJob::status() const
 {
     const juce::ScopedLock sl (statusLock);
-    return current;
+    auto s = current;
+    if (timedSeconds > 0)
+    {
+        // Never reaches 100 %: the real length varies from Mac to Mac.
+        const double elapsed = (juce::Time::getMillisecondCounterHiRes() - timedStartMs) / 1000.0;
+        s.fraction = std::min (0.97, elapsed / timedSeconds);
+        s.secondsLeft = std::max (0.0, timedSeconds - elapsed);
+    }
+    return s;
+}
+
+void SongJob::setTimedStatus (const juce::String& step, double expectedSeconds)
+{
+    setStatus (step, -1);
+    const juce::ScopedLock sl (statusLock);
+    timedStartMs = juce::Time::getMillisecondCounterHiRes();
+    timedSeconds = expectedSeconds;
 }
 
 juce::StringArray SongJob::log() const
@@ -99,6 +115,7 @@ void SongJob::setStatus (const juce::String& step, double fraction)
     {
         const juce::ScopedLock sl (statusLock);
         current = { step, fraction };
+        timedSeconds = 0;
         if (base != lastStep)
         {
             lastStep = base;
@@ -200,9 +217,13 @@ SongResultPtr SongJob::process()
 #if JUCE_MAC
     const bool cached = coremlCache.isDirectory()
                         && coremlCache.getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0;
+    // Typical compile times on an M4 (HQ measured at 129 s, standard at 25-35 s); slower Macs take longer.
+    const double compileSeconds = &spec == &model::hq ? 150.0 : 35.0;
     addLog (cached ? "Using the CoreML model compiled on an earlier run"
-                   : "First run on this Mac: compiling the model for CoreML (only once; "
-                         + juce::String (&spec == &model::hq ? "about 2.5 min" : "about 25 s") + ")");
+                   : "First run on this Mac: compiling the model for CoreML (only once; about "
+                         + (compileSeconds >= 60 ? juce::String (compileSeconds / 60.0, 1) + " min" : juce::String ((int) compileSeconds) + " s") + ")");
+    // Compiling happens when the first chunk runs; the first progress report ends the countdown.
+    if (! cached) setTimedStatus ("Compiling AI model", compileSeconds);
 #endif
     song->model = juce::String (std::string (spec.name));
     Separator separator (modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString());

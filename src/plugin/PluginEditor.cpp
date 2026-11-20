@@ -548,8 +548,18 @@ void justStemEditor::updateGauge()
         s.caption = st.step.upToFirstOccurrenceOf (" (", false, false);
         if (s.caption.isEmpty()) s.caption = "Starting";
         s.fraction = st.fraction;
-        s.value = st.fraction >= 0 ? juce::String (juce::roundToInt (st.fraction * 100)) : juce::String::fromUTF8 ("\xe2\x80\xa6");
-        s.unit = st.fraction >= 0 ? "%" : "";
+        if (st.secondsLeft >= 0) // compiling the model: a countdown, as it's a one-off wait of minutes
+        {
+            const int left = juce::roundToInt (st.secondsLeft);
+            s.value = left > 0 ? juce::String (left / 60) + ":" + juce::String (left % 60).paddedLeft ('0', 2)
+                               : juce::String ("Almost");
+            s.unit = left > 0 ? "one-time setup" : "done, one-time setup";
+        }
+        else
+        {
+            s.value = st.fraction >= 0 ? juce::String (juce::roundToInt (st.fraction * 100)) : juce::String::fromUTF8 ("\xe2\x80\xa6");
+            s.unit = st.fraction >= 0 ? "%" : "";
+        }
     }
     else if (auto song = proc.getSong())
     {
