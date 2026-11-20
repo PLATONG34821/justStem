@@ -151,19 +151,18 @@ static int importSong (const juce::String& source, const juce::File& outWav)
 {
     std::atomic<bool> cancel { false };
     juce::File file = juce::File::getCurrentWorkingDirectory().getChildFile (source);
-    juce::String title;
+    DownloadedAudio dl; // deleted (with its folder) when this returns
     if (isYouTubeLink (source))
     {
-        auto dl = downloadYouTubeAudio (source, [] (const juce::String& status, double f) {
+        dl = downloadYouTubeAudio (source, [] (const juce::String& status, double f) {
             std::fprintf (stderr, "\r  %s %s   ", status.toRawUTF8(), f >= 0 ? (juce::String (juce::roundToInt (f * 100)) + "%").toRawUTF8() : "...");
         }, cancel);
         std::fprintf (stderr, "\n");
         file = dl.file;
-        title = dl.title;
     }
     const auto t0 = juce::Time::getMillisecondCounterHiRes();
     auto audio = loadAudioFile (file);
-    std::printf ("title: %s\nsource: %s\ndecoded %.1f s of audio in %.0f ms\n", title.toRawUTF8(), file.getFullPathName().toRawUTF8(),
+    std::printf ("title: %s\nsource: %s\ndecoded %.1f s of audio in %.0f ms\n", dl.title.toRawUTF8(), file.getFullPathName().toRawUTF8(),
                  audio.size() / (double) sampleRate, juce::Time::getMillisecondCounterHiRes() - t0);
 
     writeWav (outWav, audio, 16);

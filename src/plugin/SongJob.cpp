@@ -201,8 +201,7 @@ SongResultPtr SongJob::process()
         const auto t0 = nowMs();
         mix = loadAudioFile (dl.file);
         decodeMs = nowMs() - t0;
-        dl.file.deleteFile(); // only the stems are kept
-        addLog ("Deleted the downloaded audio (only the stems are kept)");
+        addLog ("The downloaded audio is deleted now (only the stems are kept)"); // with `dl`, at the end of this block
         song->title = dl.title;
     }
     else

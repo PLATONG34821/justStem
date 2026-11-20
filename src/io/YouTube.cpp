@@ -3,9 +3,27 @@
 #include "ToolInstaller.h"
 
 #include <stdexcept>
+#include <utility>
 
 namespace juststem
 {
+DownloadedAudio& DownloadedAudio::operator= (DownloadedAudio&& other) noexcept
+{
+    if (this != &other)
+    {
+        deleteFolder();
+        file = std::move (other.file);
+        title = std::move (other.title);
+        folder = std::exchange (other.folder, juce::File());
+    }
+    return *this;
+}
+
+void DownloadedAudio::deleteFolder()
+{
+    if (folder.isAChildOf (paths::downloads())) folder.deleteRecursively();
+}
+
 bool isYouTubeLink (const juce::String& text)
 {
     auto t = text.trim();
@@ -22,6 +40,12 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
     const auto ytdlp = ensureYtDlp (progress, cancel);
     const auto deno = ensureDeno (progress, cancel);
 
+    // A folder of its own, so plug-ins downloading at the same time don't meet, and a cancelled or
+    // failed download (yt-dlp's .part files) goes with `result`.
+    const auto folder = paths::downloads().getChildFile (juce::Uuid().toString());
+    folder.createDirectory();
+    DownloadedAudio result (folder);
+
     // No shell is involved, so nothing in `link` can run as a command. yt-dlp prints the title
     // before downloading, progress lines while downloading, and the final file path at the end.
     const juce::StringArray args {
@@ -31,7 +55,7 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
         "--break-match-filters", "duration <= " + juce::String ((int) maxSongSeconds),
         "--js-runtimes", "deno:" + deno.getFullPathName(),
         "-f", "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]",
-        "-o", paths::downloads().getChildFile ("%(id)s.%(ext)s").getFullPathName(),
+        "-o", folder.getChildFile ("%(id)s.%(ext)s").getFullPathName(),
         "--no-simulate", "--newline", "--progress",
         "--progress-template", "download:juststem-progress %(progress._percent_str)s",
         "--print", "before_dl:juststem-title %(title)s",
@@ -44,7 +68,6 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
     if (! proc.start (args, juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
         throw std::runtime_error ("Couldn't start yt-dlp");
 
-    DownloadedAudio result;
     juce::String pending, errors;
     char buf[4096];
     for (;;)
