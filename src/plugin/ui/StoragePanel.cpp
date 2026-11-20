@@ -7,17 +7,19 @@ namespace
 juce::String size (juce::int64 bytes) { return juce::File::descriptionOfSizeInBytes (bytes); }
 } // namespace
 
-/** One saved song: title, size and date, Delete (or "in use"). */
+/** One saved song: title, size and date, Open and Delete (both off for the song in use). */
 struct StoragePanel::SongRow final : public juce::Component
 {
     SongRow (storage::SavedSong s, bool inUse) : song (std::move (s)), used (inUse)
     {
         deleteButton.setEnabled (! used);
+        openButton.setEnabled (! used);
         addAndMakeVisible (deleteButton);
+        addAndMakeVisible (openButton);
     }
     void paint (juce::Graphics& g) override
     {
-        auto r = getLocalBounds().withTrimmedRight (100);
+        auto r = getLocalBounds().withTrimmedRight (196);
         g.setColour (Palette::text);
         g.setFont (font (Weight::Regular, 13.5f));
         g.drawText (song.folder.getFileName(), r.removeFromTop (getHeight() / 2 + 2).withTrimmedTop (4), juce::Justification::bottomLeft, true);
@@ -26,11 +28,17 @@ struct StoragePanel::SongRow final : public juce::Component
         g.drawText (size (song.bytes) + "   " + song.created.formatted ("%d %b %Y") + (used ? "   in use" : ""), r,
                     juce::Justification::topLeft, true);
     }
-    void resized() override { deleteButton.setBounds (getLocalBounds().removeFromRight (90).withSizeKeepingCentre (90, 26)); }
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        deleteButton.setBounds (r.removeFromRight (90).withSizeKeepingCentre (90, 26));
+        r.removeFromRight (8);
+        openButton.setBounds (r.removeFromRight (90).withSizeKeepingCentre (90, 26));
+    }
 
     storage::SavedSong song;
     bool used;
-    juce::TextButton deleteButton { "Delete" };
+    juce::TextButton deleteButton { "Delete" }, openButton { "Open" };
 };
 
 StoragePanel::StoragePanel (std::function<juce::File()> inUse, std::function<bool()> busy)
@@ -83,6 +91,9 @@ void StoragePanel::refresh()
         songsBytes += s.bytes;
         auto* row = rows.add (new SongRow (s, s.folder == inUse));
         row->deleteButton.setEnabled (! busy && ! row->used);
+        row->openButton.setEnabled (! busy && ! row->used);
+        row->openButton.setTooltip ("Load this song's stems again (no new split)");
+        row->openButton.onClick = [this, folder = row->song.folder] { if (onOpen) onOpen (folder); };
         row->deleteButton.onClick = [this, row] {
             confirm ("Delete this song?", "\"" + row->song.title + "\" (" + size (row->song.bytes) + ") will be moved to the Trash.",
                      "Move to Trash", [this, song = row->song] { storage::moveSongToTrash (song); refresh(); });

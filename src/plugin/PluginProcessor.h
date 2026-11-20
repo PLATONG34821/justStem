@@ -20,6 +20,8 @@ public:
     // ---- song workflow (message thread)
     void startYouTube (const juce::String& link) { startJob (juststem::SongJob::Kind::YouTube, link); }
     void startFile (const juce::File& file) { startJob (juststem::SongJob::Kind::File, file.getFullPathName()); }
+    /** Load a song split earlier (its folder under the songs folder) without splitting it again. */
+    void openSaved (const juce::File& folder) { startJob (juststem::SongJob::Kind::Reload, folder.getFullPathName()); }
     void cancelJob();
     bool isBusy() const { return job != nullptr; }
     juststem::SongJob::Status jobStatus() const;

@@ -19,6 +19,8 @@ public:
     ~StoragePanel() override;
 
     std::function<void()> onClose;
+    /** Open a saved song (its folder) in the plug-in. */
+    std::function<void (const juce::File&)> onOpen;
     void refresh();
 
     void paint (juce::Graphics&) override;

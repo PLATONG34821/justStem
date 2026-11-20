@@ -727,6 +727,10 @@ void justStemEditor::showStorage()
             if (safe != nullptr) safe->storagePanel.reset();
         });
     };
+    storagePanel->onOpen = [this] (const juce::File& folder) {
+        proc.openSaved (folder);
+        storagePanel->onClose();
+    };
     addAndMakeVisible (*storagePanel);
     storagePanel->setBounds (getLocalBounds());
 }
