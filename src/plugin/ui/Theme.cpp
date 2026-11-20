@@ -50,36 +50,30 @@ void paintBackground (juce::Graphics& g, juce::Rectangle<int> area)
 // ---------------------------------------------------------------------------- icons (0..1 box)
 namespace icons
 {
-    juce::Path note()
+    /** A Phosphor icon (256 x 256 view box) mapped to the 0..1 box, cropped to its 16..240 drawing area. */
+    static juce::Path phosphor (const char* svgPathData)
     {
-        juce::Path p;
-        p.addEllipse (0.12f, 0.66f, 0.30f, 0.24f);
-        p.startNewSubPath (0.42f, 0.78f);
-        p.lineTo (0.42f, 0.08f);
-        p.quadraticTo (0.70f, 0.18f, 0.86f, 0.36f);
+        auto p = juce::Drawable::parseSVGPath (svgPathData);
+        p.applyTransform (juce::AffineTransform::translation (-16.0f, -16.0f).scaled (1.0f / 224.0f));
         return p;
     }
-    juce::Path fileImport()
-    {
-        // A page with a folded corner, open on the right where an arrow comes in.
-        juce::Path p;
-        p.startNewSubPath (0.74f, 0.44f);
-        p.lineTo (0.74f, 0.28f);
-        p.lineTo (0.52f, 0.06f);
-        p.lineTo (0.14f, 0.06f);
-        p.lineTo (0.14f, 0.94f);
-        p.lineTo (0.74f, 0.94f);
-        p.lineTo (0.74f, 0.78f);
-        p.startNewSubPath (0.52f, 0.06f); // the fold
-        p.lineTo (0.52f, 0.28f);
-        p.lineTo (0.74f, 0.28f);
-        p.startNewSubPath (0.94f, 0.61f); // the arrow
-        p.lineTo (0.42f, 0.61f);
-        p.startNewSubPath (0.56f, 0.47f);
-        p.lineTo (0.42f, 0.61f);
-        p.lineTo (0.56f, 0.75f);
-        return p;
-    }
+
+    juce::Path note() { return phosphor ("M209.72,58.25l-80-24A6,6,0,0,0,122,40V153.05A46,46,0,1,0,134,184V96.06l72.28,21.69A6,6,0,0,0,214,112V64A6,6,0,0,0,209.72,58.25ZM88,218a34,34,0,1,1,34-34A34,34,0,0,1,88,218ZM202,103.94l-68-20.4V48.06l68,20.4Z"); } // music-note (light)
+    juce::Path fileImport() { return phosphor ("M212.24,83.76l-56-56A6,6,0,0,0,152,26H56A14,14,0,0,0,42,40V216a14,14,0,0,0,14,14H200a14,14,0,0,0,14-14V88A6,6,0,0,0,212.24,83.76ZM158,46.48,193.52,82H158ZM200,218H56a2,2,0,0,1-2-2V40a2,2,0,0,1,2-2h90V88a6,6,0,0,0,6,6h50V216A2,2,0,0,1,200,218Zm-43.76-62.24a6,6,0,0,1,0,8.48l-24,24a6,6,0,0,1-8.48,0l-24-24a6,6,0,0,1,8.48-8.48L122,169.51V120a6,6,0,0,1,12,0v49.51l13.76-13.75A6,6,0,0,1,156.24,155.76Z"); } // file-arrow-down (light)
+    juce::Path open() { return phosphor ("M222,104a6,6,0,0,1-12,0V54.49l-69.75,69.75a6,6,0,0,1-8.48-8.48L201.51,46H152a6,6,0,0,1,0-12h64a6,6,0,0,1,6,6Zm-38,26a6,6,0,0,0-6,6v72a2,2,0,0,1-2,2H48a2,2,0,0,1-2-2V80a2,2,0,0,1,2-2h72a6,6,0,0,0,0-12H48A14,14,0,0,0,34,80V208a14,14,0,0,0,14,14H176a14,14,0,0,0,14-14V136A6,6,0,0,0,184,130Z"); } // arrow-square-out (light)
+    juce::Path trash() { return phosphor ("M216,50H174V40a22,22,0,0,0-22-22H104A22,22,0,0,0,82,40V50H40a6,6,0,0,0,0,12H50V208a14,14,0,0,0,14,14H192a14,14,0,0,0,14-14V62h10a6,6,0,0,0,0-12ZM94,40a10,10,0,0,1,10-10h48a10,10,0,0,1,10,10V50H94ZM194,208a2,2,0,0,1-2,2H64a2,2,0,0,1-2-2V62H194ZM110,104v64a6,6,0,0,1-12,0V104a6,6,0,0,1,12,0Zm48,0v64a6,6,0,0,1-12,0V104a6,6,0,0,1,12,0Z"); } // trash (light)
+    juce::Path layers() { return phosphor ("M229.18,173a6,6,0,0,1-2.16,8.2l-96,56a6,6,0,0,1-6,0l-96-56a6,6,0,0,1,6-10.36l93,54.23,93-54.23A6,6,0,0,1,229.18,173ZM221,122.82l-93,54.23L35,122.82a6,6,0,0,0-6,10.36l96,56a6,6,0,0,0,6,0l96-56a6,6,0,0,0-6-10.36ZM26,80a6,6,0,0,1,3-5.18l96-56a6,6,0,0,1,6,0l96,56a6,6,0,0,1,0,10.36l-96,56a6,6,0,0,1-6,0l-96-56A6,6,0,0,1,26,80Zm17.91,0L128,129.05,212.09,80,128,31Z"); } // stack (light)
+    juce::Path play() { return phosphor ("M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"); } // play (fill)
+    juce::Path pause() { return phosphor ("M216,48V208a16,16,0,0,1-16,16H160a16,16,0,0,1-16-16V48a16,16,0,0,1,16-16h40A16,16,0,0,1,216,48ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Z"); } // pause (fill)
+    juce::Path folder() { return phosphor ("M216,74H130.49l-27.9-27.9a13.94,13.94,0,0,0-9.9-4.1H40A14,14,0,0,0,26,56V200.62A13.39,13.39,0,0,0,39.38,214H216.89A13.12,13.12,0,0,0,230,200.89V88A14,14,0,0,0,216,74ZM40,54H92.69a2,2,0,0,1,1.41.59L113.51,74H38V56A2,2,0,0,1,40,54ZM218,200.89a1.11,1.11,0,0,1-1.11,1.11H39.38A1.4,1.4,0,0,1,38,200.62V86H216a2,2,0,0,1,2,2Z"); } // folder (light)
+    juce::Path download() { return phosphor ("M222,144v64a6,6,0,0,1-6,6H40a6,6,0,0,1-6-6V144a6,6,0,0,1,12,0v58H210V144a6,6,0,0,1,12,0Zm-98.24,4.24a6,6,0,0,0,8.48,0l40-40a6,6,0,0,0-8.48-8.48L134,129.51V32a6,6,0,0,0-12,0v97.51L92.24,99.76a6,6,0,0,0-8.48,8.48Z"); } // download-simple (light)
+    juce::Path grip() { return phosphor ("M108,60A16,16,0,1,1,92,44,16,16,0,0,1,108,60Zm56,16a16,16,0,1,0-16-16A16,16,0,0,0,164,76ZM92,112a16,16,0,1,0,16,16A16,16,0,0,0,92,112Zm72,0a16,16,0,1,0,16,16A16,16,0,0,0,164,112ZM92,180a16,16,0,1,0,16,16A16,16,0,0,0,92,180Zm72,0a16,16,0,1,0,16,16A16,16,0,0,0,164,180Z"); } // dots-six-vertical (bold)
+    juce::Path plus() { return phosphor ("M222,128a6,6,0,0,1-6,6H134v82a6,6,0,0,1-12,0V134H40a6,6,0,0,1,0-12h82V40a6,6,0,0,1,12,0v82h82A6,6,0,0,1,222,128Z"); } // plus (light)
+    juce::Path minus() { return phosphor ("M222,128a6,6,0,0,1-6,6H40a6,6,0,0,1,0-12H216A6,6,0,0,1,222,128Z"); } // minus (light)
+    juce::Path close() { return phosphor ("M204.24,195.76a6,6,0,1,1-8.48,8.48L128,136.49,60.24,204.24a6,6,0,0,1-8.48-8.48L119.51,128,51.76,60.24a6,6,0,0,1,8.48-8.48L128,119.51l67.76-67.75a6,6,0,0,1,8.48,8.48L136.49,128Z"); } // x (light)
+    juce::Path copy() { return phosphor ("M216,34H88a6,6,0,0,0-6,6V82H40a6,6,0,0,0-6,6V216a6,6,0,0,0,6,6H168a6,6,0,0,0,6-6V174h42a6,6,0,0,0,6-6V40A6,6,0,0,0,216,34ZM162,210H46V94H162Zm48-48H174V88a6,6,0,0,0-6-6H94V46H210Z"); } // copy (light)
+    juce::Path drive() { return phosphor ("M128,26C75.29,26,34,49.72,34,80v96c0,30.28,41.29,54,94,54s94-23.72,94-54V80C222,49.72,180.71,26,128,26Zm0,12c44.45,0,82,19.23,82,42s-37.55,42-82,42S46,102.77,46,80,83.55,38,128,38Zm82,138c0,22.77-37.55,42-82,42s-82-19.23-82-42V154.79C62,171.16,92.37,182,128,182s66-10.84,82-27.21Zm0-48c0,22.77-37.55,42-82,42s-82-19.23-82-42V106.79C62,123.16,92.37,134,128,134s66-10.84,82-27.21Z"); } // database (light)
+    juce::Path paste() { return phosphor ("M166,152a6,6,0,0,1-6,6H96a6,6,0,0,1,0-12h64A6,6,0,0,1,166,152Zm-6-38H96a6,6,0,0,0,0,12h64a6,6,0,0,0,0-12Zm54-66V216a14,14,0,0,1-14,14H56a14,14,0,0,1-14-14V48A14,14,0,0,1,56,34H93.17a45.91,45.91,0,0,1,69.66,0H200A14,14,0,0,1,214,48ZM94,64v2h68V64a34,34,0,0,0-68,0ZM202,48a2,2,0,0,0-2-2H170.33A45.77,45.77,0,0,1,174,64v8a6,6,0,0,1-6,6H88a6,6,0,0,1-6-6V64a45.77,45.77,0,0,1,3.67-18H56a2,2,0,0,0-2,2V216a2,2,0,0,0,2,2H200a2,2,0,0,0,2-2Z"); } // clipboard-text (light)
     juce::Path split()
     {
         // A prism: one beam in on the left face, three rays fanning out of the right face.
@@ -96,184 +90,17 @@ namespace icons
             p.startNewSubPath (r[0], r[1]);
             p.lineTo (1.0f, r[2]);
         }
-        return p;
-    }
-    juce::Path open()
-    {
-        // A rounded square, open at the top right, with an arrow pointing out of it.
-        juce::Path p;
-        p.startNewSubPath (0.46f, 0.22f);
-        p.lineTo (0.24f, 0.22f);
-        p.quadraticTo (0.08f, 0.22f, 0.08f, 0.38f);
-        p.lineTo (0.08f, 0.50f);
-        p.startNewSubPath (0.08f, 0.66f);
-        p.lineTo (0.08f, 0.76f);
-        p.quadraticTo (0.08f, 0.92f, 0.24f, 0.92f);
-        p.lineTo (0.62f, 0.92f);
-        p.quadraticTo (0.78f, 0.92f, 0.78f, 0.76f);
-        p.lineTo (0.78f, 0.58f);
-        p.startNewSubPath (0.46f, 0.54f); // the arrow
-        p.lineTo (0.92f, 0.08f);
-        p.startNewSubPath (0.58f, 0.08f);
-        p.lineTo (0.92f, 0.08f);
-        p.lineTo (0.92f, 0.42f);
-        return p;
-    }
-    juce::Path trash()
-    {
-        juce::Path p;
-        p.startNewSubPath (0.10f, 0.22f); // lid
-        p.lineTo (0.90f, 0.22f);
-        p.startNewSubPath (0.36f, 0.22f); // handle
-        p.lineTo (0.36f, 0.08f);
-        p.lineTo (0.64f, 0.08f);
-        p.lineTo (0.64f, 0.22f);
-        p.startNewSubPath (0.20f, 0.22f); // bin
-        p.lineTo (0.26f, 0.94f);
-        p.lineTo (0.74f, 0.94f);
-        p.lineTo (0.80f, 0.22f);
-        p.startNewSubPath (0.42f, 0.40f);
-        p.lineTo (0.42f, 0.76f);
-        p.startNewSubPath (0.58f, 0.40f);
-        p.lineTo (0.58f, 0.76f);
-        return p;
-    }
-    juce::Path layers()
-    {
-        juce::Path p;
-        for (float y : { 0.20f, 0.50f, 0.80f })
-        {
-            p.startNewSubPath (0.06f, y);
-            p.lineTo (0.94f, y);
-        }
-        return p;
-    }
-    juce::Path play()
-    {
-        juce::Path p;
-        p.addTriangle (0.22f, 0.10f, 0.22f, 0.90f, 0.92f, 0.50f);
-        return p;
-    }
-    juce::Path pause()
-    {
-        juce::Path p;
-        p.addRoundedRectangle (0.18f, 0.10f, 0.22f, 0.80f, 0.04f);
-        p.addRoundedRectangle (0.60f, 0.10f, 0.22f, 0.80f, 0.04f);
-        return p;
-    }
-    juce::Path folder()
-    {
-        juce::Path p;
-        p.startNewSubPath (0.06f, 0.24f);
-        p.lineTo (0.38f, 0.24f);
-        p.lineTo (0.48f, 0.34f);
-        p.lineTo (0.94f, 0.34f);
-        p.lineTo (0.94f, 0.84f);
-        p.lineTo (0.06f, 0.84f);
-        p.closeSubPath();
-        return p;
-    }
-    juce::Path download()
-    {
-        juce::Path p;
-        p.startNewSubPath (0.5f, 0.08f);
-        p.lineTo (0.5f, 0.62f);
-        p.startNewSubPath (0.26f, 0.40f);
-        p.lineTo (0.5f, 0.64f);
-        p.lineTo (0.74f, 0.40f);
-        p.startNewSubPath (0.10f, 0.70f);
-        p.lineTo (0.10f, 0.90f);
-        p.lineTo (0.90f, 0.90f);
-        p.lineTo (0.90f, 0.70f);
-        return p;
-    }
-    juce::Path grip()
-    {
-        juce::Path p;
-        for (int r = 0; r < 3; ++r)
-            for (int c = 0; c < 2; ++c)
-                p.addEllipse (0.30f + (float) c * 0.30f, 0.14f + (float) r * 0.30f, 0.14f, 0.14f);
-        return p;
-    }
-    juce::Path plus()
-    {
-        juce::Path p;
-        p.startNewSubPath (0.5f, 0.14f);
-        p.lineTo (0.5f, 0.86f);
-        p.startNewSubPath (0.14f, 0.5f);
-        p.lineTo (0.86f, 0.5f);
-        return p;
-    }
-    juce::Path minus()
-    {
-        juce::Path p;
-        p.startNewSubPath (0.14f, 0.5f);
-        p.lineTo (0.86f, 0.5f);
-        return p;
-    }
-    juce::Path close()
-    {
-        juce::Path p;
-        p.startNewSubPath (0.2f, 0.2f);
-        p.lineTo (0.8f, 0.8f);
-        p.startNewSubPath (0.8f, 0.2f);
-        p.lineTo (0.2f, 0.8f);
-        return p;
-    }
-    juce::Path copy()
-    {
-        juce::Path p;
-        p.addRoundedRectangle (0.34f, 0.30f, 0.58f, 0.64f, 0.08f);
-        p.startNewSubPath (0.12f, 0.70f);
-        p.lineTo (0.12f, 0.14f);
-        p.quadraticTo (0.12f, 0.06f, 0.20f, 0.06f);
-        p.lineTo (0.66f, 0.06f);
-        return p;
-    }
-    juce::Path drive()
-    {
-        // A cylinder seen from slightly above, with a band in the middle (the usual "storage" sign).
-        constexpr float pi = juce::MathConstants<float>::pi;
-        juce::Path p;
-        p.addEllipse (0.14f, 0.06f, 0.72f, 0.24f);
-        p.startNewSubPath (0.14f, 0.18f);
-        p.lineTo (0.14f, 0.82f);
-        p.startNewSubPath (0.86f, 0.18f);
-        p.lineTo (0.86f, 0.82f);
-        p.addCentredArc (0.5f, 0.50f, 0.36f, 0.12f, 0.0f, pi * 0.5f, pi * 1.5f, true);
-        p.addCentredArc (0.5f, 0.82f, 0.36f, 0.12f, 0.0f, pi * 0.5f, pi * 1.5f, true);
-        return p;
-    }
-    juce::Path paste()
-    {
-        juce::Path p;
-        p.startNewSubPath (0.34f, 0.14f); // board, open at the top behind the clip
-        p.lineTo (0.18f, 0.14f);
-        p.lineTo (0.18f, 0.94f);
-        p.lineTo (0.82f, 0.94f);
-        p.lineTo (0.82f, 0.14f);
-        p.lineTo (0.66f, 0.14f);
-        p.addRoundedRectangle (0.34f, 0.06f, 0.32f, 0.16f, 0.05f); // clip
-        p.startNewSubPath (0.32f, 0.48f); // lines of text
-        p.lineTo (0.68f, 0.48f);
-        p.startNewSubPath (0.32f, 0.68f);
-        p.lineTo (0.58f, 0.68f);
-        return p;
+        // Stroked here, as the Phosphor icons are filled outlines (Light weight: ~12/224 of the box).
+        juce::Path outline;
+        juce::PathStrokeType (0.055f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded).createStrokedPath (outline, p);
+        return outline;
     }
 } // namespace icons
 
-void drawIcon (juce::Graphics& g, const juce::Path& icon, juce::Rectangle<float> area, juce::Colour colour, bool filled,
-               float strokeWidth)
+void drawIcon (juce::Graphics& g, const juce::Path& icon, juce::Rectangle<float> area, juce::Colour colour)
 {
-    const auto t = juce::AffineTransform::scale (area.getWidth(), area.getHeight()).translated (area.getX(), area.getY());
     g.setColour (colour);
-    if (filled) g.fillPath (icon, t);
-    else
-    {
-        juce::Path scaled (icon);
-        scaled.applyTransform (t);
-        g.strokePath (scaled, juce::PathStrokeType (strokeWidth, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
+    g.fillPath (icon, juce::AffineTransform::scale (area.getWidth(), area.getHeight()).translated (area.getX(), area.getY()));
 }
 
 // ---------------------------------------------------------------------------- pill button
@@ -361,7 +188,7 @@ void DashboardLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& 
     const float textW = text.isEmpty() ? 0.0f : juce::GlyphArrangement::getStringWidth (f, text);
     const float gap = text.isEmpty() ? 0.0f : pillIconGap;
     const float x = std::round (((float) b.getWidth() - (iconS + gap + textW)) * 0.5f);
-    drawIcon (g, pill->getIcon(), { x, std::round ((h - iconS) * 0.5f), iconS, iconS }, c, false, 1.4f);
+    drawIcon (g, pill->getIcon(), { x, std::round ((h - iconS) * 0.5f), iconS, iconS }, c);
     if (textW > 0)
     {
         g.setColour (c);

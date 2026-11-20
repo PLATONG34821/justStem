@@ -141,6 +141,7 @@ stems + instrumental to a new folder (about 12 s for a 5-minute song).
 - [JUCE](https://juce.com): AGPL-3.0 / commercial
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime): MIT
 - [Inter](https://rsms.me/inter/) font (UI typeface, embedded): SIL Open Font License 1.1, see `resources/fonts/OFL-LICENSE.txt`
+- [Phosphor Icons](https://phosphoricons.com) (UI icons, path data in `src/plugin/ui/Theme.cpp`): MIT, see `resources/icons/PHOSPHOR-LICENSE.txt`
 - [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) and
   [Signalsmith Linear](https://github.com/Signalsmith-Audio/linear) (pitch shifting): MIT
 - [FAAD2](https://github.com/knik0/faad2) (AAC decoder): GPL-2.0-or-later, used under GPL-3.0 with the AGPL

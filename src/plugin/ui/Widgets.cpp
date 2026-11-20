@@ -135,7 +135,7 @@ void IconButton::paintButton (juce::Graphics& g, bool over, bool down)
     g.setColour (Palette::panelBorder);
     g.drawEllipse (r, 1.0f);
     drawIcon (g, icon, r.withSizeKeepingCentre (r.getWidth() * 0.34f, r.getHeight() * 0.34f),
-              Palette::text.withAlpha (isEnabled() ? 1.0f : 0.3f), true);
+              Palette::text.withAlpha (isEnabled() ? 1.0f : 0.3f));
 }
 
 // ============================================================================ segment bar
@@ -173,7 +173,7 @@ void DragHandle::paint (juce::Graphics& g)
     g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
     g.setColour (Palette::panelBorder);
     g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 1.0f);
-    drawIcon (g, icons::grip(), r.withSizeKeepingCentre (12.0f, 14.0f), enabled ? Palette::text : Palette::faint, true);
+    drawIcon (g, icons::grip(), r.withSizeKeepingCentre (12.0f, 14.0f), enabled ? Palette::text : Palette::faint);
 }
 
 void DragHandle::mouseDrag (const juce::MouseEvent& e)
