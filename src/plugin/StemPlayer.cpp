@@ -1,5 +1,7 @@
 #include "StemPlayer.h"
 
+#include <limits>
+
 namespace juststem
 {
 void StemPlayer::prepare (double rate, int maxBlock)
@@ -20,12 +22,22 @@ void StemPlayer::prepare (double rate, int maxBlock)
 
 void StemPlayer::setSong (SongResultPtr s)
 {
-    playing = false;
-    position = 0;
-    length = s ? (juce::int64) s->stems.at (Stem::Vocals).size() : 0;
+    // Playback stops at the end of the shortest stem, so no stem is ever read past its end (a song
+    // missing a stem doesn't play at all).
+    juce::int64 newLength = s != nullptr ? std::numeric_limits<juce::int64>::max() : 0;
+    if (s != nullptr)
+        for (auto stem : stemOrder)
+        {
+            const auto it = s->stems.find (stem);
+            newLength = std::min<juce::int64> (newLength, it != s->stems.end() ? (juce::int64) it->second.size() : 0);
+        }
     {
+        // The song, its length and the position change together: the audio thread reads them under this lock.
         const juce::SpinLock::ScopedLockType sl (songLock);
         std::swap (song, s);
+        length = newLength;
+        position = 0;
+        playing = false;
     }
     // `s` now holds the previous song; it's freed here on the message thread, not the audio thread.
 }
