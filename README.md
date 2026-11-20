@@ -13,6 +13,8 @@ loudness and chords**. Everything runs on your computer.
 - Chords bar by bar, with a copyable chart
 - Transpose ±11 semitones: chords, live preview and pitch-shifted stem export
 - Stem preview with mute / solo / volume, in sync with your DAW
+- Optional **HQ** mode (BS-RoFormer) for cleaner stems, in builds you make yourself (see
+  [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)); release builds include only the standard model
 
 | Start | Splitting | Chords |
 |:---:|:---:|:---:|
@@ -73,7 +75,8 @@ Bug reports, ideas and pull requests are welcome.
 ## License
 
 justStem is licensed under the GNU AGPL-3.0 (see `LICENSE`). Third-party licences are listed in
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#third-party-licences).
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#third-party-licences). The HQ model's weights have no
+stated licence, so they aren't included in releases.
 
 The song in the screenshots is a synthetic demo. Only process music you have the rights to use;
 downloading from YouTube may break YouTube's terms of service.
