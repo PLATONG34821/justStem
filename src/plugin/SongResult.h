@@ -2,6 +2,7 @@
 
 #include "../core/Analysis.h"
 #include "../core/Separator.h"
+#include "Text.h"
 
 #include <juce_core/juce_core.h>
 
@@ -21,9 +22,9 @@ struct SongResult
     double durationSeconds = 0;
     juce::String model; // ModelSpec::name that made the stems (empty for songs from before HQ mode)
 
-    bool isHQ() const { return model == juce::String (std::string (model::hq.name)); }
+    bool isHQ() const { return model == text::from (model::hq.name); }
 
-    juce::File stemFile (Stem s) const { return folder.getChildFile (juce::String (std::string (stemName (s))) + ".wav"); }
+    juce::File stemFile (Stem s) const { return folder.getChildFile (juce::String (stemFileName (s))); }
     juce::File instrumentalFile() const { return folder.getChildFile ("instrumental.wav"); } // everything except vocals
     juce::File infoFile() const { return folder.getChildFile ("info.json"); }
 };
@@ -32,6 +33,10 @@ using SongResultPtr = std::shared_ptr<const SongResult>;
 
 /** Write the stem WAVs, the instrumental and info.json into song.folder. Throws std::runtime_error. */
 void saveSong (const SongResult& song);
+
+/** Copy the stem WAVs and the instrumental into `dir` (created). `progress` gets 0..1 and returns false
+    to cancel. Returns false if cancelled. Throws std::runtime_error. */
+bool copyStems (const SongResult& song, const juce::File& dir, const std::function<bool (double)>& progress);
 
 /** Write the stems and the instrumental pitch-shifted by `semitones` (same names, same length)
     into `dir`. `progress` gets 0..1 and returns false to cancel. Returns false if cancelled.
@@ -42,6 +47,7 @@ bool saveTransposedStems (const SongResult& song, int semitones, const juce::Fil
 void saveInfo (const SongResult& song);
 
 /** Reload a song written by saveSong (e.g. when a DAW project is reopened). Songs saved before
-    chord detection existed come back with no chord segments. Throws std::runtime_error. */
+    chord detection existed come back with no chord segments. Stems edited since (a different
+    length) are padded with silence to the longest. Throws std::runtime_error. */
 std::shared_ptr<SongResult> loadSong (const juce::File& folder);
 } // namespace juststem

@@ -12,10 +12,6 @@ using ProgressCallback = std::function<void (const juce::String& step, double fr
 /** Where justStem keeps its files. */
 namespace paths
 {
-    /** The app's data folder, created on demand:
-          macOS    ~/Library/Application Support/justStem
-          Windows  %APPDATA%\justStem
-          Linux    ~/.config/justStem */
     /** JUSTSTEM_DATA_DIR (for tests and screenshots): keep everything in that folder instead, so a run
         doesn't touch the user's songs or caches. Empty in normal use. */
     inline juce::File dataOverride()
@@ -24,6 +20,11 @@ namespace paths
         return v.isNotEmpty() && juce::File::isAbsolutePath (v) ? juce::File (v) : juce::File();
     }
 
+    /** The app's data folder, created on demand:
+          macOS    ~/Library/Application Support/justStem
+          Windows  %APPDATA%\justStem
+          Linux    ~/.config/justStem
+        or <JUSTSTEM_DATA_DIR>/support. */
     inline juce::File supportRoot()
     {
         if (const auto o = dataOverride(); o != juce::File())

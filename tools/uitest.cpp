@@ -43,6 +43,21 @@ static double renderRms (justStemProcessor& p, int blocks)
     return std::sqrt (sum / (2.0 * blocks));
 }
 
+/** The first child of `parent` that is a T (and passes `pred`, if given). */
+template <typename T>
+static T* findChild (juce::Component& parent, const std::function<bool (T&)>& pred = {})
+{
+    for (auto* c : parent.getChildren())
+        if (auto* t = dynamic_cast<T*> (c); t != nullptr && (! pred || pred (*t))) return t;
+    return nullptr;
+}
+
+/** The child button called `name` (icon-only buttons are named for this). */
+static juce::Button* findButton (juce::Component& parent, const juce::String& name)
+{
+    return findChild<juce::Button> (parent, [&] (juce::Button& b) { return b.getName() == name; });
+}
+
 /** Render `blocks` blocks of 512 at the prepared rate; returns the left channel. */
 static std::vector<float> render (justStemProcessor& p, int blocks)
 {
@@ -63,8 +78,9 @@ int main (int argc, char** argv)
     if (argc < 4) { std::fprintf (stderr, "usage: juststem_uitest <model.onnx> <song> <output folder> [--hq]\n"); return 2; }
     const bool hq = argc > 4 && std::string (argv[4]) == "--hq";
     juce::ScopedJuceInitialiser_GUI gui;
-    const juce::File model (juce::String::fromUTF8 (argv[1])), song (juce::String::fromUTF8 (argv[2])),
-        outDir (juce::String::fromUTF8 (argv[3]));
+    // UTF-8 paths, relative to the current folder unless absolute.
+    auto fileArg = [] (const char* arg) { return juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (arg)); };
+    const juce::File model = fileArg (argv[1]), song = fileArg (argv[2]), outDir = fileArg (argv[3]);
     outDir.createDirectory();
 
     auto proc = std::make_unique<justStemProcessor> (model);
@@ -78,6 +94,17 @@ int main (int argc, char** argv)
 
     std::printf ("UI\n");
     snapshot (*editor, outDir.getChildFile ("1-idle.png"));
+
+    std::printf ("Error messages\n");
+    {
+        // A file that isn't audio, with a Thai name: the error must show the name, not mojibake.
+        const auto bad = outDir.getChildFile (juce::String::fromUTF8 ("\xe0\xb9\x80\xe0\xb8\x9e\xe0\xb8\xa5\xe0\xb8\x87") + ".mp3");
+        bad.replaceWithText ("not audio");
+        proc->startFile (bad);
+        pumpUntil ([&] { return ! proc->isBusy(); }, 10000);
+        check (proc->lastError().contains (bad.getFileName()), "error shows the file's Thai name: " + proc->lastError());
+        bad.deleteFile();
+    }
 
     proc->startFile (song);
     // On a first run (no compiled CoreML model) the gauge counts down while the model compiles.
@@ -98,20 +125,11 @@ int main (int argc, char** argv)
     snapshot (*editor, outDir.getChildFile ("3-results.png"));
 
     std::printf ("Storage panel\n");
-    auto findChild = [&] (auto pred) -> juce::Component* {
-        for (auto* c : editor->getChildren()) if (pred (c)) return c;
-        return nullptr;
-    };
-    auto* storageButton = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-        auto* b = dynamic_cast<juce::Button*> (c);
-        return b != nullptr && b->getName() == "Storage";
-    }));
+    auto* storageButton = findButton (*editor, "Storage");
     check (storageButton != nullptr && storageButton->isVisible(), "Storage button shown");
     if (storageButton != nullptr) storageButton->triggerClick();
     pumpUntil ([] { return false; }, 300);
-    auto* panel = dynamic_cast<juststem::ui::StoragePanel*> (findChild ([] (juce::Component* c) {
-        return dynamic_cast<juststem::ui::StoragePanel*> (c) != nullptr;
-    }));
+    auto* panel = findChild<juststem::ui::StoragePanel> (*editor);
     check (panel != nullptr, "Storage panel opens");
     if (panel != nullptr)
     {
@@ -121,25 +139,19 @@ int main (int argc, char** argv)
                "current song listed in storage");
         panel->onClose();
         pumpUntil ([] { return false; }, 200);
-        check (findChild ([] (juce::Component* c) { return dynamic_cast<juststem::ui::StoragePanel*> (c) != nullptr; }) == nullptr,
+        check (findChild<juststem::ui::StoragePanel> (*editor) == nullptr,
                "Storage panel closes");
     }
 
     std::printf ("New song\n");
     {
-        auto* newSong = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-            auto* b = dynamic_cast<juce::Button*> (c);
-            return b != nullptr && b->getName() == "New song";
-        }));
-        auto* link = dynamic_cast<juce::TextEditor*> (findChild ([] (juce::Component* c) { return dynamic_cast<juce::TextEditor*> (c) != nullptr; }));
+        auto* newSong = findButton (*editor, "New song");
+        auto* link = findChild<juce::TextEditor> (*editor);
         check (newSong != nullptr && newSong->isVisible() && link != nullptr && ! link->isVisible(), "link box hidden while a song is open");
         if (newSong != nullptr) newSong->triggerClick();
         pumpUntil ([] { return false; }, 200);
         check (link != nullptr && link->isVisible() && ! newSong->isVisible(), "New song shows the link box");
-        if (auto* paste = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-                auto* b = dynamic_cast<juce::Button*> (c);
-                return b != nullptr && b->getName() == "Paste";
-            })))
+        if (auto* paste = findButton (*editor, "Paste"))
         {
             const auto saved = juce::SystemClipboard::getTextFromClipboard(); // put the user's clipboard back afterwards
             juce::SystemClipboard::copyTextToClipboard ("  https://www.youtube.com/watch?v=test \n");
@@ -152,10 +164,7 @@ int main (int argc, char** argv)
             juce::SystemClipboard::copyTextToClipboard (saved);
         }
         else check (false, "Paste button shown");
-        if (auto* back = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-                auto* b = dynamic_cast<juce::Button*> (c);
-                return b != nullptr && b->getName() == "Back to song" && b->isVisible();
-            })))
+        if (auto* back = findButton (*editor, "Back to song"); back != nullptr && back->isVisible())
             back->triggerClick();
         pumpUntil ([] { return false; }, 200);
         check (link != nullptr && ! link->isVisible(), "back to the song hides it again");
@@ -188,26 +197,51 @@ int main (int argc, char** argv)
     check (vox > 0.001 && vox < all, "solo vocals is quieter than the full mix (" + juce::String (vox, 4) + " < " + juce::String (all, 4) + ")");
     check (pl.positionSeconds() > testPosition, "position advances (" + juce::String (pl.positionSeconds(), 2) + " s)");
     pl.setSolo (0, false);
+    {
+        // Some hosts send more samples than prepareToPlay announced (512 here).
+        juce::AudioBuffer<float> big (2, 4096);
+        juce::MidiBuffer midi;
+        big.clear();
+        const double before = pl.positionSeconds();
+        proc->processBlock (big, midi);
+        const double advanced = pl.positionSeconds() - before;
+        check (big.getRMSLevel (0, 3584, 512) > 0.001 && std::fabs (advanced - 4096 / 48000.0) < 0.002,
+               "a 4096-sample block from a host prepared for 512 plays all of it (" + juce::String (advanced * 1000.0, 1) + " ms)");
+    }
     pl.setVolume (1, 0.5f);
     pl.setPlaying (false);
 
     std::printf ("Chords\n");
     check (a.chords.segments.size() > 4 && a.chords.beats.size() > 100,
            juce::String ((int) a.chords.beats.size()) + " beats, " + juce::String ((int) a.chords.segments.size()) + " chord changes");
-    auto* chordsTab = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-        auto* b = dynamic_cast<juststem::ui::TabButton*> (c);
-        return b != nullptr && b->getButtonText() == "Chords";
-    }));
+    auto* chordsTab = findChild<juststem::ui::TabButton> (*editor, [] (juststem::ui::TabButton& b) { return b.getButtonText() == "Chords"; });
     check (chordsTab != nullptr && chordsTab->isVisible(), "Chords tab shown");
     if (chordsTab != nullptr) chordsTab->triggerClick();
     pumpUntil ([] { return false; }, 200);
-    auto* view = findChild ([] (juce::Component* c) { return dynamic_cast<juststem::ui::ChordView*> (c) != nullptr; });
+    auto* view = findChild<juststem::ui::ChordView> (*editor);
     check (view != nullptr && view->isVisible(), "chord view shown");
+    if (auto* cv = dynamic_cast<juststem::ui::ChordView*> (view))
+    {
+        auto wheel = [cv] (float dx, float dy, bool smooth) {
+            const auto now = juce::Time::getCurrentTime();
+            const juce::MouseEvent e (juce::Desktop::getInstance().getMainMouseSource(), {}, {}, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                      cv, cv, now, {}, now, 1, false);
+            cv->mouseWheelMove (e, { dx, dy, false, smooth, false });
+        };
+        const int row = cv->firstVisibleRow();
+        wheel (0.3f, 0.0f, true); // a sideways trackpad swipe
+        const bool sidewaysIgnored = cv->firstVisibleRow() == row;
+        for (int i = 0; i < 4; ++i) wheel (0.0f, -0.02f, true); // trackpad steps adding up to just over a row
+        const int afterTrackpad = cv->firstVisibleRow();
+        wheel (0.0f, -0.234f, false); // a mouse-wheel click
+        const int afterWheel = cv->firstVisibleRow();
+        wheel (0.0f, 0.234f, false); // and back up, so the screenshot shows the bar playing
+        wheel (0.0f, 0.234f, false);
+        check (sidewaysIgnored && afterTrackpad == row + 1 && afterWheel == row + 2 && cv->firstVisibleRow() == row,
+               "chord grid scrolling: sideways ignored, a row per row-height of trackpad travel, a row per wheel click");
+    }
     for (int i = 0; i < 2; ++i)
-        if (auto* up = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-                auto* b = dynamic_cast<juce::TextButton*> (c);
-                return b != nullptr && b->getName() == "Transpose up" && b->isVisible();
-            })))
+        if (auto* up = findButton (*editor, "Transpose up"); up != nullptr && up->isVisible())
             up->triggerClick();
     pumpUntil ([] { return false; }, 300);
     check (proc->getTranspose() == 2, "transpose +2");
@@ -253,6 +287,13 @@ int main (int argc, char** argv)
         check (std::abs (bestLag) <= 1, "shifted preview in time with the original (" + juce::String (bestLag * 10) + " ms)");
         check (rmsShifted > 0.05, "shifted preview plays (RMS " + juce::String (rmsShifted, 3) + ")");
         check (std::fabs (listened - (testPosition + 400 * 512 / 48000.0)) < 0.02, "position shows what you hear (" + juce::String (listened, 2) + " s)");
+        // A host may prepare the plug-in again (e.g. a new block size) while it plays transposed.
+        const double beforePrepare = pl.positionSeconds();
+        proc->prepareToPlay (48000, 512);
+        render (*proc, 1);
+        const double moved = pl.positionSeconds() - beforePrepare;
+        check (std::fabs (moved - 512 / 48000.0) < 0.005,
+               "preparing again while transposed keeps the position (moved " + juce::String (juce::roundToInt (moved * 1000)) + " ms in an 11 ms block)");
         pl.setPlaying (false);
 
         const auto dir = outDir.getChildFile ("transposed stems");
@@ -271,11 +312,40 @@ int main (int argc, char** argv)
         check (ok && files == 7 && sameLength && lastProgress > 0.99,
                juce::String (files) + " transposed WAVs, same length as the originals, in " + juce::String (secs, 1) + " s");
         dir.deleteRecursively();
+
+        const auto cancelDir = outDir.getChildFile ("cancelled stems");
+        const auto c0 = juce::Time::getMillisecondCounterHiRes();
+        const bool finished = juststem::saveTransposedStems (*s, 2, cancelDir, [] (double) { return false; });
+        const double cancelMs = juce::Time::getMillisecondCounterHiRes() - c0;
+        check (! finished && cancelMs < 1500, "Cancel stops a transposed save (" + juce::String (juce::roundToInt (cancelMs)) + " ms)");
+        cancelDir.deleteRecursively();
+
+        // Save all without Transpose: copies of the saved WAVs.
+        const auto copies = outDir.getChildFile ("copied stems");
+        copies.deleteRecursively();
+        const bool copied = juststem::copyStems (*s, copies, [] (double) { return true; });
+        int same = copies.getChildFile (s->instrumentalFile().getFileName()).getSize() == s->instrumentalFile().getSize() ? 1 : 0;
+        for (auto stem : juststem::stemOrder) same += copies.getChildFile (s->stemFile (stem).getFileName()).getSize() == s->stemFile (stem).getSize() ? 1 : 0;
+        check (copied && same == 7, "Save all copies the 6 stems and the instrumental");
+        copies.deleteRecursively();
     }
 
     std::printf ("Save and reload, like reopening a DAW project\n");
     juce::MemoryBlock state;
     proc->getStateInformation (state);
+    {
+        // The host restores the state with the same song open (so nothing reloads): the window must still update.
+        struct Listener final : juce::ChangeListener
+        {
+            int calls = 0;
+            void changeListenerCallback (juce::ChangeBroadcaster*) override { ++calls; }
+        } listener;
+        proc->addChangeListener (&listener);
+        proc->setStateInformation (state.getData(), (int) state.getSize());
+        pumpUntil ([&] { return listener.calls > 0; }, 1000);
+        proc->removeChangeListener (&listener);
+        check (listener.calls > 0, "restoring the state refreshes the open window");
+    }
     auto proc2 = std::make_unique<justStemProcessor> (model);
     proc2->prepareToPlay (44100, 256);
     proc2->setStateInformation (state.getData(), (int) state.getSize());
@@ -305,6 +375,49 @@ int main (int argc, char** argv)
         check (song3 != nullptr && song3->analysis.chords.segments.size() == a.chords.segments.size(),
                "chords worked out on reload (" + juce::String (song3 ? (int) song3->analysis.chords.segments.size() : 0) + " changes)");
         check (juce::JSON::parse (s->infoFile())["chords"].size() == (int) a.chords.segments.size(), "and saved to info.json");
+    }
+
+    std::printf ("Closing the plug-in while it works\n");
+    {
+        // Loading (or, on a first run, compiling) the model can't stop part-way: closing the plug-in
+        // then mustn't wait for it, or the DAW freezes.
+        auto busy = std::make_unique<justStemProcessor> (model);
+        busy->startFile (song);
+        pumpUntil ([&] { return busy->jobStatus().step.startsWith ("Preparing"); }, 60000);
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        busy.reset();
+        const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+        check (ms < 100, "closing it while the model loads doesn't wait for the job (" + juce::String (juce::roundToInt (ms)) + " ms)");
+        pumpUntil ([] { return juststem::SongJob::numAbandoned() == 0; }, 10000);
+        check (juststem::SongJob::numAbandoned() == 0, "the abandoned job ends and deletes itself");
+    }
+
+    std::printf ("A stem edited outside justStem\n");
+    {
+        // Trimmed to 10 s, e.g. in an audio editor: on reload every stem must still have one length.
+        auto drums = s->stems.at (juststem::Stem::Drums);
+        drums.left.resize ((size_t) juststem::sampleRate * 10);
+        drums.right.resize (drums.left.size());
+        juststem::writeWav (s->stemFile (juststem::Stem::Drums), drums);
+        const auto edited = juststem::loadSong (s->folder);
+        bool sameLength = true;
+        for (const auto& [stem, audio] : edited->stems) sameLength = sameLength && audio.size() == s->stems.at (juststem::Stem::Vocals).size();
+        check (sameLength && edited->stems.at (juststem::Stem::Drums).left.back() == 0.0f, "a shortened stem is padded to the others' length on reload");
+    }
+
+    std::printf ("A damaged info.json\n");
+    {
+        auto info = juce::JSON::parse (s->infoFile());
+        if (auto* obj = info.getDynamicObject())
+        {
+            obj->setProperty ("keyTonic", 99);
+            obj->setProperty ("firstDownbeat", -7);
+        }
+        s->infoFile().replaceWithText (juce::JSON::toString (info));
+        const auto damaged = juststem::loadSong (s->folder);
+        const auto& k = damaged->analysis.key;
+        const bool inRange = k.tonic >= 0 && k.tonic < 12 && damaged->analysis.chords.firstDownbeat >= 0;
+        check (inRange, "values out of range in info.json are brought into range" + (inRange ? " (key " + juce::String (k.name()) + ")" : juce::String()));
     }
 
     editor.reset();

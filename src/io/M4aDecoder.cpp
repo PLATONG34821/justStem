@@ -1,4 +1,5 @@
 #include "M4aDecoder.h"
+#include "AudioFiles.h"
 
 #include <neaacdec.h>
 
@@ -286,7 +287,7 @@ bool isMp4File (const juce::File& file)
     return in.openedOk() && in.read (header, 8) == 8 && std::memcmp (header + 4, "ftyp", 4) == 0;
 }
 
-DecodedAudio decodeM4a (const juce::File& file)
+DecodedAudio decodeM4a (const juce::File& file, double maxSeconds)
 {
     juce::MemoryBlock data;
     if (! file.loadFileAsData (data)) fail ("it can't be opened");
@@ -309,6 +310,9 @@ DecodedAudio decodeM4a (const juce::File& file)
     unsigned char channels = 0;
     if (NeAACDecInit2 (dec.h, track.config.data(), (unsigned long) track.config.size(), &rate, &channels) < 0)
         fail ("unsupported AAC settings");
+    // Refuse a long file before decoding it. An AAC frame is 1024 samples at the core rate, and `rate`
+    // is that rate or (SBR) twice it, so this is never more than the real length.
+    if (rate > 0 && (double) track.frames.size() * 1024.0 / (double) rate > maxSeconds) throw songTooLong (maxSeconds);
 
     DecodedAudio out;
     out.sampleRate = (double) rate;
@@ -331,6 +335,7 @@ DecodedAudio decodeM4a (const juce::File& file)
             out.left.push_back (pcm[i]);
             out.right.push_back (ch > 1 ? pcm[i + 1] : pcm[i]);
         }
+        if ((double) out.left.size() > (maxSeconds + 1.0) * out.sampleRate) throw songTooLong (maxSeconds); // longer than the frames said
     }
     if (out.left.empty()) fail ("no audio could be decoded");
 

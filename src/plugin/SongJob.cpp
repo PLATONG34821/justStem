@@ -1,13 +1,17 @@
 #include "SongJob.h"
+#include "Text.h"
 #include "../core/Separator.h"
 #include "../io/AudioFiles.h"
 #include "../io/YouTube.h"
 
 #include <juce_events/juce_events.h>
 
+#include <algorithm>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <tuple>
+#include <vector>
 
 namespace juststem
 {
@@ -23,24 +27,19 @@ juce::File newSongFolder (const juce::String& title)
     dir.createDirectory();
     return dir;
 }
-juce::String mmss (double s)
-{
-    const int t = (int) s;
-    return juce::String (t / 60) + ":" + juce::String (t % 60).paddedLeft ('0', 2);
-}
 
 double nowMs() { return juce::Time::getMillisecondCounterHiRes(); }
+
+/** Jobs whose owner has gone (SongJob::abandon), kept until their thread ends. Message thread. */
+std::vector<std::unique_ptr<SongJob>>& abandonedJobs()
+{
+    static std::vector<std::unique_ptr<SongJob>> jobs;
+    return jobs;
+}
 
 juce::String seconds (double ms)
 {
     return (ms < 10000.0 ? juce::String (ms / 1000.0, 1) : juce::String (juce::roundToInt (ms / 1000.0))) + " s";
-}
-
-/** "120" or "92.5" */
-juce::String bpmText (double bpm)
-{
-    const double r = std::round (bpm * 10.0) / 10.0;
-    return std::abs (r - std::round (r)) < 0.05 ? juce::String ((int) std::round (r)) : juce::String (r, 1);
 }
 
 /** RMS level of a stem in dBFS (both channels). */
@@ -51,18 +50,22 @@ float rmsDb (const StereoAudio& a)
     for (std::size_t i = 0; i < a.size(); ++i) sum += (double) a.left[i] * a.left[i] + (double) a.right[i] * a.right[i];
     return (float) juce::Decibels::gainToDecibels (std::sqrt (sum / (2.0 * (double) a.size())), -100.0);
 }
-
-juce::String stemLabel (Stem s)
-{
-    auto n = juce::String (std::string (stemName (s)));
-    return n.substring (0, 1).toUpperCase() + n.substring (1);
-}
 } // namespace
 
 SongJob::SongJob (Kind k, juce::String src, juce::File model, Finished done)
     : juce::Thread ("justStem song job"), kind (k), source (std::move (src)), modelFile (std::move (model)), onFinished (std::move (done))
 {
 }
+
+void SongJob::abandon (std::unique_ptr<SongJob> job)
+{
+    if (job == nullptr) return;
+    job->cancel();
+    job->abandoned = true;
+    abandonedJobs().push_back (std::move (job));
+}
+
+int SongJob::numAbandoned() { return (int) abandonedJobs().size(); }
 
 SongJob::~SongJob()
 {
@@ -100,10 +103,9 @@ juce::StringArray SongJob::log() const
 
 void SongJob::addLog (const juce::String& line)
 {
-    const auto seconds = (juce::Time::getMillisecondCounterHiRes() - startMs) / 1000.0;
-    const int t = (int) seconds;
+    const auto stamp = text::minutesSeconds ((juce::Time::getMillisecondCounterHiRes() - startMs) / 1000.0);
     const juce::ScopedLock sl (statusLock);
-    logLines.add ("[" + juce::String (t / 60) + ":" + juce::String (t % 60).paddedLeft ('0', 2) + "]  " + line);
+    logLines.add ("[" + stamp + "]  " + line);
 }
 
 void SongJob::setStatus (const juce::String& step, double fraction)
@@ -143,14 +145,28 @@ void SongJob::run()
     }
     catch (const std::exception& e)
     {
-        error = e.what();
+        error = juce::String::fromUTF8 (e.what()); // file names, titles and paths in it can be any language
     }
     if (cancelled) error = "cancelled";
     if (error == "cancelled") addLog ("Cancelled");
     else if (error.isNotEmpty()) addLog ("Error: " + error);
 
-    // The job may be destroyed before this runs, so only captured copies are used.
-    juce::MessageManager::callAsync ([done = onFinished, result, error] { done (result, error); });
+    // Runs on the message thread after this thread has ended (or is about to). The job still exists:
+    // only `done` deletes it, or, once abandoned, this.
+    juce::MessageManager::callAsync ([this, done = onFinished, result, error] {
+        if (! abandoned)
+        {
+            done (result, error);
+            return;
+        }
+        auto& jobs = abandonedJobs();
+        const auto it = std::find_if (jobs.begin(), jobs.end(), [this] (const auto& j) { return j.get() == this; });
+        if (it != jobs.end())
+        {
+            const auto self = std::move (*it); // deleted at the end of this scope, its thread done
+            jobs.erase (it);
+        }
+    });
 }
 
 SongResultPtr SongJob::process()
@@ -185,8 +201,7 @@ SongResultPtr SongJob::process()
         const auto t0 = nowMs();
         mix = loadAudioFile (dl.file);
         decodeMs = nowMs() - t0;
-        dl.file.deleteFile(); // only the stems are kept
-        addLog ("Deleted the downloaded audio (only the stems are kept)");
+        addLog ("The downloaded audio is deleted now (only the stems are kept)"); // with `dl`, at the end of this block
         song->title = dl.title;
     }
     else
@@ -202,31 +217,34 @@ SongResultPtr SongJob::process()
     }
     if (cancelled) throw std::runtime_error ("cancelled");
     song->durationSeconds = (double) mix.size() / sampleRate;
-    addLog ("Decoded " + mmss (song->durationSeconds) + " of audio in " + seconds (decodeMs)
+    addLog ("Decoded " + text::minutesSeconds (song->durationSeconds) + " of audio in " + seconds (decodeMs)
             + " (working at 44.1 kHz stereo, " + juce::String (rmsDb (mix), 1) + " dB RMS)");
 
     // On macOS the first run of each model also compiles it for CoreML; later runs reuse it.
     setStatus ("Preparing AI model", -1);
     if (! modelFile.existsAsFile()) throw std::runtime_error ("The AI model is missing from the plug-in. Please reinstall justStem.");
     const auto& spec = model::forFile (modelFile.getFullPathName().toStdString());
-    addLog ("Model: " + modelFile.getFileName() + " (" + juce::String (std::string (spec.name)) + ", 6 stems, "
+    addLog ("Model: " + modelFile.getFileName() + " (" + text::from (spec.name) + ", 6 stems, "
             + juce::File::descriptionOfSizeInBytes (modelFile.getSize()) + ")");
-    // One cache folder per model file version, so "already compiled" is known for each.
-    const juce::File coremlCache (juce::String::fromUTF8 (Separator::coremlCacheFolder (
-        modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString()).c_str()));
+    song->model = text::from (spec.name);
 #if JUCE_MAC
+    // CoreML keeps the compiled model in one cache folder per model file version, so "already
+    // compiled" is known for each. Other OSes have no compile step and no cache.
+    const std::string coremlBase = paths::coremlCache().getFullPathName().toStdString();
+#else
+    const std::string coremlBase;
+#endif
+    Separator separator (modelFile.getFullPathName().toStdString(), coremlBase);
+#if JUCE_MAC
+    const juce::File coremlCache (juce::String::fromUTF8 (separator.cacheFolder().c_str()));
     const bool cached = coremlCache.isDirectory()
                         && coremlCache.getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0;
-    // Typical compile times on an M4 (HQ measured at 129 s, standard at 25-35 s); slower Macs take longer.
-    const double compileSeconds = &spec == &model::hq ? 150.0 : 35.0;
+    const double compileSeconds = spec.coremlCompileSeconds;
     addLog (cached ? "Using the CoreML model compiled on an earlier run"
-                   : "First run on this Mac: compiling the model for CoreML (only once; about "
-                         + (compileSeconds >= 60 ? juce::String (compileSeconds / 60.0, 1) + " min" : juce::String ((int) compileSeconds) + " s") + ")");
+                   : "First run on this Mac: compiling the model for CoreML (only once; about " + text::roughDuration (compileSeconds) + ")");
     // Compiling happens when the first chunk runs; the first progress report ends the countdown.
     if (! cached) setTimedStatus ("Compiling AI model", compileSeconds);
 #endif
-    song->model = juce::String (std::string (spec.name));
-    Separator separator (modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString());
 
     // The model is loaded when the first chunk runs, so the first progress report marks it ready.
     const auto splitStart = nowMs();
@@ -267,8 +285,8 @@ SongResultPtr SongJob::process()
     for (auto stem : stemOrder)
     {
         const float db = rmsDb (song->stems[stem]);
-        levels.add (stemLabel (stem) + " " + juce::String (db, 1));
-        if (db < -45.0f) quiet.add (stemLabel (stem).toLowerCase());
+        levels.add (text::stemLabel (stem) + " " + juce::String (db, 1));
+        if (db < -45.0f) quiet.add (text::stemLabel (stem).toLowerCase());
     }
     addLog ("Stem levels (dB RMS): " + levels.joinIntoString (", "));
     if (! quiet.isEmpty()) addLog ("Almost silent: " + quiet.joinIntoString (", ") + " (probably not in this song)");
@@ -284,8 +302,8 @@ SongResultPtr SongJob::process()
             + (std::abs (a.key.tuningCents) < 1.0f ? juce::String ("tuned to A = 440 Hz")
                                                    : "tuned " + juce::String (a.key.tuningCents > 0 ? "+" : "")
                                                          + juce::String (juce::roundToInt (a.key.tuningCents)) + " cents from A = 440 Hz"));
-    addLog ("Tempo " + bpmText (a.tempo.bpm) + " BPM (could also be " + bpmText (a.tempo.bpm / 2) + " or "
-            + bpmText (a.tempo.bpm * 2) + ")");
+    addLog ("Tempo " + text::bpm (a.tempo.bpm) + " BPM (could also be " + text::bpm (a.tempo.bpm / 2) + " or "
+            + text::bpm (a.tempo.bpm * 2) + ")");
     addLog ("Loudness " + juce::String (a.loudness.integratedLufs, 1) + " LUFS integrated, sample peak "
             + (a.loudness.samplePeakDb > 0 ? "+" : "") + juce::String (a.loudness.samplePeakDb, 1) + " dBFS"
             + (a.loudness.samplePeakDb > 0 ? " (the source clips)" : ""));
@@ -299,13 +317,22 @@ SongResultPtr SongJob::process()
     setStatus ("Saving stems", -1);
     const auto saveStart = nowMs();
     song->folder = newSongFolder (song->title);
-    saveSong (*song);
+    try
+    {
+        saveSong (*song);
+    }
+    catch (...)
+    {
+        // Half a song (e.g. the disk filled up): without its info.json, Storage could neither list nor free it.
+        song->folder.deleteRecursively();
+        throw;
+    }
     juce::int64 bytes = 0;
     for (const auto& f : song->folder.findChildFiles (juce::File::findFiles, false, "*.wav")) bytes += f.getSize();
     addLog ("Saved 6 stems + instrumental (24-bit WAV, " + juce::File::descriptionOfSizeInBytes (bytes) + ") in "
             + seconds (nowMs() - saveStart));
     addLog ("Folder: " + song->folder.getFullPathName());
-    addLog ("Done in " + mmss ((nowMs() - startMs) / 1000.0) + " (decode " + seconds (decodeMs) + ", model " + seconds (modelMs)
+    addLog ("Done in " + text::minutesSeconds ((nowMs() - startMs) / 1000.0) + " (decode " + seconds (decodeMs) + ", model " + seconds (modelMs)
             + ", split " + seconds (splitMs) + ", analysis " + seconds (analysisMs) + ")");
     return song;
 }

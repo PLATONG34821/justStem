@@ -19,6 +19,7 @@ bool isMp4File (const juce::File&);
 /** Decode the AAC track of an MP4 / M4A file: classic files (iTunes, most encoders) and
     fragmented ones (YouTube). Uses FAAD2, so it works the same on every OS.
     Mono is copied to both channels; more than two channels are downmixed.
-    Throws std::runtime_error. */
-DecodedAudio decodeM4a (const juce::File&);
+    Throws std::runtime_error, also (songTooLong) for audio longer than `maxSeconds`, which is found
+    from the frame count before decoding. */
+DecodedAudio decodeM4a (const juce::File&, double maxSeconds);
 } // namespace juststem

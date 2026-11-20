@@ -83,6 +83,8 @@ public:
     explicit Stft (int chunk) : chunk (chunk), frames (1 + chunk / hop), fft (nfft), window ((size_t) nfft),
                                 frame ((size_t) nfft), spectrum ((size_t) nfft / 2), windowSum ((size_t) (chunk + nfft), 0.0f)
     {
+        // Not dsp::hann: that rounds once in double, and its window (at most 1 float ulp away from this
+        // one) moved the HQ selftest's SI-SDR by up to 0.8 dB. The fp16 model is that sensitive.
         for (int i = 0; i < nfft; ++i)
             window[(size_t) i] = 0.5f - 0.5f * (float) std::cos (2.0 * std::numbers::pi * i / nfft);
         for (int f = 0; f < frames; ++f)
@@ -151,8 +153,10 @@ private:
 
 struct Separator::Impl
 {
+    explicit Impl (const ModelSpec& s) : spec (s) {}
+
     std::string path, cacheDir;
-    const ModelSpec* spec = nullptr;
+    const ModelSpec& spec;
     std::unique_ptr<Ort::Session> session;
     std::unique_ptr<Stft> stft;
 
@@ -188,12 +192,12 @@ struct Separator::Impl
     /** planar [2][chunk] -> audio [stem][channel][chunk] */
     std::vector<float> run (std::vector<float>& planar)
     {
-        return spec->input == ModelInput::Spectrogram ? runSpectrogram (planar) : runWaveform (planar);
+        return spec.input == ModelInput::Spectrogram ? runSpectrogram (planar) : runWaveform (planar);
     }
 
     std::vector<float> runWaveform (std::vector<float>& planar)
     {
-        const int chunk = spec->chunkSamples;
+        const int chunk = spec.chunkSamples;
         auto mem = Ort::MemoryInfo::CreateCpu (OrtArenaAllocator, OrtMemTypeDefault);
         const std::array<std::int64_t, 3> shape { 1, 2, chunk };
         auto input = Ort::Value::CreateTensor<float> (mem, planar.data(), planar.size(), shape.data(), shape.size());
@@ -206,7 +210,7 @@ struct Separator::Impl
 
     std::vector<float> runSpectrogram (std::vector<float>& planar)
     {
-        const int chunk = spec->chunkSamples;
+        const int chunk = spec.chunkSamples;
         if (stft == nullptr) stft = std::make_unique<Stft> (chunk);
         const auto per = stft->size(); // one channel's bins x frames
         std::vector<float> re (2 * per), im (2 * per);
@@ -286,21 +290,27 @@ std::string Separator::coremlCacheFolder (const std::string& modelPath, const st
 }
 
 Separator::Separator (std::string modelPath, std::string cacheDir)
-    : impl (std::make_unique<Impl>()), modelSpec (model::forFile (modelPath))
+    : impl (std::make_unique<Impl> (model::forFile (modelPath)))
 {
     impl->path = std::move (modelPath);
+#if defined (__APPLE__)
     impl->cacheDir = cacheDir.empty() ? std::string() : coremlCacheFolder (impl->path, cacheDir);
-    impl->spec = &modelSpec;
+#else
+    (void) cacheDir; // only CoreML compiles and caches models
+#endif
 }
 
 Separator::~Separator() = default;
+
+const std::string& Separator::cacheFolder() const { return impl->cacheDir; }
 
 StemMap Separator::separate (const StereoAudio& mix,
                              const std::function<void (const SeparationProgress&)>& onProgress,
                              const std::atomic<bool>& cancel)
 {
+    const auto& spec = impl->spec;
     const int N = (int) mix.size();
-    const int chunk = modelSpec.chunkSamples;
+    const int chunk = spec.chunkSamples;
     const int ov = (int) std::floor ((float) chunk * overlap);
     const int step = chunk - ov;
     const int total = std::max (1, (int) std::ceil ((double) (N - ov) / step));
@@ -314,7 +324,7 @@ StemMap Separator::separate (const StereoAudio& mix,
         sumSq += m * m;
     }
     const double mean = sum / std::max (1, N);
-    const float inputScale = modelSpec.normaliseInput
+    const float inputScale = spec.normaliseInput
                                  ? (float) (1.0 / std::sqrt (std::max (sumSq / std::max (1, N) - mean * mean, 1e-12)))
                                  : 1.0f;
     const float outScale = 1.0f / inputScale;
@@ -376,7 +386,7 @@ StemMap Separator::separate (const StereoAudio& mix,
 
             StemMap result;
             for (int s = 0; s < numStems; ++s)
-                result[modelSpec.outputStems[(size_t) s]] = std::move (out[(size_t) s]);
+                result[spec.outputStems[(size_t) s]] = std::move (out[(size_t) s]);
             impl->session.reset();
             impl->stft.reset();
             return result;

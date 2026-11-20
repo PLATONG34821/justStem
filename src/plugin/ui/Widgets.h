@@ -18,8 +18,19 @@ public:
         double fraction = -1;          // arc fill 0..1; < 0: no arc (idle)
         int slots = 0, activeSlot = -1; // slots > 0: light one position instead of filling
         juce::String value = "--", unit, caption;
+        bool operator== (const State& o) const
+        {
+            return juce::exactlyEqual (fraction, o.fraction) && slots == o.slots && activeSlot == o.activeSlot
+                && value == o.value && unit == o.unit && caption == o.caption;
+        }
     };
-    void set (State s) { state = std::move (s); repaint(); }
+    /** Repaints only when something changed (it's set many times a second while working). */
+    void set (State s)
+    {
+        if (s == state) return;
+        state = std::move (s);
+        repaint();
+    }
     void paint (juce::Graphics&) override;
 
     /** Vertical centres of the caption, value and unit lines, in the gauge's own coordinates,
@@ -28,6 +39,14 @@ public:
     Lines lines() const;
 
 private:
+    /** Where everything goes, for paint() and lines(). */
+    struct Layout
+    {
+        float size;
+        juce::Rectangle<float> outer, disc, caption, value, unit;
+    };
+    Layout layout() const;
+
     State state;
 };
 

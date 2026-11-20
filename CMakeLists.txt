@@ -88,6 +88,9 @@ set(JUSTSTEM_PLUGIN_SOURCES
     src/plugin/SongResult.cpp
     src/plugin/StemPlayer.cpp
     src/plugin/ui/ChordView.cpp
+    src/plugin/ui/PlayerBar.cpp
+    src/plugin/ui/SaveStems.cpp
+    src/plugin/ui/SongTitle.cpp
     src/plugin/ui/StoragePanel.cpp
     src/plugin/ui/Theme.cpp
     src/plugin/ui/Widgets.cpp)
@@ -100,13 +103,15 @@ juce_add_binary_data(juststem_fonts SOURCES
     resources/fonts/Inter-SemiBold.ttf)
 
 # Settings shared by every JUCE target. The plug-in needs them PUBLIC (JUCE's format wrappers
-# must see the same configuration); the developer tools use PRIVATE.
+# must see the same configuration); the developer tools use PRIVATE. After `scope`: the JUCE modules
+# the target needs besides juce_cryptography (the src/io layer's), e.g. juce::juce_audio_utils for a UI.
 function(juststem_juce_settings target scope)
-    target_compile_definitions(${target} ${scope} JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_USE_MP3AUDIOFORMAT=1)
+    # JUCE_USE_CURL is set by JUCE from each target's NEEDS_CURL (Linux only).
+    target_compile_definitions(${target} ${scope} JUCE_WEB_BROWSER=0 JUCE_USE_MP3AUDIOFORMAT=1)
     target_link_libraries(${target} PRIVATE
         juststem_core
-        juce::juce_audio_utils
         juce::juce_cryptography
+        ${ARGN}
         faad)
 endfunction()
 
@@ -124,6 +129,7 @@ juce_add_plugin(justStem
     FORMATS ${JUSTSTEM_FORMATS}
     PRODUCT_NAME "justStem"
     IS_SYNTH FALSE
+    NEEDS_CURL TRUE  # Linux: HTTPS (downloading yt-dlp and Deno) needs libcurl
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
@@ -133,7 +139,7 @@ juce_add_plugin(justStem
     AU_MAIN_TYPE kAudioUnitType_Effect)
 
 target_sources(justStem PRIVATE ${JUSTSTEM_IO_SOURCES} ${JUSTSTEM_PLUGIN_SOURCES})
-juststem_juce_settings(justStem PUBLIC)
+juststem_juce_settings(justStem PUBLIC juce::juce_audio_utils)
 target_compile_definitions(justStem PUBLIC JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(justStem PRIVATE juststem_fonts)
 target_link_libraries(justStem PUBLIC
@@ -155,16 +161,16 @@ juststem_package(justStem_Standalone)
 
 # ---------------------------------------------------------------- developer tools (not shipped)
 # juststem_cli: separate / analyse / import from the command line, plus self-tests.
-juce_add_console_app(juststem_cli PRODUCT_NAME "juststem_cli")
-target_sources(juststem_cli PRIVATE tools/cli.cpp ${JUSTSTEM_IO_SOURCES})
-juststem_juce_settings(juststem_cli PRIVATE)
+juce_add_console_app(juststem_cli PRODUCT_NAME "juststem_cli" NEEDS_CURL TRUE) # `import` downloads too
+target_sources(juststem_cli PRIVATE tools/cli.cpp tools/selftest.cpp ${JUSTSTEM_IO_SOURCES})
+juststem_juce_settings(juststem_cli PRIVATE juce::juce_audio_formats) # no UI, so no GUI modules
 target_link_libraries(juststem_cli PRIVATE juce::juce_recommended_config_flags)
 juststem_copy_runtime(juststem_cli)
 
 # juststem_uitest: runs the real plug-in code without a DAW (screenshots, audio, save/reload).
 juce_add_console_app(juststem_uitest PRODUCT_NAME "juststem_uitest")
 target_sources(juststem_uitest PRIVATE tools/uitest.cpp ${JUSTSTEM_IO_SOURCES} ${JUSTSTEM_PLUGIN_SOURCES})
-juststem_juce_settings(juststem_uitest PRIVATE)
+juststem_juce_settings(juststem_uitest PRIVATE juce::juce_audio_utils)
 target_compile_definitions(juststem_uitest PRIVATE
     JUCE_MODAL_LOOPS_PERMITTED=1 JucePlugin_Name="justStem" JucePlugin_Build_Standalone=0)
 target_link_libraries(juststem_uitest PRIVATE juststem_fonts juce::juce_recommended_config_flags)

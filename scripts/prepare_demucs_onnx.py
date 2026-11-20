@@ -156,7 +156,7 @@ def check_no_double(model: onnx.ModelProto) -> None:
         if v.type.tensor_type.elem_type == TensorProto.DOUBLE
     ]
     if doubles:
-        raise SystemExit(f"DOUBLE tensors remain (not supported in ORT-web): {doubles[:5]}")
+        raise SystemExit(f"DOUBLE tensors remain after folding (none expected with the input shape fixed): {doubles[:5]}")
 
 
 def compare(a: Path, b: Path) -> None:

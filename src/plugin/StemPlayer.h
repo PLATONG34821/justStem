@@ -52,11 +52,15 @@ public:
 
 private:
     float targetGain (int stem) const;
+    /** Audio thread: mixes, resamples and shifts `numSamples` (<= preparedBlock) into `buffer` at
+        `start`. False once the song has ended. */
+    bool render (juce::AudioBuffer<float>& buffer, int start, int numSamples);
 
     juce::SpinLock songLock;
     SongResultPtr song; // guarded by songLock; only ever released on the message thread
 
     double hostRate = 44100;
+    int preparedBlock = 0;                    // maxBlock from prepare(); 0 before it
     std::atomic<bool> playing { false }, followHost { false };
     std::atomic<double> seekRequest { -1 };
     std::atomic<juce::int64> position { 0 }, length { 0 };

@@ -1,18 +1,16 @@
 #include "Analysis.h"
 #include "Dsp.h"
+#include "Pitch.h"
 
 #include <algorithm>
 #include <cmath>
+#include <future>
 #include <numbers>
-#include <numeric>
 
 namespace juststem
 {
 namespace
 {
-constexpr const char* sharpNames[] { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-constexpr const char* flatNames[] { "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B" };
-
 const char* noteName (int pc, bool minor)
 {
     // Keys conventionally written with flats: F Bb Eb Ab Db major; D G C F Bb minor.
@@ -69,7 +67,7 @@ KeyResult KeyResult::relative() const
 KeyResult KeyResult::transposed (int semitones) const
 {
     auto r = *this;
-    r.tonic = ((tonic + semitones) % 12 + 12) % 12;
+    r.tonic = wrapPitchClass (tonic + semitones);
     return r;
 }
 
@@ -100,7 +98,7 @@ KeyResult detectKey (const std::vector<float>& x, int sr)
                     const double dist = std::fabs (pitch - q);
                     if (dist >= 2.0 / 3.0) continue;
                     const double cw = std::cos (std::numbers::pi / 2 * dist / (2.0 / 3.0));
-                    c[(size_t) (((q % 12) + 12) % 12)] += w * cw * cw;
+                    c[(size_t) wrapPitchClass (q)] += w * cw * cw;
                 }
             }
         const double mx = *std::max_element (c.begin(), c.end());
@@ -152,10 +150,12 @@ KeyResult detectKey (const std::vector<float>& x, int sr)
 }
 
 // ------------------------------------------------------------------------------------ tempo
-TempoResult detectTempo (const std::vector<float>& x, int sr)
+namespace
+{
+/** detectTempo from the audio's onset envelope (dsp::onsetEnvelope). */
+TempoResult tempoFromOnsets (const std::vector<float>& env, int sr)
 {
     const double frameRate = (double) sr / dsp::onsetHop;
-    const auto env = dsp::onsetEnvelope (x, sr);
     if (env.size() < 64) return {};  // too short to measure
 
     // Autocorrelation over ~8 s of lags, so the comb below can compare up to 16 beats.
@@ -197,6 +197,9 @@ TempoResult detectTempo (const std::vector<float>& x, int sr)
 
     return { (float) fine };
 }
+} // namespace
+
+TempoResult detectTempo (const std::vector<float>& x, int sr) { return tempoFromOnsets (dsp::onsetEnvelope (x, sr), sr); }
 
 // ------------------------------------------------------------------------------------ loudness
 std::array<std::array<double, 5>, 2> kWeightingCoefficients (double fs)
@@ -226,42 +229,42 @@ LoudnessResult measureLoudness (const std::vector<float>& left, const std::vecto
     const auto coef = kWeightingCoefficients (sr);
     const std::size_t n = left.size();
 
+    // Gating blocks are 400 ms with 75% overlap, i.e. four 100 ms steps, so only the K-weighted
+    // power of each step is kept (not a copy of the whole song).
+    const std::size_t step = (std::size_t) std::max (1, sr / 10), block = 4 * step;
+    std::vector<double> stepPower (n / step, 0.0); // whole steps only
     float peak = 0;
-    std::vector<double> sq[2];
     for (int ch = 0; ch < 2; ++ch)
     {
         const auto& x = ch == 0 ? left : right;
-        sq[ch].resize (n);
         double s1[2] {}, s2[2] {};
-        for (std::size_t i = 0; i < n; ++i)
+        std::size_t i = 0;
+        for (std::size_t k = 0; i < n; ++k)
         {
-            peak = std::max (peak, std::fabs (x[i]));
-            double v = x[i];
-            for (int st = 0; st < 2; ++st) // transposed direct form II
+            double power = 0;
+            for (const std::size_t end = std::min (n, i + step); i < end; ++i)
             {
-                const auto& k = coef[(size_t) st];
-                const double y = k[0] * v + s1[st];
-                s1[st] = k[1] * v - k[3] * y + s2[st];
-                s2[st] = k[2] * v - k[4] * y;
-                v = y;
+                peak = std::max (peak, std::fabs (x[i]));
+                double v = x[i];
+                for (int st = 0; st < 2; ++st) // transposed direct form II
+                {
+                    const auto& c = coef[(size_t) st];
+                    const double y = c[0] * v + s1[st];
+                    s1[st] = c[1] * v - c[3] * y + s2[st];
+                    s2[st] = c[2] * v - c[4] * y;
+                    v = y;
+                }
+                power += v * v;
             }
-            sq[ch][i] = v * v;
+            if (k < stepPower.size()) stepPower[k] += power;
         }
     }
     r.samplePeakDb = (float) (20.0 * std::log10 (std::max (peak, 1e-10f)));
 
-    // 400 ms blocks with 75% overlap.
-    const std::size_t block = (std::size_t) (0.4 * sr), step = block / 4;
     if (n < block) return r;
-    std::vector<double> cum[2];
-    for (int ch = 0; ch < 2; ++ch)
-    {
-        cum[ch].assign (n + 1, 0.0);
-        for (std::size_t i = 0; i < n; ++i) cum[ch][i + 1] = cum[ch][i] + sq[ch][i];
-    }
     std::vector<double> z;
-    for (std::size_t s = 0; s + block <= n; s += step)
-        z.push_back ((cum[0][s + block] - cum[0][s] + cum[1][s + block] - cum[1][s]) / (double) block);
+    for (std::size_t j = 0; j + 4 <= stepPower.size(); ++j)
+        z.push_back ((stepPower[j] + stepPower[j + 1] + stepPower[j + 2] + stepPower[j + 3]) / (double) block);
 
     auto lufs = [] (double power) { return -0.691 + 10.0 * std::log10 (std::max (power, 1e-20)); };
     double sumAbs = 0;
@@ -276,26 +279,88 @@ LoudnessResult measureLoudness (const std::vector<float>& left, const std::vecto
     return r;
 }
 // ------------------------------------------------------------------------------------ whole song
+namespace
+{
+/** Mono mixes of a song's parts, made once for all the detectors: from the separated stems, or
+    the mix for every part when there are no stems. */
+struct SongParts
+{
+    std::vector<float> nonDrums; // everything but the drums (key)
+    std::vector<float> harmonic; // guitar + piano + other: the chord instruments (no vocals, no bass)
+    std::vector<float> bass, drums;
+
+    SongParts (const StereoAudio& mix, const StemMap& stems)
+    {
+        const std::size_t n = stems.empty() ? mix.size() : stems.begin()->second.size();
+        auto mono = [n] (std::vector<float>& dst, const StereoAudio& src) {
+            for (std::size_t i = 0; i < std::min (n, src.size()); ++i) dst[i] += 0.5f * (src.left[i] + src.right[i]);
+        };
+        nonDrums.assign (n, 0.0f);
+        if (stems.empty())
+        {
+            mono (nonDrums, mix);
+            harmonic = bass = drums = nonDrums;
+            return;
+        }
+        for (auto* v : { &harmonic, &bass, &drums }) v->assign (n, 0.0f);
+        for (const auto& [stem, audio] : stems)
+        {
+            if (stem != Stem::Drums) mono (nonDrums, audio);
+            switch (stem)
+            {
+                case Stem::Vocals: break; // melody, not harmony
+                case Stem::Drums: mono (drums, audio); break;
+                case Stem::Bass: mono (bass, audio); break;
+                default: mono (harmonic, audio); break;
+            }
+        }
+    }
+};
+
+/** The onset envelope that tempo and beats are found in: the drums', or for a song without drums
+    (a near-silent drums stem) the chord instruments' and the bass's. */
+std::vector<float> rhythmOnsets (const SongParts& parts)
+{
+    const std::size_t n = parts.drums.size();
+    double drumEnergy = 0;
+    for (float v : parts.drums) drumEnergy += (double) v * v;
+    if (n == 0 || std::sqrt (drumEnergy / (double) n) >= 1e-3) return dsp::onsetEnvelope (parts.drums, sampleRate);
+    std::vector<float> rhythm (n);
+    for (std::size_t i = 0; i < n; ++i) rhythm[i] = parts.harmonic[i] + parts.bass[i];
+    return dsp::onsetEnvelope (rhythm, sampleRate);
+}
+
+/** The chords, from peaks and rhythm onsets worked out alongside each other. */
+ChordResult songChords (const SongParts& parts, const ChordPeaks& peaks, const std::vector<float>& onsets, float bpm, const KeyResult& key)
+{
+    const double length = (double) parts.drums.size() / sampleRate;
+    return detectChordsOnBeats (peaks, length, trackBeats (onsets, length, sampleRate, bpm), sampleRate, bpm, key);
+}
+} // namespace
+
 SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems)
 {
-    // Key from everything except drums; tempo from the drums; loudness from the original mix.
-    // Without stems, all three use the mix.
-    std::vector<float> harmonic (mix.size(), 0.0f), drums (mix.size(), 0.0f);
-    auto addMono = [] (std::vector<float>& dst, const StereoAudio& src) {
-        for (std::size_t i = 0; i < std::min (dst.size(), src.size()); ++i) dst[i] += 0.5f * (src.left[i] + src.right[i]);
-    };
-    if (stems.empty())
-    {
-        addMono (harmonic, mix);
-        drums = harmonic;
-    }
-    else
-        for (const auto& [stem, audio] : stems)
-            addMono (stem == Stem::Drums ? drums : harmonic, audio);
-
-    SongAnalysis a { detectKey (harmonic, sampleRate), detectTempo (drums, sampleRate),
-                     measureLoudness (mix.left, mix.right, sampleRate), {} };
-    a.chords = detectSongChords (mix, stems, a.tempo.bpm, a.key);
+    // Key from everything except drums; tempo and beats from the drums (from the other instruments
+    // when there are none); loudness from the original mix; chords from the chord instruments and
+    // the bass. Without stems, all of them use the mix.
+    // The slow steps don't depend on each other, so they run at the same time (the results are the
+    // same as one after another).
+    const SongParts parts (mix, stems);
+    auto onsets = std::async (std::launch::async, [&] { return rhythmOnsets (parts); });
+    auto key = std::async (std::launch::async, [&] { return detectKey (parts.nonDrums, sampleRate); });
+    auto loudness = std::async (std::launch::async, [&] { return measureLoudness (mix.left, mix.right, sampleRate); });
+    const auto peaks = chordPeaks (parts.harmonic, parts.bass, sampleRate);
+    const auto rhythm = onsets.get();
+    SongAnalysis a { key.get(), tempoFromOnsets (rhythm, sampleRate), loudness.get(), {} };
+    a.chords = songChords (parts, peaks, rhythm, a.tempo.bpm, a.key);
     return a;
+}
+
+ChordResult detectSongChords (const StereoAudio& mix, const StemMap& stems, float bpm, const KeyResult& key)
+{
+    const SongParts parts (mix, stems);
+    auto onsets = std::async (std::launch::async, [&] { return rhythmOnsets (parts); });
+    const auto peaks = chordPeaks (parts.harmonic, parts.bass, sampleRate);
+    return songChords (parts, peaks, onsets.get(), bpm, key);
 }
 } // namespace juststem

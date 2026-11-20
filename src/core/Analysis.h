@@ -52,9 +52,13 @@ struct SongAnalysis
     ChordResult chords;
 };
 
-/** Key (from the non-drum stems), tempo (from the drums), loudness (from the mix) and chords.
-    Pass an empty StemMap to analyse the mix alone. */
+/** Key (from the non-drum stems), tempo (from the drums, or from the other instruments in a song
+    without drums), loudness (from the mix) and chords. Pass an empty StemMap to analyse the mix alone. */
 SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems);
+
+/** The chords alone (as analyzeSong finds them), for a known tempo and key: from the separated stems
+    (guitar + piano + other, bass, drums), or from the mix when `stems` is empty. */
+ChordResult detectSongChords (const StereoAudio& mix, const StemMap& stems, float bpm, const KeyResult& key);
 
 /** K-weighting biquad coefficients for a sample rate: {b0,b1,b2,a1,a2} for the shelf, then the high-pass. */
 std::array<std::array<double, 5>, 2> kWeightingCoefficients (double rate);

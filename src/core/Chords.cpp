@@ -1,12 +1,13 @@
 #include "Chords.h"
 #include "Analysis.h"
 #include "Dsp.h"
+#include "Pitch.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <limits>
+#include <future>
 #include <numbers>
 
 namespace juststem
@@ -37,7 +38,7 @@ std::pair<int, float> pitchClass (float f, double ref)
 {
     const double pitch = 12.0 * std::log2 (f / ref) + 69.0;
     const double q = std::round (pitch);
-    return { (int) (((long) q % 12 + 12) % 12), (float) std::fabs (pitch - q) };
+    return { wrapPitchClass ((int) q), (float) std::fabs (pitch - q) };
 }
 
 float norm (const Chroma& c)
@@ -80,15 +81,13 @@ int ChordResult::segmentAt (double t) const
 std::string chordName (const Chord& c, const KeyResult& key, int transpose)
 {
     if (c.isNone()) return "N.C.";
-    static constexpr const char* sharps[] { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-    static constexpr const char* flats[] { "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B" };
     static constexpr const char* neutral[] { "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" };
     // Spell like the key signature: the major key with the same signature decides.
     const auto k = key.transposed (transpose);
     const int major = k.minor ? (k.tonic + 3) % 12 : k.tonic;
     static constexpr int signature[12] { 0, -1, 1, -1, 1, -1, 1, 1, -1, 1, -1, 1 }; // C Db D Eb E F F# G Ab A Bb B
-    const auto* names = signature[major] > 0 ? sharps : signature[major] < 0 ? flats : neutral;
-    auto pc = [&] (int p) { return ((p + transpose) % 12 + 12) % 12; };
+    const auto* names = signature[major] > 0 ? sharpNames : signature[major] < 0 ? flatNames : neutral;
+    auto pc = [&] (int p) { return wrapPitchClass (p + transpose); };
 
     std::string s = std::string (names[pc (c.root)]) + suffixes[(int) c.quality];
     if (c.bass >= 0) s += std::string ("/") + names[pc (c.bass)];
@@ -124,11 +123,10 @@ std::string chordChart (const ChordResult& r, double length, const KeyResult& ke
 }
 
 // ------------------------------------------------------------------------------------ beats
-std::vector<double> trackBeats (const std::vector<float>& x, int rate, float bpm)
+std::vector<double> trackBeats (const std::vector<float>& env, double length, int rate, float bpm)
 {
     // Dynamic programming beat tracker (Ellis 2007): beats sit on strong onsets and are spaced
     // close to the tempo's period.
-    const auto env = dsp::onsetEnvelope (x, rate);
     if (env.size() < 64 || bpm <= 0) return {};
     double mean = 0, var = 0;
     for (float v : env) mean += v;
@@ -160,21 +158,35 @@ std::vector<double> trackBeats (const std::vector<float>& x, int rate, float bpm
     std::reverse (beats.begin(), beats.end());
 
     // Continue the grid to the start and the end of the song.
-    const double step = 60.0 / bpm, length = (double) x.size() / rate;
+    const double step = 60.0 / bpm;
     while (beats.front() - step >= 0) beats.insert (beats.begin(), beats.front() - step);
     while (beats.back() + step < length) beats.push_back (beats.back() + step);
     return beats;
 }
 
 // ------------------------------------------------------------------------------------ chords
+ChordPeaks chordPeaks (const std::vector<float>& harmonic, const std::vector<float>& bass, int rate)
+{
+    // Independent of each other: the bass (the larger FFT, the slower) on a second thread.
+    auto bassPeaks = std::async (std::launch::async, [&] { return dsp::spectralPeaks (bass, rate, 16384, 2048, 30.0f, 300.0f); });
+    auto harmonicPeaks = dsp::spectralPeaks (harmonic, rate, 8192, 2048, 60.0f, 2500.0f);
+    return { std::move (harmonicPeaks), bassPeaks.get() };
+}
+
 ChordResult detectChords (const std::vector<float>& harmonic, const std::vector<float>& bass, const std::vector<float>& rhythm,
                           int rate, float bpm, const KeyResult& key)
 {
+    auto beats = trackBeats (dsp::onsetEnvelope (rhythm, rate), (double) rhythm.size() / rate, rate, bpm);
+    return detectChordsOnBeats (chordPeaks (harmonic, bass, rate), (double) harmonic.size() / rate, std::move (beats), rate, bpm, key);
+}
+
+ChordResult detectChordsOnBeats (const ChordPeaks& peaks, double length, std::vector<double> beats, int rate, float bpm,
+                                 const KeyResult& key)
+{
     ChordResult result;
-    const double length = (double) harmonic.size() / rate;
     if (length <= 0) return result;
 
-    result.beats = trackBeats (rhythm, rate, bpm);
+    result.beats = std::move (beats);
     if (result.beats.empty()) // no rhythm to follow: a plain grid
         for (double t = 0, step = 60.0 / (bpm > 0 ? bpm : 120.0); t < length; t += step) result.beats.push_back (t);
 
@@ -189,7 +201,7 @@ ChordResult detectChords (const std::vector<float>& harmonic, const std::vector<
     };
 
     // Chroma of the chord instruments per unit: each spectral peak counts for its nearest semitone.
-    const auto hp = dsp::spectralPeaks (harmonic, rate, 8192, 2048, 60.0f, 2500.0f);
+    const auto& hp = peaks.harmonic;
     const double ref = 440.0 * std::pow (2.0, hp.tuning / 12.0);
     std::vector<Chroma> chroma ((size_t) units, Chroma {});
     std::vector<float> activity ((size_t) units, 0.0f);
@@ -205,7 +217,7 @@ ChordResult detectChords (const std::vector<float>& harmonic, const std::vector<
         }
     }
     // Bass note per frame: the lowest strong peak (overtones of a bass note sit above it).
-    const auto bp = dsp::spectralPeaks (bass, rate, 16384, 2048, 30.0f, 300.0f);
+    const auto& bp = peaks.bass;
     std::vector<Chroma> bassChroma ((size_t) units, Chroma {});
     std::vector<float> bassActivity ((size_t) units, 0.0f);
     for (std::size_t i = 0; i < bp.frames.size(); ++i)
@@ -340,32 +352,4 @@ ChordResult detectChords (const std::vector<float>& harmonic, const std::vector<
     return result;
 }
 
-ChordResult detectSongChords (const StereoAudio& mix, const StemMap& stems, float bpm, const KeyResult& key)
-{
-    const std::size_t n = stems.empty() ? mix.size() : stems.begin()->second.size();
-    std::vector<float> harmonic (n, 0.0f), bass (n, 0.0f), drums (n, 0.0f);
-    auto addMono = [n] (std::vector<float>& dst, const StereoAudio& src) {
-        for (std::size_t i = 0; i < std::min (n, src.size()); ++i) dst[i] += 0.5f * (src.left[i] + src.right[i]);
-    };
-    if (stems.empty())
-    {
-        addMono (harmonic, mix);
-        bass = drums = harmonic;
-    }
-    else
-        for (const auto& [stem, audio] : stems)
-            switch (stem)
-            {
-                case Stem::Vocals: break; // melody, not harmony
-                case Stem::Drums: addMono (drums, audio); break;
-                case Stem::Bass: addMono (bass, audio); break;
-                default: addMono (harmonic, audio); break;
-            }
-    // Songs without drums: find the beats in everything else.
-    double drumEnergy = 0;
-    for (float v : drums) drumEnergy += (double) v * v;
-    if (n > 0 && std::sqrt (drumEnergy / (double) n) < 1e-3)
-        for (std::size_t i = 0; i < n; ++i) drums[i] = harmonic[i] + bass[i];
-    return detectChords (harmonic, bass, drums, sampleRate, bpm, key);
-}
 } // namespace juststem

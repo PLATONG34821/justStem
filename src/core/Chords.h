@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Audio.h"
+#include "Dsp.h"
 
 #include <string>
 #include <vector>
@@ -52,8 +53,9 @@ std::string chordName (const Chord&, const KeyResult& key, int transpose = 0);
 /** A plain-text chord chart, `barsPerLine` bars per line: "| C   | Am7 | F  G | C |". */
 std::string chordChart (const ChordResult&, double length, const KeyResult& key, int transpose = 0, int barsPerLine = 4);
 
-/** Beat times (seconds) following a known tempo, from mono audio with clear onsets (drums). */
-std::vector<double> trackBeats (const std::vector<float>& mono, int rate, float bpm);
+/** Beat times (seconds) following a known tempo, covering `lengthSeconds`.
+    @param onsets  dsp::onsetEnvelope of audio with clear onsets (drums) */
+std::vector<double> trackBeats (const std::vector<float>& onsets, double lengthSeconds, int rate, float bpm);
 
 /** Chords per beat, smoothed and biased towards the key.
     @param harmonic  instruments that play chords (no drums, no vocals)
@@ -62,7 +64,16 @@ std::vector<double> trackBeats (const std::vector<float>& mono, int rate, float 
 ChordResult detectChords (const std::vector<float>& harmonic, const std::vector<float>& bass, const std::vector<float>& rhythm,
                           int rate, float bpm, const KeyResult& key);
 
-/** detectChords from separated stems (guitar + piano + other, bass, drums), or from the mix
-    when `stems` is empty. */
-ChordResult detectSongChords (const StereoAudio& mix, const StemMap& stems, float bpm, const KeyResult& key);
+/** The spectral peaks chords are found from: the chord instruments' and the bass line's. The slow part
+    of chord detection, and independent of the beats and the key, so it can run alongside them. */
+struct ChordPeaks
+{
+    dsp::PeakFrames harmonic, bass;
+};
+ChordPeaks chordPeaks (const std::vector<float>& harmonic, const std::vector<float>& bass, int rate);
+
+/** detectChords with the peaks and the beats (from trackBeats) already known; a plain grid at `bpm`
+    when `beats` is empty. */
+ChordResult detectChordsOnBeats (const ChordPeaks&, double lengthSeconds, std::vector<double> beats, int rate, float bpm,
+                                 const KeyResult& key);
 } // namespace juststem

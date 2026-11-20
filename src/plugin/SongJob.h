@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <functional>
+#include <memory>
 
 namespace juststem
 {
@@ -34,6 +35,15 @@ public:
 
     void start() { startThread (juce::Thread::Priority::normal); }
     void cancel() { cancelled = true; }
+
+    /** For an owner that goes away mid-job (the plug-in is closed while splitting): cancels the job and
+        lets it end on its own instead of waiting for it. Some steps can't stop part-way (loading or
+        compiling the model, updating yt-dlp), and waiting for them would freeze the DAW. The job is
+        deleted on the message thread once its thread has ended; `onFinished` isn't called.
+        Message thread. */
+    static void abandon (std::unique_ptr<SongJob>);
+    /** How many abandoned jobs haven't ended yet (for tests). Message thread. */
+    static int numAbandoned();
     Status status() const;
 
     /** Timestamped lines describing what the job has done so far ("[0:03] Reading audio"). */
@@ -52,6 +62,7 @@ private:
     const juce::File modelFile;
     const Finished onFinished;
     std::atomic<bool> cancelled { false };
+    bool abandoned = false; // message thread
     mutable juce::CriticalSection statusLock; // guards current, logLines, lastStep, lastTenth
     Status current;
     juce::StringArray logLines;

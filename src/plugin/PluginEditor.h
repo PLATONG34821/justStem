@@ -2,6 +2,8 @@
 
 #include "PluginProcessor.h"
 #include "ui/ChordView.h"
+#include "ui/PlayerBar.h"
+#include "ui/SongTitle.h"
 #include "ui/StoragePanel.h"
 #include "ui/Theme.h"
 #include "ui/Widgets.h"
@@ -41,7 +43,6 @@ private:
     void startFromInput();
     void chooseFile();
     void saveAll();
-    static void saveTransposed (juststem::SongResultPtr, int semitones, const juce::File& dest);
     void showStorage();
     void showChords (bool);
     void copyChords();
@@ -49,12 +50,14 @@ private:
     bool inputShown() const;
     void showInput (bool);
     void refreshPasteButton();
+    /** The song on screen: the open one, or none while a new one is being split. */
+    juststem::SongResultPtr visibleSong() const { return proc.isBusy() ? nullptr : proc.getSong(); }
 
     justStemProcessor& proc;
     juststem::ui::DashboardLookAndFeel lnf;
 
     // layout regions (set in resized)
-    juce::Rectangle<int> topRow, wordmarkArea, tabsArea, titleArea, tempoArea, loudArea, stemsHeader, stemsArea, playerBar, timeArea, transposeArea;
+    juce::Rectangle<int> topRow, wordmarkArea, tabsArea, tempoArea, loudArea, stemsHeader, stemsArea, transposeArea;
 
     juce::TextEditor linkBox;
     juststem::ui::PillButton chooseButton { {}, juststem::ui::icons::fileImport() };
@@ -69,13 +72,7 @@ private:
 
     juststem::ui::Gauge gauge;
     juce::OwnedArray<juststem::ui::StemRow> rows;
-#if JUCE_MAC
     juststem::ui::PillButton revealButton { {}, juststem::ui::icons::folder() };
-#elif JUCE_WINDOWS
-    juststem::ui::PillButton revealButton { {}, juststem::ui::icons::folder() };
-#else
-    juststem::ui::PillButton revealButton { {}, juststem::ui::icons::folder() };
-#endif
     juststem::ui::PillButton saveAllButton { {}, juststem::ui::icons::download() };
     juststem::ui::PillButton storageButton { {}, juststem::ui::icons::drive() };
     std::unique_ptr<juststem::ui::StoragePanel> storagePanel;
@@ -86,12 +83,11 @@ private:
     juststem::ui::PillButton copyButton { {}, juststem::ui::icons::copy() };
     bool chordsShown = false;
 
-    juststem::ui::IconButton playButton;
-    juce::Slider position;
-    juce::ToggleButton followHost { "Follow DAW" };
+    juststem::ui::SongTitle songTitle;
+    juststem::ui::PlayerBar playerBar { proc.player() };
 
     juststem::SongResultPtr shownSong;
-    double titleShownMs = 0; // when the song title appeared, for sliding a long one
+    int shownLogLines = -1; // log lines on screen while working
     bool dropHover = false;
 
     // Shows the buttons' tooltips. A child of the editor (not a desktop window), so it stays inside the

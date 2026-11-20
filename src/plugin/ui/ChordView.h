@@ -26,6 +26,8 @@ public:
     void resized() override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    /** The first row of bars on screen. */
+    int firstVisibleRow() const { return firstRow; }
 
 private:
     static constexpr int barsPerRow = 4, rowH = 34, numberW = 34;
@@ -33,6 +35,8 @@ private:
     int visibleRows() const { return juce::jmax (1, grid.getHeight() / rowH); }
     int rowCount() const { return ((int) bars.size() + barsPerRow - 1) / barsPerRow; }
     void scrollTo (int row);
+    /** Repaints one bar's cell (a bar off screen: nothing). */
+    void repaintBar (int bar);
     juce::String name (int segment) const;
 
     SongResultPtr song;
@@ -40,6 +44,7 @@ private:
     int transpose = 0;
     double position = 0;
     int currentBar = -1, currentSegment = -1, firstRow = 0;
+    float wheelTravel = 0;       // trackpad scrolling not yet turned into rows
     int animateFrom = -1;        // the chord we're sliding away from, or -1 (no slide)
     double changeMs = 0;         // when the chord last changed
     static constexpr double slideMs = 280;

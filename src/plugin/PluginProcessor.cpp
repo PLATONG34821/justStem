@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "../core/Separator.h"
+#include "Text.h"
 
 using namespace juststem;
 
@@ -8,7 +9,7 @@ juce::File justStemProcessor::bundledModelFile()
 {
     // For a plug-in, currentExecutableFile is the plug-in binary itself, not the host.
     const auto binaryDir = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory();
-    const juce::String name { std::string (model::fast.fileName) };
+    const auto name = text::from (model::fast.fileName);
     const juce::File candidates[] {
         // Bundles keep resources in Contents/Resources next to the binary's folder: macOS bundles
         // (Contents/MacOS) and VST3 bundles on every OS (Contents/x86_64-win, Contents/x86_64-linux).
@@ -26,14 +27,13 @@ justStemProcessor::justStemProcessor (juce::File fastModel)
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       fastModelFile (std::move (fastModel)),
-      hqModelFile (fastModelFile.getSiblingFile (juce::String (std::string (model::hq.fileName))))
+      hqModelFile (fastModelFile.getSiblingFile (text::from (model::hq.fileName)))
 {
 }
 
 justStemProcessor::~justStemProcessor()
 {
-    *alive = false;
-    job.reset(); // stops the thread
+    SongJob::abandon (std::move (job)); // don't wait for it: see abandon
 }
 
 void justStemProcessor::prepareToPlay (double hostRate, int samplesPerBlock)
@@ -130,6 +130,7 @@ void justStemProcessor::setStateInformation (const void* data, int size)
         juce::MessageManager::callAsync ([this, token = std::weak_ptr<bool> (alive), folder] {
             if (! token.expired()) startJob (SongJob::Kind::Reload, folder.getFullPathName());
         });
+    sendChangeMessage(); // an open window shows the restored settings
 }
 
 juce::AudioProcessorEditor* justStemProcessor::createEditor()

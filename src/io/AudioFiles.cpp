@@ -26,11 +26,6 @@ juce::AudioFormatManager& formats()
     return fm;
 }
 
-std::runtime_error tooLong (double maxSeconds)
-{
-    return std::runtime_error ("Songs longer than " + std::to_string ((int) (maxSeconds / 60)) + " minutes aren't supported");
-}
-
 /** MP3 gapless info {encoder delay, padding} from the LAME-style tag that LAME and ffmpeg write
     after the Xing / Info header in the first frame. {-1, -1} if the file has none. */
 std::pair<int, int> mp3EncoderDelay (const juce::File& file)
@@ -69,7 +64,7 @@ DecodedAudio readWithJuce (const juce::File& file, double maxSeconds)
     std::unique_ptr<juce::AudioFormatReader> reader (formats().createReaderFor (file));
     if (reader == nullptr) throw std::runtime_error ("Couldn't read \"" + file.getFileName().toStdString() + "\" as audio");
     if (reader->sampleRate <= 0 || reader->lengthInSamples <= 0) throw std::runtime_error ("The audio file is empty");
-    if ((double) reader->lengthInSamples / reader->sampleRate > maxSeconds) throw tooLong (maxSeconds);
+    if ((double) reader->lengthInSamples / reader->sampleRate > maxSeconds) throw songTooLong (maxSeconds);
 
     const int n = (int) reader->lengthInSamples;
     const int ch = (int) reader->numChannels;
@@ -98,6 +93,11 @@ DecodedAudio readWithJuce (const juce::File& file, double maxSeconds)
 }
 } // namespace
 
+std::runtime_error songTooLong (double maxSeconds)
+{
+    return std::runtime_error ("Songs longer than " + std::to_string ((int) (maxSeconds / 60)) + " minutes aren't supported");
+}
+
 juce::String supportedAudioWildcards() { return formats().getWildcardForAllFormats() + ";*.m4a;*.mp4;*.m4b"; }
 
 juce::String describeAudioFile (const juce::File& file)
@@ -118,9 +118,9 @@ juce::String describeAudioFile (const juce::File& file)
 
 StereoAudio loadAudioFile (const juce::File& file, double maxSeconds)
 {
-    auto decoded = isMp4File (file) ? decodeM4a (file) : readWithJuce (file, maxSeconds);
+    auto decoded = isMp4File (file) ? decodeM4a (file, maxSeconds) : readWithJuce (file, maxSeconds);
     if (decoded.sampleRate <= 0 || decoded.left.empty()) throw std::runtime_error ("The audio file is empty");
-    if ((double) decoded.left.size() / decoded.sampleRate > maxSeconds) throw tooLong (maxSeconds);
+    if ((double) decoded.left.size() / decoded.sampleRate > maxSeconds) throw songTooLong (maxSeconds);
 
     StereoAudio out;
     if ((int) decoded.sampleRate == sampleRate)

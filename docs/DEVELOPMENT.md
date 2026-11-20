@@ -4,7 +4,7 @@
 
 You need CMake ≥ 3.28, Ninja and a C++20 compiler: the Xcode command-line tools on macOS, Visual
 Studio 2022 (run from a "Developer" command prompt) on Windows, GCC or Clang on Linux plus JUCE's
-packages (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are downloaded by CMake
+packages and libcurl for HTTPS (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are downloaded by CMake
 (pinned versions, checked against their SHA-256).
 
 1. Build the model once (needs Python 3); see the top of `scripts/prepare_demucs_onnx.py`. The
@@ -18,8 +18,11 @@ packages (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are d
    Optional, for HQ mode (BS-RoFormer 6-stem): build `models/bs_roformer_sw_6stem_opt.onnx` and the
    plug-in bundles it and shows the HQ switch; without it HQ mode is hidden. The script also needs
    `pip install onnxconverter-common` (the model runs its maths in fp16). See the top of
-   `scripts/prepare_roformer_onnx.py`. The weights are CC-BY-NC-SA-4.0 (non-commercial).
+   `scripts/prepare_roformer_onnx.py`. The weights have no stated licence (justStem treats them as CC-BY-NC-SA-4.0);
+   see [Third-party licences](#third-party-licences) before distributing a build that includes them.
    ```sh
+   curl -L -o bs_roformer_sw_6stem_fp16.onnx \
+     https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx/resolve/main/bs_roformer_sw_6stem_fp16.onnx
    .venv/bin/python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
    ```
 2. Build:
@@ -47,26 +50,36 @@ build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.o
 - `analyze-selftest`: the resampler against exact sine waves and an aliasing test, loudness
   against the EBU reference signals, key detection in all 24 keys, tempo from 72 to 174 BPM,
   beats, bar lines and chords (7ths, sus, dim, slash chords) in a synthetic band recording in 4
-  keys, and pitch shifting (pitch within 5 cents, no timing offset, same level).
+  keys, the tempo of that band with its drums muted, and pitch shifting (pitch within 5 cents, no
+  timing offset, same level).
 - `selftest`: separates a synthetic track and scores each stem against the original parts.
 - `juststem_uitest`: runs the real plug-in code without a DAW. It renders every screen to PNGs
-  (the README screenshots come from it), splits a song, and checks the preview audio, New song and
-  Paste, the Storage panel, the chord view, the transposed preview (in time with the original),
-  transposed stem saving, and saving / reloading the plug-in state.
+  (the README screenshots come from it), splits a song, and checks:
+  - the preview audio, including a host block larger than prepared and preparing again while
+    transposed, and the transposed preview (in time with the original);
+  - the UI: New song and Paste, the Storage panel, the chord view and its scrolling;
+  - saving: Save all (copies), transposed stems (and Cancel), saving / reloading the plug-in state
+    and refreshing an open window when it's restored;
+  - the awkward cases: an error naming a file in Thai, closing the plug-in mid-job, a stem edited
+    outside justStem, a damaged `info.json`.
 
 Set `JUSTSTEM_DATA_DIR` to an absolute folder to keep a run's songs and caches there instead of
 in your Music folder and app data (useful for tests and screenshots).
 
 `juststem_cli` can also `separate`, `analyze` or `import` real songs, or print the `chords` of a
-song folder the plug-in saved; see the top of `tools/cli.cpp`.
+song folder the plug-in saved; see the top of `tools/cli.cpp` (the self-tests are in
+`tools/selftest.cpp`). Paths can be relative and contain
+any characters (they're read as UTF-8).
 
 ## Code layout
 
 ```
 src/core/      Separation and analysis. Plain C++ + ONNX Runtime, no JUCE.
-  Audio.h        shared types: StereoAudio, Stem, sample rate
-  Separator.*    runs HT-Demucs in crossfaded chunks (CoreML / DirectML / CPU)
-  Analysis.*     key, tempo, loudness (EBU R128)
+  Audio.h        shared types: StereoAudio, Stem (and its file name), sample rate
+  Pitch.h        note names and pitch classes
+  Separator.*    runs the model (HT-Demucs, or BS-RoFormer in HQ mode) in crossfaded chunks
+                 (CoreML / DirectML / CPU); each model's settings are in its ModelSpec
+  Analysis.*     key, tempo, loudness (EBU R128), and analyzeSong: the whole song from its stems
   Chords.*       beat tracking, bar lines and chord recognition
   Dsp.*          shared spectral peaks and onset envelope
   PitchShift.*   real-time and offline pitch shifting (Signalsmith Stretch)
@@ -83,11 +96,13 @@ src/plugin/    The plug-in.
   SongJob.*          background work: import -> split -> analyse -> save, and its log
   SongResult.*       a split song; saves and reloads it
   StemPlayer.*       real-time stem preview (lock-free on the audio thread)
+  Text.h             text helpers: BPM, m:ss, stem names
   ui/                theme (Inter font, colours, icons, buttons), widgets (key gauge, stem rows,
-                     segmented tabs), the chord view and the Storage panel
+                     segmented tabs), the song title, the player bar, the chord view, the Storage
+                     panel and Save all (SaveStems)
 tools/         Developer tools, not shipped (see Testing).
 scripts/       Builds the model file.
-resources/     Embedded fonts.
+resources/     Embedded fonts, and the font and icon licences.
 docs/          This file and the README screenshots.
 cmake/         ONNX Runtime download (per OS), packaging.
 .github/       CI: build + test on macOS, Windows and Linux.
@@ -100,7 +115,7 @@ cmake/         ONNX Runtime download (per OS), packaging.
 | Stems for each song (7 WAVs + `info.json`) | `<your Music folder>/justStem/<song title>/` |
 | yt-dlp and Deno (downloaded on the first YouTube link) | `<app data>/justStem/bin/` |
 | CoreML's compiled model (macOS; makes later loads fast) | `<app data>/justStem/coreml-cache/` |
-| YouTube audio while it's being processed | `<app data>/justStem/downloads/` |
+| YouTube audio while it's being decoded (a folder per download, deleted after) | `<app data>/justStem/downloads/` |
 
 `<app data>` is `~/Library/Application Support` on macOS, `%APPDATA%` on Windows and `~/.config`
 on Linux. A DAW project only stores the song folder's path and the mute / solo / volume /
@@ -114,10 +129,15 @@ for AAC. Decoding is gapless: the encoder delay and padding recorded in the file
 `iTunSMPB`, MP4 edit lists, LAME / ffmpeg MP3 tags) are removed, so the stems line up
 sample-exactly with the original file in a DAW.
 
+Songs can be up to 15 minutes (`maxSongSeconds`). Longer files are refused before they're decoded,
+and longer YouTube videos (and live streams) before they're downloaded.
+
 ## How chords are found
 
 The chords come from the separated stems: guitar + piano + other for the harmony, the bass stem
-for the bass note, and the drums for the beats. Vocals are left out (they carry the melody).
+for the bass note, and the drums for the beats. Vocals are left out (they carry the melody). In a
+song without drums (a near-silent drums stem), the tempo and the beats come from the harmony and
+the bass instead.
 
 1. **Beats**: a dynamic-programming beat tracker follows the detected tempo through the drums.
 2. **Per beat**: the strength of each of the 12 notes (chroma) in the chord instruments, and the
@@ -134,7 +154,7 @@ for the bass note, and the drums for the beats. Vocals are left out (they carry 
 
 The preview is pitch-shifted live; the shifter delays its output a little, so playback reads that
 far ahead and stays in time with the DAW. With Transpose on, Save all writes a pitch-shifted set of
-stems + instrumental to a new folder (about 12 s for a 5-minute song).
+stems + instrumental to a new folder, three stems at a time (about 4 s for a 5-minute song on an M4).
 
 ## Third-party licences
 
@@ -150,5 +170,17 @@ stems + instrumental to a new folder (about 12 s for a 5-minute song).
   how you distribute justStem.
 - [HT-Demucs](https://github.com/facebookresearch/demucs) (Meta): MIT. ONNX export by
   [StemSplitio](https://huggingface.co/StemSplitio/htdemucs-6s-onnx) (MIT)
+- BS-RoFormer SW 6-stem (HQ mode; bundled only when you build it): ONNX export by
+  [elicwhite](https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx) (MIT code) of weights
+  that were rehosted as `jarredou/BS-ROFO-SW-Fixed`. **No licence has ever been stated for the
+  weights.** That repo (created 16 Aug 2025, marked `license: unknown`) was deleted between
+  Feb and Jul 2026; its archived
+  [model card](https://web.archive.org/web/20250902051524/https://huggingface.co/jarredou/BS-ROFO-SW-Fixed)
+  and [discussion](https://web.archive.org/web/20260125081636/https://huggingface.co/jarredou/BS-ROFO-SW-Fixed/discussions/1)
+  say it was an edited checkpoint first shared on Discord, with no information on who trained it
+  or on what. Mirrors such as `enerjazzer/BS-ROFO-SW-Fixed` are also `license: unknown`.
+  justStem treats the weights as CC-BY-NC-SA-4.0 (non-commercial, share-alike) as its own
+  cautious choice, not an inherited licence. Don't bundle them in releases; let users build
+  HQ mode themselves.
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) and [Deno](https://deno.com) (MIT),
   downloaded at runtime, not bundled
