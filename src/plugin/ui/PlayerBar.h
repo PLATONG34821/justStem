@@ -8,9 +8,6 @@
 
 namespace juststem::ui
 {
-/** "m:ss" */
-juce::String formatTime (double seconds);
-
 /** The preview transport under the stems: play (flush left), seek bar, "position / duration", Follow DAW (flush right). */
 class PlayerBar final : public juce::Component
 {

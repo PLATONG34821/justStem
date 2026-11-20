@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 #include "../io/AudioFiles.h"
 #include "../io/YouTube.h"
+#include "Text.h"
 
 using namespace juststem;
 using namespace juststem::ui;
@@ -8,20 +9,6 @@ using namespace juststem::ui;
 namespace
 {
 constexpr int windowW = 900, windowH = 620, margin = 28;
-
-juce::String displayName (Stem s)
-{
-    switch (s)
-    {
-        case Stem::Vocals: return "Vocals";
-        case Stem::Drums: return "Drums";
-        case Stem::Bass: return "Bass";
-        case Stem::Guitar: return "Guitar";
-        case Stem::Piano: return "Piano";
-        case Stem::Other: return "Other";
-    }
-    return {};
-}
 
 // The "justStem" wordmark (light "just", bold "Stem") and the song title share the top bar's baseline.
 juce::Font wordmarkLight() { return font (Weight::Light, 23.0f, 0.01f); }
@@ -32,12 +19,6 @@ int wordmarkWidth()
                             + juce::GlyphArrangement::getStringWidth (wordmarkBold(), "Stem"));
 }
 int topBaseline (juce::Rectangle<int> row) { return baselineFor (SongTitle::textFont(), row); }
-
-juce::String bpmText (float bpm)
-{
-    const float r = std::round (bpm * 10.0f) / 10.0f;
-    return std::fabs (r - std::round (r)) < 0.05f ? juce::String ((int) std::round (r)) : juce::String (r, 1);
-}
 
 /** A readout: small caption, big light value, one dim line under it, each on the matching line of the
     gauge beside it (`lines` in editor coordinates). */
@@ -172,7 +153,7 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     addAndMakeVisible (gauge);
 
     for (int i = 0; i < numStems; ++i)
-        addChildComponent (rows.add (new StemRow (proc.player(), i, displayName (stemOrder[(size_t) i]))));
+        addChildComponent (rows.add (new StemRow (proc.player(), i, text::stemLabel (stemOrder[(size_t) i]))));
     addChildComponent (rows.add (new StemRow ("Instrumental")));
     revealButton.onClick = [this] { if (auto s = proc.getSong()) s->folder.revealToUser(); };
     saveAllButton.onClick = [this] { saveAll(); };
@@ -354,8 +335,8 @@ void justStemEditor::paint (juce::Graphics& g)
     {
         const auto& a = song->analysis;
         // The detected tempo octave is a guess, so offer half and double time too.
-        paintReadout (g, tempoArea, lines, "TEMPO", bpmText (a.tempo.bpm) + " BPM",
-                      "half " + bpmText (a.tempo.bpm / 2) + juce::String::fromUTF8 ("  \xc2\xb7  ") + "double " + bpmText (a.tempo.bpm * 2),
+        paintReadout (g, tempoArea, lines, "TEMPO", text::bpm (a.tempo.bpm) + " BPM",
+                      "half " + text::bpm (a.tempo.bpm / 2) + juce::String::fromUTF8 ("  \xc2\xb7  ") + "double " + text::bpm (a.tempo.bpm * 2),
                       juce::Justification::centredLeft, true);
         paintReadout (g, loudArea, lines, "LOUDNESS", juce::String (a.loudness.integratedLufs, 1) + " LUFS",
                       "peak " + juce::String (a.loudness.samplePeakDb > 0 ? "+" : "") + juce::String (a.loudness.samplePeakDb, 1) + " dBFS",
@@ -495,7 +476,7 @@ void justStemEditor::updateGauge()
         if (st.secondsLeft >= 0) // compiling the model: a countdown, as it's a one-off wait of minutes
         {
             const int left = juce::roundToInt (st.secondsLeft);
-            s.value = left > 0 ? formatTime (left) : juce::String ("Almost");
+            s.value = left > 0 ? text::minutesSeconds (left) : juce::String ("Almost");
             s.unit = left > 0 ? "one-time setup" : "done, one-time setup";
         }
         else

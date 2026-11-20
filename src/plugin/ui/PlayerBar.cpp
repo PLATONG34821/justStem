@@ -1,4 +1,5 @@
 #include "PlayerBar.h"
+#include "../Text.h"
 
 namespace juststem::ui
 {
@@ -6,12 +7,6 @@ namespace
 {
 juce::Font timeFont() { return font (Weight::Regular, 13.0f); }
 } // namespace
-
-juce::String formatTime (double s)
-{
-    const int t = juce::jmax (0, (int) s);
-    return juce::String (t / 60) + ":" + juce::String (t % 60).paddedLeft ('0', 2);
-}
 
 PlayerBar::PlayerBar (StemPlayer& p) : player (p)
 {
@@ -65,7 +60,7 @@ void PlayerBar::resized()
     followHost.setBounds (bar.removeFromRight (DashboardLookAndFeel::toggleWidth (followHost)));
     bar.removeFromRight (24);
     // Sized for the duration's digit count with every digit as a wide "0" (Inter's digits differ in width).
-    auto pattern = formatTime (song != nullptr ? song->durationSeconds : 0.0);
+    auto pattern = text::minutesSeconds (song != nullptr ? song->durationSeconds : 0.0);
     for (const char* d = "123456789"; *d != 0; ++d) pattern = pattern.replaceCharacter ((juce::juce_wchar) *d, '0');
     timeArea = bar.removeFromRight ((int) std::ceil (juce::GlyphArrangement::getStringWidth (timeFont(), pattern + " / " + pattern)) + 4);
     bar.removeFromRight (16);
@@ -77,7 +72,7 @@ void PlayerBar::paint (juce::Graphics& g)
     if (song == nullptr) return;
     g.setColour (Palette::dim);
     g.setFont (timeFont());
-    g.drawText (formatTime (player.positionSeconds()) + " / " + formatTime (player.durationSeconds()), timeArea,
+    g.drawText (text::minutesSeconds (player.positionSeconds()) + " / " + text::minutesSeconds (player.durationSeconds()), timeArea,
                 juce::Justification::centredRight, false);
 }
 } // namespace juststem::ui

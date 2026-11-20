@@ -1,4 +1,5 @@
 #include "SongJob.h"
+#include "Text.h"
 #include "../core/Separator.h"
 #include "../io/AudioFiles.h"
 #include "../io/YouTube.h"
@@ -23,24 +24,12 @@ juce::File newSongFolder (const juce::String& title)
     dir.createDirectory();
     return dir;
 }
-juce::String mmss (double s)
-{
-    const int t = (int) s;
-    return juce::String (t / 60) + ":" + juce::String (t % 60).paddedLeft ('0', 2);
-}
 
 double nowMs() { return juce::Time::getMillisecondCounterHiRes(); }
 
 juce::String seconds (double ms)
 {
     return (ms < 10000.0 ? juce::String (ms / 1000.0, 1) : juce::String (juce::roundToInt (ms / 1000.0))) + " s";
-}
-
-/** "120" or "92.5" */
-juce::String bpmText (double bpm)
-{
-    const double r = std::round (bpm * 10.0) / 10.0;
-    return std::abs (r - std::round (r)) < 0.05 ? juce::String ((int) std::round (r)) : juce::String (r, 1);
 }
 
 /** RMS level of a stem in dBFS (both channels). */
@@ -50,12 +39,6 @@ float rmsDb (const StereoAudio& a)
     double sum = 0;
     for (std::size_t i = 0; i < a.size(); ++i) sum += (double) a.left[i] * a.left[i] + (double) a.right[i] * a.right[i];
     return (float) juce::Decibels::gainToDecibels (std::sqrt (sum / (2.0 * (double) a.size())), -100.0);
-}
-
-juce::String stemLabel (Stem s)
-{
-    auto n = juce::String (std::string (stemName (s)));
-    return n.substring (0, 1).toUpperCase() + n.substring (1);
 }
 } // namespace
 
@@ -100,10 +83,9 @@ juce::StringArray SongJob::log() const
 
 void SongJob::addLog (const juce::String& line)
 {
-    const auto seconds = (juce::Time::getMillisecondCounterHiRes() - startMs) / 1000.0;
-    const int t = (int) seconds;
+    const auto stamp = text::minutesSeconds ((juce::Time::getMillisecondCounterHiRes() - startMs) / 1000.0);
     const juce::ScopedLock sl (statusLock);
-    logLines.add ("[" + juce::String (t / 60) + ":" + juce::String (t % 60).paddedLeft ('0', 2) + "]  " + line);
+    logLines.add ("[" + stamp + "]  " + line);
 }
 
 void SongJob::setStatus (const juce::String& step, double fraction)
@@ -202,16 +184,16 @@ SongResultPtr SongJob::process()
     }
     if (cancelled) throw std::runtime_error ("cancelled");
     song->durationSeconds = (double) mix.size() / sampleRate;
-    addLog ("Decoded " + mmss (song->durationSeconds) + " of audio in " + seconds (decodeMs)
+    addLog ("Decoded " + text::minutesSeconds (song->durationSeconds) + " of audio in " + seconds (decodeMs)
             + " (working at 44.1 kHz stereo, " + juce::String (rmsDb (mix), 1) + " dB RMS)");
 
     // On macOS the first run of each model also compiles it for CoreML; later runs reuse it.
     setStatus ("Preparing AI model", -1);
     if (! modelFile.existsAsFile()) throw std::runtime_error ("The AI model is missing from the plug-in. Please reinstall justStem.");
     const auto& spec = model::forFile (modelFile.getFullPathName().toStdString());
-    addLog ("Model: " + modelFile.getFileName() + " (" + juce::String (std::string (spec.name)) + ", 6 stems, "
+    addLog ("Model: " + modelFile.getFileName() + " (" + text::from (spec.name) + ", 6 stems, "
             + juce::File::descriptionOfSizeInBytes (modelFile.getSize()) + ")");
-    song->model = juce::String (std::string (spec.name));
+    song->model = text::from (spec.name);
 #if JUCE_MAC
     // CoreML keeps the compiled model in one cache folder per model file version, so "already
     // compiled" is known for each. Other OSes have no compile step and no cache.
@@ -272,8 +254,8 @@ SongResultPtr SongJob::process()
     for (auto stem : stemOrder)
     {
         const float db = rmsDb (song->stems[stem]);
-        levels.add (stemLabel (stem) + " " + juce::String (db, 1));
-        if (db < -45.0f) quiet.add (stemLabel (stem).toLowerCase());
+        levels.add (text::stemLabel (stem) + " " + juce::String (db, 1));
+        if (db < -45.0f) quiet.add (text::stemLabel (stem).toLowerCase());
     }
     addLog ("Stem levels (dB RMS): " + levels.joinIntoString (", "));
     if (! quiet.isEmpty()) addLog ("Almost silent: " + quiet.joinIntoString (", ") + " (probably not in this song)");
@@ -289,8 +271,8 @@ SongResultPtr SongJob::process()
             + (std::abs (a.key.tuningCents) < 1.0f ? juce::String ("tuned to A = 440 Hz")
                                                    : "tuned " + juce::String (a.key.tuningCents > 0 ? "+" : "")
                                                          + juce::String (juce::roundToInt (a.key.tuningCents)) + " cents from A = 440 Hz"));
-    addLog ("Tempo " + bpmText (a.tempo.bpm) + " BPM (could also be " + bpmText (a.tempo.bpm / 2) + " or "
-            + bpmText (a.tempo.bpm * 2) + ")");
+    addLog ("Tempo " + text::bpm (a.tempo.bpm) + " BPM (could also be " + text::bpm (a.tempo.bpm / 2) + " or "
+            + text::bpm (a.tempo.bpm * 2) + ")");
     addLog ("Loudness " + juce::String (a.loudness.integratedLufs, 1) + " LUFS integrated, sample peak "
             + (a.loudness.samplePeakDb > 0 ? "+" : "") + juce::String (a.loudness.samplePeakDb, 1) + " dBFS"
             + (a.loudness.samplePeakDb > 0 ? " (the source clips)" : ""));
@@ -310,7 +292,7 @@ SongResultPtr SongJob::process()
     addLog ("Saved 6 stems + instrumental (24-bit WAV, " + juce::File::descriptionOfSizeInBytes (bytes) + ") in "
             + seconds (nowMs() - saveStart));
     addLog ("Folder: " + song->folder.getFullPathName());
-    addLog ("Done in " + mmss ((nowMs() - startMs) / 1000.0) + " (decode " + seconds (decodeMs) + ", model " + seconds (modelMs)
+    addLog ("Done in " + text::minutesSeconds ((nowMs() - startMs) / 1000.0) + " (decode " + seconds (decodeMs) + ", model " + seconds (modelMs)
             + ", split " + seconds (splitMs) + ", analysis " + seconds (analysisMs) + ")");
     return song;
 }

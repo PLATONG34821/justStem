@@ -2,6 +2,7 @@
 
 #include "../core/Analysis.h"
 #include "../core/Separator.h"
+#include "Text.h"
 
 #include <juce_core/juce_core.h>
 
@@ -21,9 +22,9 @@ struct SongResult
     double durationSeconds = 0;
     juce::String model; // ModelSpec::name that made the stems (empty for songs from before HQ mode)
 
-    bool isHQ() const { return model == juce::String (std::string (model::hq.name)); }
+    bool isHQ() const { return model == text::from (model::hq.name); }
 
-    juce::File stemFile (Stem s) const { return folder.getChildFile (juce::String (std::string (stemName (s))) + ".wav"); }
+    juce::File stemFile (Stem s) const { return folder.getChildFile (text::from (stemName (s)) + ".wav"); }
     juce::File instrumentalFile() const { return folder.getChildFile ("instrumental.wav"); } // everything except vocals
     juce::File infoFile() const { return folder.getChildFile ("info.json"); }
 };
