@@ -38,6 +38,21 @@ static double siSdr (const std::vector<float>& est, const std::vector<float>& re
     return 10.0 * std::log10 (s / e);
 }
 
+/** RMS of x[from, to). */
+static double rms (const std::vector<float>& x, std::size_t from, std::size_t to)
+{
+    double e = 0;
+    for (std::size_t i = from; i < to; ++i) e += (double) x[i] * x[i];
+    return std::sqrt (e / (double) (to - from));
+}
+
+/** Repeatable noise in -1..1 for the synthetic test signals. */
+struct Noise
+{
+    std::uint32_t seed;
+    double operator()() { seed = seed * 1664525u + 1013904223u; return (double) (seed >> 8) / (1 << 24) * 2 - 1; }
+};
+
 static void printProgress (const SeparationProgress& p)
 {
     std::fprintf (stderr, "\r  [%s] segment %d/%d, eta %.0fs   ", backendName (p.backend), p.segment, p.totalSegments, p.etaSeconds);
@@ -184,11 +199,6 @@ static int analyzeSelftest()
             for (int i = 0; i < n; ++i) x[(size_t) i] = (float) (0.5 * std::sin (2 * std::numbers::pi * freq * i / rate));
             return x;
         };
-        auto rms = [] (const std::vector<float>& x, size_t from, size_t to) {
-            double e = 0;
-            for (size_t i = from; i < to; ++i) e += (double) x[i] * x[i];
-            return std::sqrt (e / (double) (to - from));
-        };
         const int n = 48000 * 4;
         for (double f : { 100.0, 1000.0, 10000.0, 18000.0 })
         {
@@ -252,8 +262,7 @@ static int analyzeSelftest()
 
     std::printf ("Tempo (drum loop: kick on 1 and 3, snare on 2 and 4, eighth-note hats)\n");
     {
-        std::uint32_t seed = 7;
-        auto rnd = [&] { seed = seed * 1664525u + 1013904223u; return (double) (seed >> 8) / (1 << 24) * 2 - 1; };
+        Noise rnd { 7 };
         const std::vector<double> tempos { 72.0, 90.0, 100.0, 115.0, 120.0, 128.0, 140.0, 160.0, 174.0 };
         int rightOctave = 0;
         for (double bpm : tempos)
@@ -323,8 +332,7 @@ static int analyzeSelftest()
                 const double beat = 60.0 / bpm, offset = 0.61; // music starts after a short silence, a pickup beat first
                 const double length = offset + (totalBeats + 1) * beat + 1.0;
                 std::vector<float> harmonic ((std::size_t) (length * sampleRate), 0.0f), bass = harmonic, drums = harmonic;
-                std::uint32_t seed = 11;
-                auto rnd = [&] { seed = seed * 1664525u + 1013904223u; return (double) (seed >> 8) / (1 << 24) * 2 - 1; };
+                Noise rnd { 11 };
                 for (int b = 0; b <= totalBeats; ++b) // drums: kick on 1 and 3, snare on 2 and 4 (beat 0 is the pickup)
                 {
                     const auto s0 = (std::size_t) ((offset + b * beat) * sampleRate);
@@ -408,11 +416,6 @@ static int analyzeSelftest()
         x.left.assign ((size_t) n, 0.0f);
         for (int i = sampleRate; i < n; ++i) x.left[(size_t) i] = 0.3f * (float) std::sin (2 * std::numbers::pi * 440.0 * i / sampleRate);
         x.right = x.left;
-        auto rms = [] (const std::vector<float>& v, std::size_t from, std::size_t to) {
-            double e = 0;
-            for (std::size_t i = from; i < to; ++i) e += (double) v[i] * v[i];
-            return std::sqrt (e / (double) (to - from));
-        };
         auto freqAt = [] (const std::vector<float>& v, int from) { // FFT peak with parabolic interpolation
             constexpr int fftN = 32768;
             std::vector<float> w ((size_t) fftN), mag ((size_t) fftN / 2 + 1);

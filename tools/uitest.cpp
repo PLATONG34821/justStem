@@ -43,6 +43,21 @@ static double renderRms (justStemProcessor& p, int blocks)
     return std::sqrt (sum / (2.0 * blocks));
 }
 
+/** The first child of `parent` that is a T (and passes `pred`, if given). */
+template <typename T>
+static T* findChild (juce::Component& parent, const std::function<bool (T&)>& pred = {})
+{
+    for (auto* c : parent.getChildren())
+        if (auto* t = dynamic_cast<T*> (c); t != nullptr && (! pred || pred (*t))) return t;
+    return nullptr;
+}
+
+/** The child button called `name` (icon-only buttons are named for this). */
+static juce::Button* findButton (juce::Component& parent, const juce::String& name)
+{
+    return findChild<juce::Button> (parent, [&] (juce::Button& b) { return b.getName() == name; });
+}
+
 /** Render `blocks` blocks of 512 at the prepared rate; returns the left channel. */
 static std::vector<float> render (justStemProcessor& p, int blocks)
 {
@@ -98,20 +113,11 @@ int main (int argc, char** argv)
     snapshot (*editor, outDir.getChildFile ("3-results.png"));
 
     std::printf ("Storage panel\n");
-    auto findChild = [&] (auto pred) -> juce::Component* {
-        for (auto* c : editor->getChildren()) if (pred (c)) return c;
-        return nullptr;
-    };
-    auto* storageButton = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-        auto* b = dynamic_cast<juce::Button*> (c);
-        return b != nullptr && b->getName() == "Storage";
-    }));
+    auto* storageButton = findButton (*editor, "Storage");
     check (storageButton != nullptr && storageButton->isVisible(), "Storage button shown");
     if (storageButton != nullptr) storageButton->triggerClick();
     pumpUntil ([] { return false; }, 300);
-    auto* panel = dynamic_cast<juststem::ui::StoragePanel*> (findChild ([] (juce::Component* c) {
-        return dynamic_cast<juststem::ui::StoragePanel*> (c) != nullptr;
-    }));
+    auto* panel = findChild<juststem::ui::StoragePanel> (*editor);
     check (panel != nullptr, "Storage panel opens");
     if (panel != nullptr)
     {
@@ -121,25 +127,19 @@ int main (int argc, char** argv)
                "current song listed in storage");
         panel->onClose();
         pumpUntil ([] { return false; }, 200);
-        check (findChild ([] (juce::Component* c) { return dynamic_cast<juststem::ui::StoragePanel*> (c) != nullptr; }) == nullptr,
+        check (findChild<juststem::ui::StoragePanel> (*editor) == nullptr,
                "Storage panel closes");
     }
 
     std::printf ("New song\n");
     {
-        auto* newSong = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-            auto* b = dynamic_cast<juce::Button*> (c);
-            return b != nullptr && b->getName() == "New song";
-        }));
-        auto* link = dynamic_cast<juce::TextEditor*> (findChild ([] (juce::Component* c) { return dynamic_cast<juce::TextEditor*> (c) != nullptr; }));
+        auto* newSong = findButton (*editor, "New song");
+        auto* link = findChild<juce::TextEditor> (*editor);
         check (newSong != nullptr && newSong->isVisible() && link != nullptr && ! link->isVisible(), "link box hidden while a song is open");
         if (newSong != nullptr) newSong->triggerClick();
         pumpUntil ([] { return false; }, 200);
         check (link != nullptr && link->isVisible() && ! newSong->isVisible(), "New song shows the link box");
-        if (auto* paste = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-                auto* b = dynamic_cast<juce::Button*> (c);
-                return b != nullptr && b->getName() == "Paste";
-            })))
+        if (auto* paste = findButton (*editor, "Paste"))
         {
             const auto saved = juce::SystemClipboard::getTextFromClipboard(); // put the user's clipboard back afterwards
             juce::SystemClipboard::copyTextToClipboard ("  https://www.youtube.com/watch?v=test \n");
@@ -152,10 +152,7 @@ int main (int argc, char** argv)
             juce::SystemClipboard::copyTextToClipboard (saved);
         }
         else check (false, "Paste button shown");
-        if (auto* back = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-                auto* b = dynamic_cast<juce::Button*> (c);
-                return b != nullptr && b->getName() == "Back to song" && b->isVisible();
-            })))
+        if (auto* back = findButton (*editor, "Back to song"); back != nullptr && back->isVisible())
             back->triggerClick();
         pumpUntil ([] { return false; }, 200);
         check (link != nullptr && ! link->isVisible(), "back to the song hides it again");
@@ -205,20 +202,14 @@ int main (int argc, char** argv)
     std::printf ("Chords\n");
     check (a.chords.segments.size() > 4 && a.chords.beats.size() > 100,
            juce::String ((int) a.chords.beats.size()) + " beats, " + juce::String ((int) a.chords.segments.size()) + " chord changes");
-    auto* chordsTab = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-        auto* b = dynamic_cast<juststem::ui::TabButton*> (c);
-        return b != nullptr && b->getButtonText() == "Chords";
-    }));
+    auto* chordsTab = findChild<juststem::ui::TabButton> (*editor, [] (juststem::ui::TabButton& b) { return b.getButtonText() == "Chords"; });
     check (chordsTab != nullptr && chordsTab->isVisible(), "Chords tab shown");
     if (chordsTab != nullptr) chordsTab->triggerClick();
     pumpUntil ([] { return false; }, 200);
-    auto* view = findChild ([] (juce::Component* c) { return dynamic_cast<juststem::ui::ChordView*> (c) != nullptr; });
+    auto* view = findChild<juststem::ui::ChordView> (*editor);
     check (view != nullptr && view->isVisible(), "chord view shown");
     for (int i = 0; i < 2; ++i)
-        if (auto* up = dynamic_cast<juce::Button*> (findChild ([] (juce::Component* c) {
-                auto* b = dynamic_cast<juce::TextButton*> (c);
-                return b != nullptr && b->getName() == "Transpose up" && b->isVisible();
-            })))
+        if (auto* up = findButton (*editor, "Transpose up"); up != nullptr && up->isVisible())
             up->triggerClick();
     pumpUntil ([] { return false; }, 300);
     check (proc->getTranspose() == 2, "transpose +2");
