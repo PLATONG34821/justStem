@@ -35,6 +35,8 @@ private:
     int visibleRows() const { return juce::jmax (1, grid.getHeight() / rowH); }
     int rowCount() const { return ((int) bars.size() + barsPerRow - 1) / barsPerRow; }
     void scrollTo (int row);
+    /** Repaints one bar's cell (a bar off screen: nothing). */
+    void repaintBar (int bar);
     juce::String name (int segment) const;
 
     SongResultPtr song;

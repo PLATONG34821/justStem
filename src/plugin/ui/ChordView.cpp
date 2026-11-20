@@ -27,11 +27,18 @@ void ChordView::setPosition (double seconds)
     const int seg = song->analysis.chords.segmentAt (seconds);
     const bool moved = std::abs (seconds - position) > 0.02;
     position = seconds;
+    // Called many times a second while playing: repaint only what changed.
     if (bar != currentBar)
     {
+        const int previous = currentBar;
         currentBar = bar;
         const int row = bar / barsPerRow;
         if (row < firstRow || row >= firstRow + visibleRows()) scrollTo (row - 1); // keep one row of context above
+        else
+        {
+            repaintBar (previous); // its progress line goes
+            repaintBar (bar);
+        }
     }
     if (seg != currentSegment)
     {
@@ -39,10 +46,19 @@ void ChordView::setPosition (double seconds)
         animateFrom = (currentSegment >= 0 && seg == currentSegment + 1) ? currentSegment : -1;
         changeMs = juce::Time::getMillisecondCounterHiRes();
         currentSegment = seg;
-        repaint();
+        repaint (now);
+        repaintBar (currentBar); // the chord playing is highlighted in its bar
     }
-    else if (moved || (animateFrom >= 0 && juce::Time::getMillisecondCounterHiRes() - changeMs < slideMs + 50))
-        repaint();
+    else
+    {
+        if (animateFrom >= 0 && juce::Time::getMillisecondCounterHiRes() - changeMs < slideMs + 50) repaint (now); // the slide
+        if (moved) repaintBar (currentBar); // its progress line
+    }
+}
+
+void ChordView::repaintBar (int bar)
+{
+    if (bar >= 0 && bar < (int) bars.size()) repaint (barBounds (bar));
 }
 
 void ChordView::scrollTo (int row)
@@ -98,6 +114,7 @@ void ChordView::paint (juce::Graphics& g)
     // The progression as one centred line, "A#m  ->  B  ->  F#  ->  G#m  ->  A#m": the chord playing now is
     // big and bright in the middle, the one before fades out on the left, the next three dim to the right.
     // When the chord changes the line slides left, and the new chord grows into place.
+    if (g.clipRegionIntersects (now))
     {
         constexpr float bigSize = 30.0f, smallSize = 17.0f;
         const double sinceChange = juce::Time::getMillisecondCounterHiRes() - changeMs;
@@ -121,45 +138,40 @@ void ChordView::paint (juce::Graphics& g)
         const auto arrow = juce::String::fromUTF8 ("\xe2\x86\x92");
         const auto arrowFont = font (Weight::Regular, 15.0f);
         const float arrowW = juce::GlyphArrangement::getStringWidth (arrowFont, arrow), gap = 18.0f;
-        auto widthOf = [&] (const Item& it) {
-            return juce::GlyphArrangement::getStringWidth (font (it.size >= bigSize - 0.5f ? Weight::Light : Weight::Regular, it.size), name (it.segment));
-        };
-
-        // x of each item's left edge, with "now" centred.
-        std::vector<float> xs (items.size());
+        // Each item's name, font and width, worked out once; then the x of its left edge, with "now" centred.
+        std::vector<juce::String> labels;
+        std::vector<juce::Font> fonts;
+        std::vector<float> widths, xs;
         float x = 0;
         int nowIndex = -1;
-        for (size_t n = 0; n < items.size(); ++n)
+        for (const auto& it : items)
         {
-            if (items[n].segment == currentSegment) nowIndex = (int) n;
-            xs[n] = x;
-            x += widthOf (items[n]) + gap + arrowW + gap;
+            if (it.segment == currentSegment) nowIndex = (int) labels.size();
+            labels.push_back (name (it.segment));
+            fonts.push_back (font (it.size >= bigSize - 0.5f ? Weight::Light : Weight::Regular, it.size));
+            widths.push_back (juce::GlyphArrangement::getStringWidth (fonts.back(), labels.back()));
+            xs.push_back (x);
+            x += widths.back() + gap + arrowW + gap;
         }
         if (nowIndex >= 0)
         {
-            const float cx = (float) now.getCentreX();
-            float shift = cx - (xs[(size_t) nowIndex] + widthOf (items[(size_t) nowIndex]) * 0.5f);
+            const auto centreOf = [&] (int n) { return xs[(size_t) n] + widths[(size_t) n] * 0.5f; };
+            float shift = (float) now.getCentreX() - centreOf (nowIndex);
             // While sliding, start where the previous chord was centred.
-            if (nowIndex > 0 && e < 1.0f)
-            {
-                const float step = (xs[(size_t) nowIndex] + widthOf (items[(size_t) nowIndex]) * 0.5f)
-                                 - (xs[(size_t) nowIndex - 1] + widthOf (items[(size_t) nowIndex - 1]) * 0.5f);
-                shift += step * (1.0f - e);
-            }
+            if (nowIndex > 0 && e < 1.0f) shift += (centreOf (nowIndex) - centreOf (nowIndex - 1)) * (1.0f - e);
             const float baseline = (float) now.getCentreY() + 10.0f;
             for (size_t n = 0; n < items.size(); ++n)
             {
                 const auto& it = items[n];
                 const float ix = xs[n] + shift;
-                const auto f = font (it.size >= bigSize - 0.5f ? Weight::Light : Weight::Regular, it.size);
                 g.setColour (chords.segments[(size_t) it.segment].chord.isNone() ? Palette::faint : it.colour);
-                g.setFont (f);
-                g.drawSingleLineText (name (it.segment), juce::roundToInt (ix), juce::roundToInt (baseline));
+                g.setFont (fonts[n]);
+                g.drawSingleLineText (labels[n], juce::roundToInt (ix), juce::roundToInt (baseline));
                 if (n + 1 < items.size())
                 {
                     g.setColour (Palette::faint.withAlpha (n < (size_t) nowIndex ? 0.5f : 0.9f));
                     g.setFont (arrowFont);
-                    g.drawSingleLineText (arrow, juce::roundToInt (ix + widthOf (it) + gap), juce::roundToInt (baseline - 2.0f));
+                    g.drawSingleLineText (arrow, juce::roundToInt (ix + widths[n] + gap), juce::roundToInt (baseline - 2.0f));
                 }
             }
         }
@@ -172,6 +184,7 @@ void ChordView::paint (juce::Graphics& g)
     for (int row = firstRow; row < lastRow; ++row)
     {
         const auto first = barBounds (row * barsPerRow);
+        if (! g.clipRegionIntersects (first.withX (grid.getX()).withRight (grid.getRight()))) continue; // only what's repainted
         g.setColour (Palette::faint);
         g.setFont (font (Weight::Regular, 11.0f));
         g.drawText (juce::String (row * barsPerRow + 1), first.withX (grid.getX()).withWidth (numberW - 8), juce::Justification::centredLeft, false);
@@ -179,6 +192,7 @@ void ChordView::paint (juce::Graphics& g)
         for (int b = row * barsPerRow; b < std::min ((int) bars.size(), (row + 1) * barsPerRow); ++b)
         {
             const auto cell = barBounds (b);
+            if (! g.clipRegionIntersects (cell)) continue;
             const auto& bar = bars[(size_t) b];
             const bool current = b == currentBar;
             if (current)
