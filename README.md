@@ -42,7 +42,7 @@ xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/justStem.vst3 ~/Lib
 
 | OS | Requirements | AI runs on | Tested |
 |---|---|---|---|
-| **macOS** | macOS 12+, Apple Silicon | Neural Engine / GPU (CoreML) | Builds and automated tests on macOS 15 (CI); used in Waveform 14 on macOS 27 |
+| **macOS** | macOS 12+, Apple Silicon | GPU (CoreML) | Builds and automated tests on macOS 15 (CI); used in Waveform 14 on macOS 27 |
 | **Windows** | Windows 10 1903+, x64 | GPU (DirectML) or CPU | Builds and automated tests on Windows Server 2022 (CI) |
 | **Linux** | x64, glibc | CPU | Builds and automated tests on Ubuntu 24.04 (CI) |
 
@@ -51,8 +51,8 @@ Intel Macs aren't supported. Tried justStem in another DAW or OS? Please share h
 
 ## How to use
 
-1. **Load a song:** paste a YouTube link (use the **Paste** button if your DAW blocks ⌘V / Ctrl+V),
-   click **Choose file**, or drop a file on the window. Click **Split**.
+1. **Load a song** (up to 15 minutes): paste a YouTube link (use the **Paste** button if your DAW
+   blocks ⌘V / Ctrl+V), click **Choose file**, or drop a file on the window. Click **Split**.
 2. **Stems:** mute, solo or set the volume of each stem; drag the ⠿ handle onto a DAW track.
    Turn on **Follow DAW** to play the stems with your DAW's transport.
 3. **Chords:** shows the chord playing now and the next ones; click a bar to jump there.
