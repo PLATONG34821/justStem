@@ -1,7 +1,10 @@
 #include "SongResult.h"
 #include "../core/Pitch.h"
 #include "../core/PitchShift.h"
+#include "../io/AppPaths.h"
 #include "../io/AudioFiles.h"
+
+#include <juce_cryptography/juce_cryptography.h>
 
 #include <algorithm>
 #include <array>
@@ -27,6 +30,30 @@ void addInto (StereoAudio& sum, const StereoAudio& stem)
     }
 }
 } // namespace
+
+juce::String audioFingerprint (const StereoAudio& audio)
+{
+    juce::MemoryBlock data;
+    data.append (audio.left.data(), audio.left.size() * sizeof (float));
+    data.append (audio.right.data(), audio.right.size() * sizeof (float));
+    return juce::SHA256 (data).toHexString();
+}
+
+juce::File findSavedSong (const juce::String& audioHash, const juce::String& model)
+{
+    if (audioHash.isEmpty()) return {};
+    for (const auto& entry : juce::RangedDirectoryIterator (paths::stems(), false, "*", juce::File::findDirectories))
+    {
+        SongResult saved;
+        saved.folder = entry.getFile();
+        const auto info = juce::JSON::parse (saved.infoFile());
+        if (! info.isObject() || info["audioHash"].toString() != audioHash || info["model"].toString() != model) continue;
+        bool complete = saved.instrumentalFile().existsAsFile();
+        for (auto stem : stemOrder) complete = complete && saved.stemFile (stem).existsAsFile();
+        if (complete) return saved.folder;
+    }
+    return {};
+}
 
 void saveSong (const SongResult& song)
 {
@@ -119,6 +146,7 @@ void saveInfo (const SongResult& song)
     info->setProperty ("title", song.title);
     info->setProperty ("durationSeconds", song.durationSeconds);
     info->setProperty ("model", song.model);
+    info->setProperty ("audioHash", song.audioHash);
     info->setProperty ("keyTonic", a.key.tonic);
     info->setProperty ("keyMinor", a.key.minor);
     info->setProperty ("keyConfidence", a.key.confidence);
@@ -149,6 +177,7 @@ std::shared_ptr<SongResult> loadSong (const juce::File& folder)
     song->title = info["title"].toString();
     song->durationSeconds = (double) info["durationSeconds"];
     song->model = info["model"].toString();
+    song->audioHash = info["audioHash"].toString();
     // info.json can be edited or damaged: values used as indices are brought into range.
     const auto pitchClass = [] (int p) { return p < 0 ? -1 : wrapPitchClass (p); }; // -1: none
     a.key.tonic = wrapPitchClass ((int) info["keyTonic"]);

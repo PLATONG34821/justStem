@@ -177,6 +177,9 @@ int main (int argc, char** argv)
     int flacs = 0;
     for (auto stem : juststem::stemOrder) flacs += s->stemFile (stem).existsAsFile() && s->stemFile (stem).hasFileExtension ("flac") ? 1 : 0;
     check (flacs == 6 && s->instrumentalFile().existsAsFile(), juce::String (flacs) + " stem FLACs + instrumental written");
+    check (s->audioHash.isNotEmpty() && juststem::findSavedSong (s->audioHash, s->model) == s->folder
+               && juststem::findSavedSong (s->audioHash, "another model") == juce::File(),
+           "the same song with the same model is found among the saved songs");
 
     std::printf ("Preview audio (host at 48 kHz)\n");
     auto& pl = proc->player();

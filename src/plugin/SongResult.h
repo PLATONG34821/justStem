@@ -21,6 +21,7 @@ struct SongResult
     SongAnalysis analysis;
     double durationSeconds = 0;
     juce::String model; // ModelSpec::name that made the stems (empty for songs from before HQ mode)
+    juce::String audioHash; // audioFingerprint of the song as split (empty for songs saved before 0.0.3)
 
     bool isHQ() const { return model == text::from (model::hq.name); }
 
@@ -39,6 +40,14 @@ private:
 };
 
 using SongResultPtr = std::shared_ptr<const SongResult>;
+
+/** SHA-256 of decoded 44.1 kHz audio, to tell the same song when it's split again (from the same
+    link or file, or a copy of it). */
+juce::String audioFingerprint (const StereoAudio& audio);
+
+/** A saved song made from the same audio (audioFingerprint) with the same model, whose stems are all
+    still there. Empty if there's none. */
+juce::File findSavedSong (const juce::String& audioHash, const juce::String& model);
 
 /** Write the stem FLACs, the instrumental and info.json into song.folder. Throws std::runtime_error. */
 void saveSong (const SongResult& song);
