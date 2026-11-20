@@ -1,6 +1,7 @@
 #include "Chords.h"
 #include "Analysis.h"
 #include "Dsp.h"
+#include "Pitch.h"
 
 #include <algorithm>
 #include <array>
@@ -37,7 +38,7 @@ std::pair<int, float> pitchClass (float f, double ref)
 {
     const double pitch = 12.0 * std::log2 (f / ref) + 69.0;
     const double q = std::round (pitch);
-    return { (int) (((long) q % 12 + 12) % 12), (float) std::fabs (pitch - q) };
+    return { wrapPitchClass ((int) q), (float) std::fabs (pitch - q) };
 }
 
 float norm (const Chroma& c)
@@ -80,15 +81,13 @@ int ChordResult::segmentAt (double t) const
 std::string chordName (const Chord& c, const KeyResult& key, int transpose)
 {
     if (c.isNone()) return "N.C.";
-    static constexpr const char* sharps[] { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-    static constexpr const char* flats[] { "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B" };
     static constexpr const char* neutral[] { "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" };
     // Spell like the key signature: the major key with the same signature decides.
     const auto k = key.transposed (transpose);
     const int major = k.minor ? (k.tonic + 3) % 12 : k.tonic;
     static constexpr int signature[12] { 0, -1, 1, -1, 1, -1, 1, 1, -1, 1, -1, 1 }; // C Db D Eb E F F# G Ab A Bb B
-    const auto* names = signature[major] > 0 ? sharps : signature[major] < 0 ? flats : neutral;
-    auto pc = [&] (int p) { return ((p + transpose) % 12 + 12) % 12; };
+    const auto* names = signature[major] > 0 ? sharpNames : signature[major] < 0 ? flatNames : neutral;
+    auto pc = [&] (int p) { return wrapPitchClass (p + transpose); };
 
     std::string s = std::string (names[pc (c.root)]) + suffixes[(int) c.quality];
     if (c.bass >= 0) s += std::string ("/") + names[pc (c.bass)];

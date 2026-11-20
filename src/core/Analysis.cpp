@@ -1,5 +1,6 @@
 #include "Analysis.h"
 #include "Dsp.h"
+#include "Pitch.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,9 +11,6 @@ namespace juststem
 {
 namespace
 {
-constexpr const char* sharpNames[] { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-constexpr const char* flatNames[] { "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B" };
-
 const char* noteName (int pc, bool minor)
 {
     // Keys conventionally written with flats: F Bb Eb Ab Db major; D G C F Bb minor.
@@ -69,7 +67,7 @@ KeyResult KeyResult::relative() const
 KeyResult KeyResult::transposed (int semitones) const
 {
     auto r = *this;
-    r.tonic = ((tonic + semitones) % 12 + 12) % 12;
+    r.tonic = wrapPitchClass (tonic + semitones);
     return r;
 }
 
@@ -100,7 +98,7 @@ KeyResult detectKey (const std::vector<float>& x, int sr)
                     const double dist = std::fabs (pitch - q);
                     if (dist >= 2.0 / 3.0) continue;
                     const double cw = std::cos (std::numbers::pi / 2 * dist / (2.0 / 3.0));
-                    c[(size_t) (((q % 12) + 12) % 12)] += w * cw * cw;
+                    c[(size_t) wrapPitchClass (q)] += w * cw * cw;
                 }
             }
         const double mx = *std::max_element (c.begin(), c.end());
