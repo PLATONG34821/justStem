@@ -234,7 +234,10 @@ int main (int argc, char** argv)
         for (int i = 0; i < 4; ++i) wheel (0.0f, -0.02f, true); // trackpad steps adding up to just over a row
         const int afterTrackpad = cv->firstVisibleRow();
         wheel (0.0f, -0.234f, false); // a mouse-wheel click
-        check (sidewaysIgnored && afterTrackpad == row + 1 && cv->firstVisibleRow() == row + 2,
+        const int afterWheel = cv->firstVisibleRow();
+        wheel (0.0f, 0.234f, false); // and back up, so the screenshot shows the bar playing
+        wheel (0.0f, 0.234f, false);
+        check (sidewaysIgnored && afterTrackpad == row + 1 && afterWheel == row + 2 && cv->firstVisibleRow() == row,
                "chord grid scrolling: sideways ignored, a row per row-height of trackpad travel, a row per wheel click");
     }
     for (int i = 0; i < 2; ++i)
