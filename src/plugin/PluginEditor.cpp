@@ -9,12 +9,6 @@ namespace
 {
 constexpr int windowW = 900, windowH = 620, margin = 28;
 
-juce::String formatTime (double s)
-{
-    const int t = juce::jmax (0, (int) s);
-    return juce::String (t / 60) + ":" + juce::String (t % 60).paddedLeft ('0', 2);
-}
-
 juce::String displayName (Stem s)
 {
     switch (s)
@@ -32,13 +26,12 @@ juce::String displayName (Stem s)
 // The "justStem" wordmark (light "just", bold "Stem") and the song title share the top bar's baseline.
 juce::Font wordmarkLight() { return font (Weight::Light, 23.0f, 0.01f); }
 juce::Font wordmarkBold() { return font (Weight::SemiBold, 23.0f, 0.01f); }
-juce::Font titleFont() { return font (Weight::Regular, 15.0f); }
 int wordmarkWidth()
 {
     return (int) std::ceil (juce::GlyphArrangement::getStringWidth (wordmarkLight(), "just")
                             + juce::GlyphArrangement::getStringWidth (wordmarkBold(), "Stem"));
 }
-int topBaseline (juce::Rectangle<int> row) { return baselineFor (titleFont(), row); }
+int topBaseline (juce::Rectangle<int> row) { return baselineFor (SongTitle::textFont(), row); }
 
 juce::String bpmText (float bpm)
 {
@@ -208,16 +201,8 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     for (auto* c : std::initializer_list<juce::Component*> { &stemsTab, &chordsTab, &chordView, &transposeDown, &transposeUp, &copyButton })
         addChildComponent (c);
 
-    playButton.setIcon (icons::play());
-    playButton.onClick = [this] { proc.player().setPlaying (! proc.player().isPlaying()); };
-    position.setSliderStyle (juce::Slider::LinearHorizontal);
-    position.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-    position.onValueChange = [this] { if (position.isMouseButtonDown()) proc.player().seek (position.getValue()); };
-    followHost.onClick = [this] { proc.player().setFollowHost (followHost.getToggleState()); };
-    followHost.setTooltip ("Play the stems along with your DAW's transport");
-    addAndMakeVisible (playButton);
-    addAndMakeVisible (position);
-    addAndMakeVisible (followHost);
+    addChildComponent (songTitle);
+    addChildComponent (playerBar);
 
     setSize (windowW, windowH);
     proc.addChangeListener (this);
@@ -278,9 +263,9 @@ void justStemEditor::resized()
         placeRight (inBox, pasteButton, b, b);
         inBox.removeFromRight (6);
         placeRight (inBox, chooseButton, b, b);
-        titleArea = {};
+        songTitle.setBounds ({});
     }
-    else titleArea = left;
+    else songTitle.setBounds (left);
     // The gauge tucks up under the top bar: its ring only comes near the bar in the middle, below "justStem".
     r.setTop (r.getY() - 6);
 
@@ -292,7 +277,7 @@ void justStemEditor::resized()
     // The player only shows with a song open; otherwise the log / drop hint gets its space.
     const bool busy = proc.isBusy();
     const bool player = visibleSong() != nullptr;
-    playerBar = player ? r.removeFromBottom (40) : juce::Rectangle<int>();
+    playerBar.setBounds (player ? r.removeFromBottom (40) : juce::Rectangle<int>());
     if (player) r.removeFromBottom (10);
     r.removeFromTop (14);
     stemsHeader = r.removeFromTop (34);
@@ -330,21 +315,6 @@ void justStemEditor::resized()
     auto list = stemsArea;
     const int rowH = list.getHeight() / rows.size();
     for (auto* row : rows) row->setBounds (list.removeFromTop (rowH));
-
-    // Play flush left, Follow DAW flush right, the time sized to its text, and the same gap either side of the seek bar.
-    auto bar = playerBar;
-    playButton.setBounds (bar.removeFromLeft (36).withSizeKeepingCentre (36, 36));
-    bar.removeFromLeft (16);
-    followHost.setBounds (bar.removeFromRight (DashboardLookAndFeel::toggleWidth (followHost)));
-    bar.removeFromRight (24);
-    const auto song = proc.getSong();
-    // Sized for the duration's digit count with every digit as a wide "0" (Inter's digits differ in width).
-    auto pattern = formatTime (song != nullptr ? song->durationSeconds : 0.0);
-    for (const char* d = "123456789"; *d != 0; ++d) pattern = pattern.replaceCharacter ((juce::juce_wchar) *d, '0');
-    timeArea = bar.removeFromRight ((int) std::ceil (juce::GlyphArrangement::getStringWidth (font (Weight::Regular, 13.0f),
-                                                                                            pattern + " / " + pattern)) + 4);
-    bar.removeFromRight (16);
-    position.setBounds (bar);
 }
 
 // ============================================================================ painting
@@ -354,7 +324,7 @@ void justStemEditor::paint (juce::Graphics& g)
     const bool busy = proc.isBusy();
     const auto song = visibleSong();
 
-    // "justStem" and the song title, on one baseline in the top bar.
+    // "justStem", on the song title's baseline (see SongTitle).
     const int baseline = topBaseline (topRow);
     if (! wordmarkArea.isEmpty())
     {
@@ -365,46 +335,6 @@ void justStemEditor::paint (juce::Graphics& g)
         g.setFont (wordmarkBold());
         g.drawSingleLineText ("Stem", x + juce::roundToInt (juce::GlyphArrangement::getStringWidth (wordmarkLight(), "just")), baseline);
     }
-    if (song != nullptr && ! titleArea.isEmpty())
-    {
-        auto t = titleArea;
-        drawIcon (g, icons::note(), t.removeFromLeft (16).toFloat().withSizeKeepingCentre (14, 14), Palette::dim);
-        t.removeFromLeft (10);
-        g.setColour (Palette::text);
-        g.setFont (titleFont());
-        // drawText can't take a baseline, so place the box so its centred text lands on it.
-        const auto f = titleFont();
-        const int y = baseline - juce::roundToInt (baselineOffset (f)) - t.getHeight() / 2;
-        // An "HQ" tag after the title when the stems came from the HQ model.
-        const auto tagFont = capsFont (10.0f);
-        const int tagW = song->isHQ() ? juce::roundToInt (juce::GlyphArrangement::getStringWidth (tagFont, "HQ")) + 14 : 0;
-        const int room = juce::jmax (0, t.getWidth() - (tagW > 0 ? tagW + 10 : 0));
-        const int textW = juce::roundToInt (juce::GlyphArrangement::getStringWidth (f, song->title)) + 1;
-        const auto textBox = t.withY (y).withWidth (room);
-        if (textW <= room) g.drawText (song->title, textBox, juce::Justification::centredLeft, false);
-        else
-        {
-            // Too long: hold, then slide left to show the rest, and loop (a second copy follows the first).
-            const int gap = 48;
-            const double holdMs = 2000, pxPerMs = 0.03;
-            const double cycle = holdMs + (textW + gap) / pxPerMs;
-            const double phase = std::fmod (juce::Time::getMillisecondCounterHiRes() - titleShownMs, cycle);
-            const int offset = phase < holdMs ? 0 : juce::roundToInt ((phase - holdMs) * pxPerMs);
-            juce::Graphics::ScopedSaveState clip (g);
-            g.reduceClipRegion (textBox.withY (topRow.getY()).withHeight (topRow.getHeight()));
-            for (int x : { textBox.getX() - offset, textBox.getX() - offset + textW + gap })
-                g.drawText (song->title, textBox.withX (x).withWidth (textW), juce::Justification::centredLeft, false);
-        }
-        if (tagW > 0)
-        {
-            const auto tag = juce::Rectangle<float> ((float) (t.getX() + juce::jmin (textW, room) + 10), (float) topRow.getCentreY() - 9.0f, (float) tagW, 18.0f);
-            g.setColour (Palette::accentTo.withAlpha (0.85f));
-            g.drawRoundedRectangle (tag.reduced (0.5f), 9.0f, 1.0f);
-            g.setFont (tagFont);
-            g.drawText ("HQ", tag.translated (tagFont.getHeight() * capsTracking * 0.5f, 0.0f), juce::Justification::centred, false); // centred without the spacing after the Q
-        }
-    }
-
     // An error, in red in the free space above TEMPO (while working, progress is on the gauge and in the log).
     if (! busy && proc.lastError().isNotEmpty())
     {
@@ -485,13 +415,6 @@ void justStemEditor::paint (juce::Graphics& g)
         g.setFont (font (Weight::Light, 16.0f));
         g.drawText ("Drop a song anywhere in this window", stemsArea, juce::Justification::centred, false);
     }
-
-    // Time in the player bar.
-    if (song == nullptr) return;
-    const auto& pl = proc.player();
-    g.setColour (Palette::dim);
-    g.setFont (font (Weight::Regular, 13.0f));
-    g.drawText (formatTime (pl.positionSeconds()) + " / " + formatTime (pl.durationSeconds()), timeArea, juce::Justification::centredRight, false);
 }
 
 void justStemEditor::paintOverChildren (juce::Graphics& g)
@@ -542,16 +465,16 @@ void justStemEditor::refreshAll()
     resized(); // the top bar and the stems header depend on what's visible
     if (storagePanel != nullptr) storagePanel->stateChanged(); // re-reads the disk only when a split starts or ends, or the song changes
     for (auto* row : rows) row->setVisible (song != nullptr && ! chordsShown);
-    followHost.setToggleState (proc.player().followsHost(), juce::dontSendNotification);
-    for (auto* c : std::initializer_list<juce::Component*> { &playButton, &position, &followHost }) c->setVisible (song != nullptr);
+    songTitle.setVisible (song != nullptr && ! input);
+    playerBar.setVisible (song != nullptr);
+    playerBar.setSong (song);
 
     if (song != nullptr && song != shownSong)
     {
         shownSong = song;
-        titleShownMs = juce::Time::getMillisecondCounterHiRes(); // a long title starts its slide from the beginning
+        songTitle.setSong (song);
         for (int i = 0; i < numStems; ++i) rows[i]->setFile (song->stemFile (stemOrder[(size_t) i]));
         rows.getLast()->setFile (song->instrumentalFile());
-        position.setRange (0.0, std::max (1.0, song->durationSeconds), 0.01);
         chordView.setSong (song);
     }
     for (auto* row : rows) row->refresh();
@@ -572,8 +495,7 @@ void justStemEditor::updateGauge()
         if (st.secondsLeft >= 0) // compiling the model: a countdown, as it's a one-off wait of minutes
         {
             const int left = juce::roundToInt (st.secondsLeft);
-            s.value = left > 0 ? juce::String (left / 60) + ":" + juce::String (left % 60).paddedLeft ('0', 2)
-                               : juce::String ("Almost");
+            s.value = left > 0 ? formatTime (left) : juce::String ("Almost");
             s.unit = left > 0 ? "one-time setup" : "done, one-time setup";
         }
         else
@@ -606,19 +528,9 @@ void justStemEditor::updateGauge()
 
 void justStemEditor::updatePlayerBar()
 {
-    auto& pl = proc.player();
-    const bool hasSong = visibleSong() != nullptr;
-    const bool manual = hasSong && ! pl.followsHost();
-    playButton.setEnabled (manual);
-    playButton.setIcon (manual && pl.isPlaying() ? icons::pause() : icons::play());
-    position.setEnabled (hasSong);
-    // Following the DAW: the bar shows the DAW's position but can't move it (plug-ins can't seek the host).
-    const bool follow = pl.followsHost();
-    position.setInterceptsMouseClicks (! follow, false);
-    position.setTooltip (follow ? "Following your DAW: move the DAW's playhead to jump" : juce::String());
-    chordView.setMouseCursor (follow ? juce::MouseCursor::NormalCursor : juce::MouseCursor::PointingHandCursor);
-    if (hasSong && ! position.isMouseButtonDown()) position.setValue (pl.positionSeconds(), juce::dontSendNotification);
-    repaint (timeArea);
+    playerBar.update();
+    // Following the DAW, clicking a bar can't seek (see onSeek), so no pointing hand.
+    chordView.setMouseCursor (proc.player().followsHost() ? juce::MouseCursor::NormalCursor : juce::MouseCursor::PointingHandCursor);
 }
 
 void justStemEditor::timerCallback()
@@ -631,7 +543,6 @@ void justStemEditor::timerCallback()
     else
     {
         updatePlayerBar();
-        if (! titleArea.isEmpty() && proc.getSong() != nullptr) repaint (titleArea); // a long title slides
         if (chordView.isVisible()) chordView.setPosition (proc.player().positionSeconds());
     }
 }

@@ -88,6 +88,8 @@ set(JUSTSTEM_PLUGIN_SOURCES
     src/plugin/SongResult.cpp
     src/plugin/StemPlayer.cpp
     src/plugin/ui/ChordView.cpp
+    src/plugin/ui/PlayerBar.cpp
+    src/plugin/ui/SongTitle.cpp
     src/plugin/ui/StoragePanel.cpp
     src/plugin/ui/Theme.cpp
     src/plugin/ui/Widgets.cpp)
