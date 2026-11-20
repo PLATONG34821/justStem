@@ -39,6 +39,10 @@ plug-in into this folder, then rescan plug-ins in your DAW:
 xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/justStem.vst3 ~/Library/Audio/Plug-Ins/Components/justStem.component
 ```
 
+**Updates:** from 0.0.3, justStem checks GitHub once a day for a newer release and tells you when
+one is out. Only the latest version number is downloaded; nothing about you or your songs is sent.
+To turn it off, set the environment variable `JUSTSTEM_NO_UPDATE_CHECK=1`.
+
 ## Supported and tested
 
 | OS | Requirements | AI runs on | Tested |
