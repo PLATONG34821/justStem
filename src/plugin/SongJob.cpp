@@ -6,9 +6,12 @@
 
 #include <juce_events/juce_events.h>
 
+#include <algorithm>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <tuple>
+#include <vector>
 
 namespace juststem
 {
@@ -26,6 +29,13 @@ juce::File newSongFolder (const juce::String& title)
 }
 
 double nowMs() { return juce::Time::getMillisecondCounterHiRes(); }
+
+/** Jobs whose owner has gone (SongJob::abandon), kept until their thread ends. Message thread. */
+std::vector<std::unique_ptr<SongJob>>& abandonedJobs()
+{
+    static std::vector<std::unique_ptr<SongJob>> jobs;
+    return jobs;
+}
 
 juce::String seconds (double ms)
 {
@@ -46,6 +56,16 @@ SongJob::SongJob (Kind k, juce::String src, juce::File model, Finished done)
     : juce::Thread ("justStem song job"), kind (k), source (std::move (src)), modelFile (std::move (model)), onFinished (std::move (done))
 {
 }
+
+void SongJob::abandon (std::unique_ptr<SongJob> job)
+{
+    if (job == nullptr) return;
+    job->cancel();
+    job->abandoned = true;
+    abandonedJobs().push_back (std::move (job));
+}
+
+int SongJob::numAbandoned() { return (int) abandonedJobs().size(); }
 
 SongJob::~SongJob()
 {
@@ -131,8 +151,22 @@ void SongJob::run()
     if (error == "cancelled") addLog ("Cancelled");
     else if (error.isNotEmpty()) addLog ("Error: " + error);
 
-    // The job may be destroyed before this runs, so only captured copies are used.
-    juce::MessageManager::callAsync ([done = onFinished, result, error] { done (result, error); });
+    // Runs on the message thread after this thread has ended (or is about to). The job still exists:
+    // only `done` deletes it, or, once abandoned, this.
+    juce::MessageManager::callAsync ([this, done = onFinished, result, error] {
+        if (! abandoned)
+        {
+            done (result, error);
+            return;
+        }
+        auto& jobs = abandonedJobs();
+        const auto it = std::find_if (jobs.begin(), jobs.end(), [this] (const auto& j) { return j.get() == this; });
+        if (it != jobs.end())
+        {
+            const auto self = std::move (*it); // deleted at the end of this scope, its thread done
+            jobs.erase (it);
+        }
+    });
 }
 
 SongResultPtr SongJob::process()

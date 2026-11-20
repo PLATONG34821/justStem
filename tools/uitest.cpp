@@ -321,6 +321,21 @@ int main (int argc, char** argv)
         check (juce::JSON::parse (s->infoFile())["chords"].size() == (int) a.chords.segments.size(), "and saved to info.json");
     }
 
+    std::printf ("Closing the plug-in while it works\n");
+    {
+        // Loading (or, on a first run, compiling) the model can't stop part-way: closing the plug-in
+        // then mustn't wait for it, or the DAW freezes.
+        auto busy = std::make_unique<justStemProcessor> (model);
+        busy->startFile (song);
+        pumpUntil ([&] { return busy->jobStatus().step.startsWith ("Preparing"); }, 60000);
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        busy.reset();
+        const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+        check (ms < 100, "closing it while the model loads doesn't wait for the job (" + juce::String (juce::roundToInt (ms)) + " ms)");
+        pumpUntil ([] { return juststem::SongJob::numAbandoned() == 0; }, 10000);
+        check (juststem::SongJob::numAbandoned() == 0, "the abandoned job ends and deletes itself");
+    }
+
     std::printf ("A stem edited outside justStem\n");
     {
         // Trimmed to 10 s, e.g. in an audio editor: on reload every stem must still have one length.

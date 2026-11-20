@@ -33,8 +33,7 @@ justStemProcessor::justStemProcessor (juce::File fastModel)
 
 justStemProcessor::~justStemProcessor()
 {
-    *alive = false;
-    job.reset(); // stops the thread
+    SongJob::abandon (std::move (job)); // don't wait for it: see abandon
 }
 
 void justStemProcessor::prepareToPlay (double hostRate, int samplesPerBlock)
