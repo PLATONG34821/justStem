@@ -74,10 +74,11 @@ public:
                       const std::function<void (const SeparationProgress&)>& onProgress,
                       const std::atomic<bool>& cancel);
 
-    /** The subfolder of `cacheDir` for this model file: named after the file, its size and its
-        modification time. ONNX Runtime keys its CoreML cache by model name, not contents, so a model
-        replaced under the same name would otherwise load the old compiled model, fail, and run on the
-        CPU. Creates the folder and deletes stale ones for the same file name. */
+    /** The subfolder of `cacheDir` for this model file: named after the file, its size and a
+        fingerprint of its contents, so the AU, VST3 and standalone copies of one model share it.
+        ONNX Runtime keys its CoreML cache by model name, not contents, so a model replaced under the
+        same name would otherwise load the old compiled model, fail, and run on the CPU. Creates the
+        folder and deletes stale ones for the same file name. */
     static std::string coremlCacheFolder (const std::string& modelPath, const std::string& cacheDir);
 
     Backend backend() const { return currentBackend; }

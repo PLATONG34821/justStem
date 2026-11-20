@@ -36,6 +36,8 @@ void paintBackground (juce::Graphics&, juce::Rectangle<int> area);
 namespace icons
 {
     juce::Path note();
+    juce::Path fileImport(); // choose a file
+    juce::Path split();      // a prism splitting light: start the split
     juce::Path layers();
     juce::Path play();  // filled
     juce::Path pause(); // filled
@@ -62,6 +64,8 @@ public:
     const juce::Path& getIcon() const { return icon; }
     /** Width that fits the icon and text at `height` (a circle when there's no text). */
     int idealWidth (int height) const;
+    /** Draw the icon larger (or smaller) than usual, e.g. for the round buttons inside the link box. */
+    float iconScale = 1.0f;
 
 private:
     juce::Path icon;

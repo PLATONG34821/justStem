@@ -36,7 +36,7 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
         "--", link.trim()
     };
 
-    if (progress) progress ("Getting audio from YouTube", 0.0);
+    if (progress) progress ("Getting audio", 0.0);
     juce::ChildProcess proc;
     if (! proc.start (args, juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
         throw std::runtime_error ("Couldn't start yt-dlp");
@@ -68,7 +68,7 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
             else if (line.startsWith ("juststem-progress "))
             {
                 const auto pct = line.fromFirstOccurrenceOf (" ", false, false).retainCharacters ("0123456789.");
-                if (progress && pct.isNotEmpty()) progress ("Getting audio from YouTube", pct.getDoubleValue() / 100.0);
+                if (progress && pct.isNotEmpty()) progress ("Getting audio", pct.getDoubleValue() / 100.0);
             }
             else if (line.startsWith ("ERROR")) errors << line << "\n";
             else if (line.startsWith ("WARNING")) { DBG (line); }

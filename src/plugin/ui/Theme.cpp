@@ -59,6 +59,45 @@ namespace icons
         p.quadraticTo (0.70f, 0.18f, 0.86f, 0.36f);
         return p;
     }
+    juce::Path fileImport()
+    {
+        // A page with a folded corner, open on the right where an arrow comes in.
+        juce::Path p;
+        p.startNewSubPath (0.74f, 0.44f);
+        p.lineTo (0.74f, 0.28f);
+        p.lineTo (0.52f, 0.06f);
+        p.lineTo (0.14f, 0.06f);
+        p.lineTo (0.14f, 0.94f);
+        p.lineTo (0.74f, 0.94f);
+        p.lineTo (0.74f, 0.78f);
+        p.startNewSubPath (0.52f, 0.06f); // the fold
+        p.lineTo (0.52f, 0.28f);
+        p.lineTo (0.74f, 0.28f);
+        p.startNewSubPath (0.94f, 0.61f); // the arrow
+        p.lineTo (0.42f, 0.61f);
+        p.startNewSubPath (0.56f, 0.47f);
+        p.lineTo (0.42f, 0.61f);
+        p.lineTo (0.56f, 0.75f);
+        return p;
+    }
+    juce::Path split()
+    {
+        // A prism: one beam in on the left face, three rays fanning out of the right face.
+        juce::Path p;
+        p.startNewSubPath (0.36f, 0.10f);
+        p.lineTo (0.06f, 0.80f);
+        p.lineTo (0.66f, 0.80f);
+        p.closeSubPath();
+        p.startNewSubPath (0.00f, 0.58f);
+        p.lineTo (0.19f, 0.50f);
+        const float rays[][3] = { { 0.49f, 0.40f, 0.20f }, { 0.53f, 0.49f, 0.48f }, { 0.57f, 0.58f, 0.76f } };
+        for (const auto& r : rays)
+        {
+            p.startNewSubPath (r[0], r[1]);
+            p.lineTo (1.0f, r[2]);
+        }
+        return p;
+    }
     juce::Path layers()
     {
         juce::Path p;
@@ -278,7 +317,7 @@ void DashboardLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& 
         return;
     }
     // Icon then text, centred together.
-    const float h = (float) b.getHeight(), iconS = pillIconSize (b.getHeight());
+    const float h = (float) b.getHeight(), iconS = std::round (pillIconSize (b.getHeight()) * pill->iconScale);
     const float textW = text.isEmpty() ? 0.0f : juce::GlyphArrangement::getStringWidth (f, text);
     const float gap = text.isEmpty() ? 0.0f : pillIconGap;
     const float x = std::round (((float) b.getWidth() - (iconS + gap + textW)) * 0.5f);

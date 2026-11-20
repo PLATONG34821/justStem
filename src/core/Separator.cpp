@@ -8,6 +8,10 @@
 #include <signalsmith-linear/fft.h>
 
 #include <chrono>
+#include <fstream>
+#include <cstdio>
+#include <cstdint>
+#include <vector>
 #include <complex>
 #include <numbers>
 #include <filesystem>
@@ -244,9 +248,28 @@ std::string Separator::coremlCacheFolder (const std::string& modelPath, const st
     const fs::path base (std::u8string (cacheDir.begin(), cacheDir.end()));
     std::error_code ec;
     const auto size = fs::file_size (model, ec);
-    const auto mtime = fs::last_write_time (model, ec).time_since_epoch().count();
+    // A fingerprint of the contents, not the modification time: the AU, VST3 and standalone each bundle
+    // their own copy of the model, and those copies must share one compiled model. Hashing 32 spread-out
+    // 64 KB blocks reads 2 MB, which takes milliseconds.
+    std::uint64_t hash = 1469598103934665603ull; // FNV-1a
+    if (std::ifstream in { model, std::ios::binary }; in && size > 0)
+    {
+        std::vector<char> block (1 << 16);
+        constexpr int blocks = 32;
+        for (int i = 0; i < blocks; ++i)
+        {
+            const auto at = (std::uintmax_t) ((double) (size > block.size() ? size - block.size() : 0) * i / (blocks - 1));
+            in.clear();
+            in.seekg ((std::streamoff) at);
+            in.read (block.data(), (std::streamsize) block.size());
+            for (std::streamsize k = 0; k < in.gcount(); ++k)
+                hash = (hash ^ (unsigned char) block[(size_t) k]) * 1099511628211ull;
+        }
+    }
     const auto stem = model.stem().u8string();
-    const auto tag = "-" + std::to_string ((unsigned long long) size) + "-" + std::to_string ((long long) mtime);
+    char hex[17];
+    std::snprintf (hex, sizeof hex, "%016llx", (unsigned long long) hash);
+    const auto tag = "-" + std::to_string ((unsigned long long) size) + "-" + hex;
     const auto name = stem + std::u8string (tag.begin(), tag.end());
 
     // Older compiles of the same model (and the pre-versioned folder named just after it).

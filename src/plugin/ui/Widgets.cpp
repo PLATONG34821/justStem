@@ -85,9 +85,17 @@ void Gauge::paint (juce::Graphics& g)
     }
     // Caption, big value, unit.
     g.setColour (Palette::dim);
-    g.setFont (capsFont (size * 0.04f));
-    g.drawText (state.caption.toUpperCase(), juce::Rectangle<float> (disc.getX(), disc.getY() + disc.getHeight() * 0.18f, disc.getWidth(), size * 0.06f),
-                juce::Justification::centred, true);
+    // Long captions (e.g. a translated one) shrink to stay inside the disc at that height.
+    {
+        const auto caption = state.caption.toUpperCase();
+        auto f = capsFont (size * 0.04f);
+        const float maxW = disc.getWidth() * 0.80f;
+        const float w = juce::GlyphArrangement::getStringWidth (f, caption);
+        if (w > maxW) f = capsFont (size * 0.04f * std::max (0.7f, maxW / w));
+        g.setFont (f);
+        g.drawText (caption, juce::Rectangle<float> (disc.getX(), disc.getY() + disc.getHeight() * 0.18f, disc.getWidth(), size * 0.06f),
+                    juce::Justification::centred, true);
+    }
     g.setColour (Palette::text);
     g.setFont (font (Weight::ExtraLight, size * 0.22f));
     g.drawFittedText (state.value, disc.withSizeKeepingCentre (disc.getWidth() * 0.50f, size * 0.25f).toNearestInt(),

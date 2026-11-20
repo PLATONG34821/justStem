@@ -133,7 +133,7 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
 
     linkBox.setTextToShowWhenEmpty ("Paste a YouTube link", Palette::faint); // dropping a song is hinted below
     linkBox.setFont (font (Weight::Regular, 14.0f));
-    linkBox.setIndents (16, 0);
+    linkBox.setIndents (0, 0); // the border (see resized) keeps scrolled text off the box's edges
     linkBox.setJustification (juce::Justification::centredLeft);
     linkBox.onReturnKey = [this] { startFromInput(); };
     linkBox.onEscapeKey = [this] { if (wantInput) showInput (false); };
@@ -159,10 +159,16 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     splitButton.setColour (juce::TextButton::buttonColourId, Palette::text);
     splitButton.setColour (juce::TextButton::textColourOffId, Palette::bgBottom);
     splitButton.onClick = [this] { startFromInput(); };
+    splitButton.setTooltip ("Split into stems");
+    for (auto* b : { &splitButton, &pasteButton, &chooseButton }) b->iconScale = 1.3f;
     chooseButton.onClick = [this] { chooseFile(); };
+    chooseButton.setTooltip ("Choose an audio file");
     cancelButton.onClick = [this] { proc.cancelJob(); };
     addAndMakeVisible (splitButton);
     addAndMakeVisible (chooseButton);
+    hqToggle.setClickingTogglesState (true);
+    hqToggle.setColour (juce::TextButton::buttonOnColourId, Palette::accentTo);
+    hqToggle.setColour (juce::TextButton::textColourOnId, Palette::bgBottom);
     hqToggle.onClick = [this] { proc.setHQ (hqToggle.getToggleState()); };
     hqToggle.setTooltip ("Higher-quality split with BS-RoFormer: cleaner stems, especially guitar and piano, "
                          "but about 4x slower than the standard model");
@@ -237,21 +243,16 @@ void justStemEditor::resized()
     top.removeFromRight (10);
     if (inputShown())
     {
-        if (closeInputButton.isVisible())
+        if (closeInputButton.isVisible()) // back to the song: where New song was, the same size
         {
-            closeInputButton.setBounds (top.removeFromRight (40));
+            closeInputButton.setBounds (top.removeFromRight (newSongButton.idealWidth (40)));
             top.removeFromRight (8);
         }
-        splitButton.setBounds (top.removeFromRight (84));
-        top.removeFromRight (8);
-        chooseButton.setBounds (top.removeFromRight (chooseButton.idealWidth (40)));
         if (hqToggle.isVisible())
         {
-            top.removeFromRight (12);
-            hqToggle.setBounds (top.removeFromRight (DashboardLookAndFeel::toggleWidth (hqToggle)));
-            top.removeFromRight (4); // the wordmark check below adds its own gap
+            hqToggle.setBounds (top.removeFromRight (64));
+            top.removeFromRight (8);
         }
-        else top.removeFromRight (16);
     }
     else
     {
@@ -260,12 +261,23 @@ void justStemEditor::resized()
     }
     // The name needs room on both sides; when the buttons reach it (e.g. a narrow layout) it's left out.
     if (top.getRight() < wordmarkArea.getRight() + 16) wordmarkArea = {};
-    const auto left = wordmarkArea.isEmpty() ? top : top.withRight (wordmarkArea.getX() - 16);
+    // The link box and the song title end in line with the left edge of the gauge below.
+    const int gaugeLeft = getWidth() / 2 - 236 / 2;
+    const auto left = top.withRight (juce::jmin (top.getRight(), gaugeLeft, wordmarkArea.isEmpty() ? top.getRight() : wordmarkArea.getX() - 16));
     if (inputShown())
     {
-        linkBox.setBounds (left);
-        const int pw = pasteButton.idealWidth (28);
-        pasteButton.setBounds (left.withLeft (left.getRight() - pw - 6).withTrimmedRight (6).withSizeKeepingCentre (pw, 28));
+        auto box = left;
+        linkBox.setBounds (box);
+        // Choose file and Paste sit inside the box's right end (only while it's empty, see refreshPasteButton).
+        // Split, then Paste and Choose file, inside the box's right end (those two only while it's empty).
+        constexpr int b = 32; // round icon buttons, nearly the box's height
+        auto inBox = box.withTrimmedRight (4);
+        splitButton.setBounds (inBox.removeFromRight (b).withSizeKeepingCentre (b, b));
+        linkBox.setBorder ({ 0, 22, 0, b + 12 }); // text starts in from the left and stops before Split
+        inBox.removeFromRight (6);
+        pasteButton.setBounds (inBox.removeFromRight (b).withSizeKeepingCentre (b, b));
+        inBox.removeFromRight (6);
+        chooseButton.setBounds (inBox.removeFromRight (b).withSizeKeepingCentre (b, b));
         titleArea = {};
     }
     else titleArea = left;
@@ -371,26 +383,42 @@ void justStemEditor::paint (juce::Graphics& g)
         const auto f = titleFont();
         const int y = baseline - juce::roundToInt ((f.getAscent() - f.getDescent()) * 0.5f) - t.getHeight() / 2;
         // An "HQ" tag after the title when the stems came from the HQ model.
-        if (song->isHQ())
+        const auto tagFont = capsFont (10.0f);
+        const int tagW = song->isHQ() ? juce::roundToInt (juce::GlyphArrangement::getStringWidth (tagFont, "HQ")) + 14 : 0;
+        const int room = juce::jmax (0, t.getWidth() - (tagW > 0 ? tagW + 10 : 0));
+        const int textW = juce::roundToInt (juce::GlyphArrangement::getStringWidth (f, song->title)) + 1;
+        const auto textBox = t.withY (y).withWidth (room);
+        if (textW <= room) g.drawText (song->title, textBox, juce::Justification::centredLeft, false);
+        else
         {
-            const auto tagFont = capsFont (10.0f);
-            const int tagW = juce::roundToInt (juce::GlyphArrangement::getStringWidth (tagFont, "HQ")) + 14;
-            const int titleW = juce::jmin (t.getWidth() - tagW - 10,
-                                           juce::roundToInt (juce::GlyphArrangement::getStringWidth (f, song->title)) + 1);
-            g.drawText (song->title, t.withY (y).withWidth (juce::jmax (0, titleW)), juce::Justification::centredLeft, true);
-            const auto tag = juce::Rectangle<float> ((float) (t.getX() + titleW + 10), (float) topRow.getCentreY() - 9.0f, (float) tagW, 18.0f);
+            // Too long: hold, then slide left to show the rest, and loop (a second copy follows the first).
+            const int gap = 48;
+            const double holdMs = 2000, pxPerMs = 0.03;
+            const double cycle = holdMs + (textW + gap) / pxPerMs;
+            const double phase = std::fmod (juce::Time::getMillisecondCounterHiRes() - titleShownMs, cycle);
+            const int offset = phase < holdMs ? 0 : juce::roundToInt ((phase - holdMs) * pxPerMs);
+            juce::Graphics::ScopedSaveState clip (g);
+            g.reduceClipRegion (textBox.withY (topRow.getY()).withHeight (topRow.getHeight()));
+            for (int x : { textBox.getX() - offset, textBox.getX() - offset + textW + gap })
+                g.drawText (song->title, textBox.withX (x).withWidth (textW), juce::Justification::centredLeft, false);
+        }
+        if (tagW > 0)
+        {
+            const auto tag = juce::Rectangle<float> ((float) (t.getX() + juce::jmin (textW, room) + 10), (float) topRow.getCentreY() - 9.0f, (float) tagW, 18.0f);
             g.setColour (Palette::accentTo.withAlpha (0.85f));
             g.drawRoundedRectangle (tag.reduced (0.5f), 9.0f, 1.0f);
             g.setFont (tagFont);
             g.drawText ("HQ", tag.translated (10.0f * 0.07f, 0.0f), juce::Justification::centred, false);
         }
-        else g.drawText (song->title, t.withY (y), juce::Justification::centredLeft, true);
     }
 
     // An error, in red in the free space above TEMPO (while working, progress is on the gauge and in the log).
     if (! busy && proc.lastError().isNotEmpty())
     {
+        // Under the link box, lined up with the text in it (above TEMPO when the box isn't showing).
         auto area = tempoArea.withBottom (gauge.getY() + juce::roundToInt (gauge.lines().caption) - 18);
+        if (linkBox.isVisible())
+            area = linkBox.getBounds().withTop (linkBox.getBottom() + 8).withBottom (area.getBottom()).withTrimmedLeft (22).withTrimmedRight (16);
         g.setColour (Palette::bad);
         g.setFont (font (Weight::Regular, 12.5f));
         g.drawFittedText (proc.lastError(), area, juce::Justification::topLeft, 3, 0.9f);
@@ -495,8 +523,7 @@ void justStemEditor::refreshAll()
     if (busy) wantInput = false; // a new song is on its way; show it when it's done
 
     const bool input = inputShown();
-    for (auto* c : std::initializer_list<juce::Component*> { &linkBox, &chooseButton, &splitButton }) c->setVisible (input);
-    refreshPasteButton();
+    for (auto* c : std::initializer_list<juce::Component*> { &linkBox, &splitButton }) c->setVisible (input);
     newSongButton.setVisible (! input);
     closeInputButton.setVisible (input && song != nullptr);
     linkBox.setEnabled (! busy);
@@ -505,6 +532,7 @@ void justStemEditor::refreshAll()
     hqToggle.setVisible (input && proc.hqAvailable());
     hqToggle.setEnabled (! busy);
     hqToggle.setToggleState (proc.getHQ(), juce::dontSendNotification);
+    refreshPasteButton(); // Paste and Choose file
     cancelButton.setVisible (busy);
     saveAllButton.setVisible (song != nullptr && ! chordsShown);
     revealButton.setVisible (song != nullptr && ! chordsShown);
@@ -528,6 +556,7 @@ void justStemEditor::refreshAll()
     if (song != nullptr && song != shownSong)
     {
         shownSong = song;
+        titleShownMs = juce::Time::getMillisecondCounterHiRes(); // a long title starts its slide from the beginning
         for (int i = 0; i < numStems; ++i) rows[i]->setFile (song->stemFile (stemOrder[(size_t) i]));
         rows.getLast()->setFile (song->instrumentalFile());
         position.setRange (0.0, std::max (1.0, song->durationSeconds), 0.01);
@@ -610,6 +639,7 @@ void justStemEditor::timerCallback()
     else
     {
         updatePlayerBar();
+        if (! titleArea.isEmpty() && proc.getSong() != nullptr) repaint (titleArea); // a long title slides
         if (chordView.isVisible()) chordView.setPosition (proc.player().positionSeconds());
     }
 }
@@ -666,7 +696,10 @@ void justStemEditor::filesDropped (const juce::StringArray& files, int, int)
 
 void justStemEditor::refreshPasteButton()
 {
-    pasteButton.setVisible (inputShown() && ! proc.isBusy() && linkBox.isEmpty());
+    // Both sit inside the link box, so they go once a link is typed (and never cover it).
+    const bool show = inputShown() && ! proc.isBusy() && linkBox.isEmpty();
+    pasteButton.setVisible (show);
+    chooseButton.setVisible (show);
 }
 
 // ============================================================================ new song

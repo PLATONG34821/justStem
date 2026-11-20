@@ -273,7 +273,7 @@ SongResultPtr SongJob::process()
     addLog ("Stem levels (dB RMS): " + levels.joinIntoString (", "));
     if (! quiet.isEmpty()) addLog ("Almost silent: " + quiet.joinIntoString (", ") + " (probably not in this song)");
 
-    setStatus ("Detecting key, tempo and chords", -1);
+    setStatus ("Analysing song", -1); // key, tempo and chords
     const auto analysisStart = nowMs();
     song->analysis = analyzeSong (mix, song->stems);
     const double analysisMs = nowMs() - analysisStart;
