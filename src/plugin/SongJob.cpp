@@ -188,16 +188,21 @@ SongResultPtr SongJob::process()
     addLog ("Decoded " + mmss (song->durationSeconds) + " of audio in " + seconds (decodeMs)
             + " (working at 44.1 kHz stereo, " + juce::String (rmsDb (mix), 1) + " dB RMS)");
 
-    // On macOS the first run also compiles the model for CoreML (about 25 s); later runs reuse it.
+    // On macOS the first run of each model also compiles it for CoreML; later runs reuse it.
     setStatus ("Preparing AI model", -1);
     if (! modelFile.existsAsFile()) throw std::runtime_error ("The AI model is missing from the plug-in. Please reinstall justStem.");
-    addLog ("Model: " + modelFile.getFileName() + " (HT-Demucs, 6 stems, "
+    const auto& spec = model::forFile (modelFile.getFullPathName().toStdString());
+    addLog ("Model: " + modelFile.getFileName() + " (" + juce::String (std::string (spec.name)) + ", 6 stems, "
             + juce::File::descriptionOfSizeInBytes (modelFile.getSize()) + ")");
+    // One cache folder per model file version, so "already compiled" is known for each.
+    const juce::File coremlCache (juce::String::fromUTF8 (Separator::coremlCacheFolder (
+        modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString()).c_str()));
 #if JUCE_MAC
-    const bool cached = paths::coremlCache().isDirectory()
-                        && paths::coremlCache().getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0;
+    const bool cached = coremlCache.isDirectory()
+                        && coremlCache.getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0;
     addLog (cached ? "Using the CoreML model compiled on an earlier run"
-                   : "First run on this Mac: compiling the model for CoreML (about 25 s, only once)");
+                   : "First run on this Mac: compiling the model for CoreML (only once; "
+                         + juce::String (&spec == &model::hq ? "about 2.5 min" : "about 25 s") + ")");
 #endif
     Separator separator (modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString());
 
@@ -212,7 +217,8 @@ SongResultPtr SongJob::process()
             if (! backendLogged) modelMs = nowMs() - splitStart;
             addLog (juce::String (backendLogged ? "Fell back to " : "Running on ") + backendName (p.backend)
                     + (backendLogged ? juce::String() : " (model loaded in " + seconds (modelMs) + ")")
-                    + ", " + juce::String (p.totalSegments) + " chunks of 7.8 s");
+                    + ", " + juce::String (p.totalSegments) + " chunks of "
+                    + juce::String ((double) spec.chunkSamples / sampleRate, 1) + " s");
             backendLogged = true;
             lastBackend = p.backend;
         }

@@ -163,6 +163,10 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     cancelButton.onClick = [this] { proc.cancelJob(); };
     addAndMakeVisible (splitButton);
     addAndMakeVisible (chooseButton);
+    hqToggle.onClick = [this] { proc.setHQ (hqToggle.getToggleState()); };
+    hqToggle.setTooltip ("Higher-quality split with BS-RoFormer: cleaner stems, especially guitar and piano, "
+                         "but about 4x slower than the standard model");
+    addChildComponent (hqToggle);
     addChildComponent (cancelButton);
 
     addAndMakeVisible (gauge);
@@ -242,6 +246,11 @@ void justStemEditor::resized()
         top.removeFromRight (8);
         chooseButton.setBounds (top.removeFromRight (chooseButton.idealWidth (40)));
         top.removeFromRight (16);
+        if (hqToggle.isVisible())
+        {
+            hqToggle.setBounds (top.removeFromRight (DashboardLookAndFeel::toggleWidth (hqToggle)));
+            top.removeFromRight (16);
+        }
     }
     else
     {
@@ -474,6 +483,9 @@ void justStemEditor::refreshAll()
     linkBox.setEnabled (! busy);
     splitButton.setEnabled (! busy);
     chooseButton.setEnabled (! busy);
+    hqToggle.setVisible (input && proc.hqAvailable());
+    hqToggle.setEnabled (! busy);
+    hqToggle.setToggleState (proc.getHQ(), juce::dontSendNotification);
     cancelButton.setVisible (busy);
     saveAllButton.setVisible (song != nullptr && ! chordsShown);
     revealButton.setVisible (song != nullptr && ! chordsShown);

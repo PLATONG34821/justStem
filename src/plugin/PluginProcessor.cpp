@@ -8,7 +8,7 @@ juce::File justStemProcessor::bundledModelFile()
 {
     // For a plug-in, currentExecutableFile is the plug-in binary itself, not the host.
     const auto binaryDir = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory();
-    const juce::String name { std::string (model::fileName) };
+    const juce::String name { std::string (model::fast.fileName) };
     const juce::File candidates[] {
         // Bundles keep resources in Contents/Resources next to the binary's folder: macOS bundles
         // (Contents/MacOS) and VST3 bundles on every OS (Contents/x86_64-win, Contents/x86_64-linux).
@@ -21,11 +21,12 @@ juce::File justStemProcessor::bundledModelFile()
     return candidates[0]; // missing: SongJob reports it
 }
 
-justStemProcessor::justStemProcessor (juce::File model)
+justStemProcessor::justStemProcessor (juce::File fastModel)
     : AudioProcessor (BusesProperties()
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      modelFile (std::move (model))
+      fastModelFile (std::move (fastModel)),
+      hqModelFile (fastModelFile.getSiblingFile (juce::String (std::string (model::hq.fileName))))
 {
 }
 
@@ -63,7 +64,7 @@ void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source
     if (job != nullptr) return;
     error.clear();
     std::weak_ptr<bool> token = alive;
-    job = std::make_unique<SongJob> (kind, source, modelFile, [this, token] (SongResultPtr result, juce::String err) {
+    job = std::make_unique<SongJob> (kind, source, getHQ() ? hqModelFile : fastModelFile, [this, token] (SongResultPtr result, juce::String err) {
         if (token.expired()) return;
         lastLog = job->log();
         job.reset();
@@ -96,6 +97,7 @@ void justStemProcessor::getStateInformation (juce::MemoryBlock& data)
     if (song != nullptr) state.setProperty ("folder", song->folder.getFullPathName(), nullptr);
     state.setProperty ("followHost", stemPlayer.followsHost(), nullptr);
     state.setProperty ("transpose", transpose, nullptr);
+    state.setProperty ("hq", hq, nullptr);
     for (int i = 0; i < numStems; ++i)
     {
         juce::ValueTree s ("Stem");
@@ -115,6 +117,7 @@ void justStemProcessor::setStateInformation (const void* data, int size)
     stemPlayer.setFollowHost (state["followHost"]);
     transpose = juce::jlimit (-11, 11, (int) state["transpose"]);
     stemPlayer.setTranspose (transpose);
+    hq = state["hq"];
     for (int i = 0; i < numStems && i < state.getNumChildren(); ++i)
     {
         const auto s = state.getChild (i);

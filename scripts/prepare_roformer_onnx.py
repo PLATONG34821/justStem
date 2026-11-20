@@ -1,11 +1,13 @@
 """
-Build models/bs_roformer_sw_6stem_opt.onnx from bs_roformer_sw_6stem_fp16.onnx so that it runs on
-the GPU through CoreML (and stays plain opset-17 ONNX for DirectML, CUDA and CPU).
+Build models/bs_roformer_sw_6stem_opt.onnx (HQ mode) from bs_roformer_sw_6stem_fp16.onnx so that it
+runs on the GPU through CoreML, with fp16 maths (and stays plain opset-17 ONNX for DirectML, CUDA
+and CPU).
 
 As exported, CoreML rejects ~490 of the graph's nodes and splits it into 174 partitions; compiling
 those exhausts memory on a 16 GB Mac and the work falls back to the CPU. After these rewrites
 CoreML takes 6591 of 6595 nodes in 2 partitions (the 4 left are small Gathers). Measured on an M4
-per call (345 frames, ~3.4 s of audio): CPU 5.17 s, CoreML (CPUAndGPU) 1.09 s.
+per 4 s chunk (345 STFT frames): CPU 5.17 s, CoreML (CPUAndGPU) 1.09 s; a 5-minute song
+splits in ~140 s once CoreML has compiled the model (~2.5 min, cached).
 
 Steps (all exact rewrites, no retraining):
   1. Drop the zero-length Slices that feed Concats (the unrotated part of the rotary embedding is
@@ -16,9 +18,14 @@ Steps (all exact rewrites, no retraining):
   4. Neg -> Mul by -1.
   5. Expand feeding only Div -> Identity (Div broadcasts).
   6. Check the result against the original model on CPU.
+  7. Convert the maths to fp16 (inputs and outputs stay fp32). On an M4 GPU this is 1.7x faster
+     (0.77 s vs 1.32 s per chunk; a 5-minute song in ~92 s) and the stems are 38-51 dB away from
+     fp32, far below audibility. On CPU it is 1.7x slower (7.8 s vs 4.7 s per chunk), which only
+     matters on the CPU fallback. The Pow ops (the attention scale) stay fp32: CoreML fails to
+     compile them in fp16.
 
 Usage:
-  pip install onnx onnxruntime numpy
+  pip install onnx onnxruntime numpy onnxconverter-common
   python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
 
 Licence: the BS-RoFormer SW weights are CC-BY-NC-SA-4.0 (non-commercial, share-alike).
@@ -140,6 +147,36 @@ def check(original: str, rewritten: str) -> float:
     return max(float(np.abs(a - b).max()) for a, b in zip(ref.run(None, feed), new.run(None, feed)))
 
 
+def to_fp16_compute(model: onnx.ModelProto) -> onnx.ModelProto:
+    from onnxconverter_common import float16
+
+    # The weights are already fp16 (with Casts up to fp32), hence check_fp16_ready=False.
+    m16 = float16.convert_float_to_float16(model, keep_io_types=True, check_fp16_ready=False, op_block_list=["Pow"])
+    # Those weight Casts still go up to fp32 and would leave fp32 islands: point them at fp16, except
+    # the Casts that feed the blocked Pows, and the graph outputs.
+    consumers = collections.defaultdict(list)
+    for n in m16.graph.node:
+        for i in n.input:
+            consumers[i].append(n.op_type)
+    keep = {o.name for o in m16.graph.output}
+    for n in m16.graph.node:
+        if n.op_type == "Cast" and n.output[0] not in keep and "Pow" not in consumers[n.output[0]]:
+            for a in n.attribute:
+                if a.name == "to" and a.i == onnx.TensorProto.FLOAT:
+                    a.i = onnx.TensorProto.FLOAT16
+    return m16
+
+
+def snr_db(reference: str, candidate: str) -> float:
+    ref = ort.InferenceSession(reference, providers=["CPUExecutionProvider"])
+    new = ort.InferenceSession(candidate, providers=["CPUExecutionProvider"])
+    rng = np.random.default_rng(0)
+    feed = {i.name: (rng.standard_normal(i.shape) * 0.1).astype(np.float32) for i in ref.get_inputs()}
+    a = np.concatenate([x.ravel() for x in ref.run(None, feed)]).astype(np.float64)
+    b = np.concatenate([x.ravel() for x in new.run(None, feed)]).astype(np.float64)
+    return float(10 * np.log10((a**2).sum() / max(((a - b) ** 2).sum(), 1e-30)))
+
+
 def main() -> None:
     if len(sys.argv) != 3:
         raise SystemExit(__doc__)
@@ -156,11 +193,16 @@ def main() -> None:
     model = shape_inference.infer_shapes(model)
     onnx.checker.check_model(model)
     onnx.save(model, dst)
-
     diff = check(src, dst)
-    print(f"max difference from the original on CPU: {diff:.2e}")
+    print(f"rewrites: max difference from the original on CPU: {diff:.2e}")
     if diff > 1e-4:
         raise SystemExit("rewritten model doesn't match the original")
+
+    onnx.save(to_fp16_compute(model), dst)
+    snr = snr_db(src, dst)
+    print(f"fp16 maths: {snr:.1f} dB from the original on CPU")
+    if snr < 30:
+        raise SystemExit("fp16 model is too far from the original")
 
 
 if __name__ == "__main__":

@@ -15,8 +15,10 @@ packages (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are d
      https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx
    .venv/bin/python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
    ```
-   Optional, for the BS-RoFormer 6-stem model (not used by the plug-in yet): rewrite it so CoreML
-   can run it on the GPU; see the top of `scripts/prepare_roformer_onnx.py`.
+   Optional, for HQ mode (BS-RoFormer 6-stem): build `models/bs_roformer_sw_6stem_opt.onnx` and the
+   plug-in bundles it and shows the HQ switch; without it HQ mode is hidden. The script also needs
+   `pip install onnxconverter-common` (the model runs its maths in fp16). See the top of
+   `scripts/prepare_roformer_onnx.py`. The weights are CC-BY-NC-SA-4.0 (non-commercial).
    ```sh
    .venv/bin/python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
    ```
@@ -39,7 +41,7 @@ Every push is built and tested on macOS, Windows and Linux by GitHub Actions
 ```sh
 build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
 build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx
-build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx <song> <screenshot folder>
+build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx <song> <screenshot folder>   # add --hq to split with the HQ model
 ```
 
 - `analyze-selftest`: the resampler against exact sine waves and an aliasing test, loudness

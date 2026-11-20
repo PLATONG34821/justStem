@@ -63,6 +63,7 @@ private:
     juststem::ui::PillButton pasteButton { "Paste", juststem::ui::icons::paste() }; // DAWs often keep Cmd/Ctrl+V for themselves
     juststem::ui::PillButton newSongButton { "New song", juststem::ui::icons::plus() };
     juststem::ui::PillButton closeInputButton { {}, juststem::ui::icons::close() };
+    juce::ToggleButton hqToggle { "HQ" }; // shown only when the HQ model is bundled
     bool wantInput = false; // New song pressed while a song is open
     std::unique_ptr<juce::FileChooser> chooser;
 
