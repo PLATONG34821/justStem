@@ -152,6 +152,14 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     newSongButton.setTooltip ("Split another song (this one stays saved)");
     newSongButton.onClick = [this] { showInput (true); };
     closeInputButton.setTooltip ("Back to the open song");
+    cancelButton.setTooltip ("Cancel");
+#if JUCE_MAC
+    revealButton.setTooltip ("Show the stems in Finder");
+#elif JUCE_WINDOWS
+    revealButton.setTooltip ("Show the stems in Explorer");
+#else
+    revealButton.setTooltip ("Show the stems' folder");
+#endif
     closeInputButton.onClick = [this] { showInput (false); };
     addChildComponent (newSongButton);
     addChildComponent (closeInputButton);
@@ -543,7 +551,7 @@ void justStemEditor::refreshAll()
     for (auto* b : { &transposeDown, &transposeUp }) b->setVisible (song != nullptr);
     copyButton.setVisible (song != nullptr && chordsShown);
     const int t = proc.getTranspose();
-    saveAllButton.setButtonText (t == 0 ? "Save all" : "Save all " + juce::String (t > 0 ? "+" : "") + juce::String (t));
+    saveAllButton.setButtonText (t == 0 ? juce::String() : juce::String (t > 0 ? "+" : "") + juce::String (t)); // icon only, plus the shift when transposed
     saveAllButton.setTooltip (t == 0 ? "Copy all the stems to a folder" : "Save all the stems pitch-shifted to the transposed key");
     chordView.setVisible (song != nullptr && chordsShown);
     chordView.setTranspose (proc.getTranspose());
@@ -749,6 +757,6 @@ void justStemEditor::copyChords()
     juce::SystemClipboard::copyTextToClipboard (ChordView::chartText (*song, proc.getTranspose()));
     copyButton.setButtonText ("Copied");
     juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer<justStemEditor> (this)] {
-        if (safe != nullptr) safe->copyButton.setButtonText ("Copy chords");
+        if (safe != nullptr) safe->copyButton.setButtonText ({});
     });
 }

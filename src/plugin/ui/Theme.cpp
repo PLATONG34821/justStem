@@ -98,6 +98,46 @@ namespace icons
         }
         return p;
     }
+    juce::Path open()
+    {
+        // A rounded square, open at the top right, with an arrow pointing out of it.
+        juce::Path p;
+        p.startNewSubPath (0.46f, 0.22f);
+        p.lineTo (0.24f, 0.22f);
+        p.quadraticTo (0.08f, 0.22f, 0.08f, 0.38f);
+        p.lineTo (0.08f, 0.50f);
+        p.startNewSubPath (0.08f, 0.66f);
+        p.lineTo (0.08f, 0.76f);
+        p.quadraticTo (0.08f, 0.92f, 0.24f, 0.92f);
+        p.lineTo (0.62f, 0.92f);
+        p.quadraticTo (0.78f, 0.92f, 0.78f, 0.76f);
+        p.lineTo (0.78f, 0.58f);
+        p.startNewSubPath (0.46f, 0.54f); // the arrow
+        p.lineTo (0.92f, 0.08f);
+        p.startNewSubPath (0.58f, 0.08f);
+        p.lineTo (0.92f, 0.08f);
+        p.lineTo (0.92f, 0.42f);
+        return p;
+    }
+    juce::Path trash()
+    {
+        juce::Path p;
+        p.startNewSubPath (0.10f, 0.22f); // lid
+        p.lineTo (0.90f, 0.22f);
+        p.startNewSubPath (0.36f, 0.22f); // handle
+        p.lineTo (0.36f, 0.08f);
+        p.lineTo (0.64f, 0.08f);
+        p.lineTo (0.64f, 0.22f);
+        p.startNewSubPath (0.20f, 0.22f); // bin
+        p.lineTo (0.26f, 0.94f);
+        p.lineTo (0.74f, 0.94f);
+        p.lineTo (0.80f, 0.22f);
+        p.startNewSubPath (0.42f, 0.40f);
+        p.lineTo (0.42f, 0.76f);
+        p.startNewSubPath (0.58f, 0.40f);
+        p.lineTo (0.58f, 0.76f);
+        return p;
+    }
     juce::Path layers()
     {
         juce::Path p;

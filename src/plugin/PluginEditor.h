@@ -59,9 +59,9 @@ private:
     juce::TextEditor linkBox;
     juststem::ui::PillButton chooseButton { {}, juststem::ui::icons::fileImport() };
     juststem::ui::PillButton splitButton { {}, juststem::ui::icons::split() };
-    juststem::ui::PillButton cancelButton { "Cancel", juststem::ui::icons::close() };
+    juststem::ui::PillButton cancelButton { {}, juststem::ui::icons::close() };
     juststem::ui::PillButton pasteButton { {}, juststem::ui::icons::paste() }; // DAWs often keep Cmd/Ctrl+V for themselves
-    juststem::ui::PillButton newSongButton { "New song", juststem::ui::icons::plus() };
+    juststem::ui::PillButton newSongButton { {}, juststem::ui::icons::plus() };
     juststem::ui::PillButton closeInputButton { {}, juststem::ui::icons::close() };
     juststem::ui::PillButton hqToggle { "HQ" }; // on/off; shown only when the HQ model is bundled
     bool wantInput = false; // New song pressed while a song is open
@@ -70,20 +70,20 @@ private:
     juststem::ui::Gauge gauge;
     juce::OwnedArray<juststem::ui::StemRow> rows;
 #if JUCE_MAC
-    juststem::ui::PillButton revealButton { "Show in Finder", juststem::ui::icons::folder() };
+    juststem::ui::PillButton revealButton { {}, juststem::ui::icons::folder() };
 #elif JUCE_WINDOWS
-    juststem::ui::PillButton revealButton { "Show in Explorer", juststem::ui::icons::folder() };
+    juststem::ui::PillButton revealButton { {}, juststem::ui::icons::folder() };
 #else
-    juststem::ui::PillButton revealButton { "Show in Folder", juststem::ui::icons::folder() };
+    juststem::ui::PillButton revealButton { {}, juststem::ui::icons::folder() };
 #endif
-    juststem::ui::PillButton saveAllButton { "Save all", juststem::ui::icons::download() };
+    juststem::ui::PillButton saveAllButton { {}, juststem::ui::icons::download() };
     juststem::ui::PillButton storageButton { {}, juststem::ui::icons::drive() };
     std::unique_ptr<juststem::ui::StoragePanel> storagePanel;
 
     juststem::ui::TabButton stemsTab { "Stems" }, chordsTab { "Chords" };
     juststem::ui::ChordView chordView;
     juststem::ui::PillButton transposeDown { {}, juststem::ui::icons::minus() }, transposeUp { {}, juststem::ui::icons::plus() };
-    juststem::ui::PillButton copyButton { "Copy chords", juststem::ui::icons::copy() };
+    juststem::ui::PillButton copyButton { {}, juststem::ui::icons::copy() };
     bool chordsShown = false;
 
     juststem::ui::IconButton playButton;

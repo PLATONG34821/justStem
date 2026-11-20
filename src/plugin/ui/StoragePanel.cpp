@@ -8,6 +8,9 @@ juce::String size (juce::int64 bytes) { return juce::File::descriptionOfSizeInBy
 } // namespace
 
 /** One saved song: title, size and date, Open and Delete (both off for the song in use). */
+/** Round icon buttons throughout the panel. */
+constexpr int btn = 32;
+
 struct StoragePanel::SongRow final : public juce::Component
 {
     SongRow (storage::SavedSong s, bool inUse) : song (std::move (s)), used (inUse)
@@ -19,7 +22,7 @@ struct StoragePanel::SongRow final : public juce::Component
     }
     void paint (juce::Graphics& g) override
     {
-        auto r = getLocalBounds().withTrimmedRight (196);
+        auto r = getLocalBounds().withTrimmedRight (2 * btn + 16);
         g.setColour (Palette::text);
         g.setFont (font (Weight::Regular, 13.5f));
         g.drawText (song.folder.getFileName(), r.removeFromTop (getHeight() / 2 + 2).withTrimmedTop (4), juce::Justification::bottomLeft, true);
@@ -31,20 +34,26 @@ struct StoragePanel::SongRow final : public juce::Component
     void resized() override
     {
         auto r = getLocalBounds();
-        deleteButton.setBounds (r.removeFromRight (90).withSizeKeepingCentre (90, 26));
+        deleteButton.setBounds (r.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
         r.removeFromRight (8);
-        openButton.setBounds (r.removeFromRight (90).withSizeKeepingCentre (90, 26));
+        openButton.setBounds (r.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
     }
 
     storage::SavedSong song;
     bool used;
-    juce::TextButton deleteButton { "Delete" }, openButton { "Open" };
+    PillButton deleteButton { {}, icons::trash() }, openButton { {}, icons::open() };
 };
 
 StoragePanel::StoragePanel (std::function<juce::File()> inUse, std::function<bool()> busy)
     : songInUse (std::move (inUse)), isBusy (std::move (busy))
 {
     closeButton.onClick = [this] { if (onClose) onClose(); };
+    closeButton.setTooltip ("Close");
+    showFolderButton.setTooltip ("Show the songs folder");
+    deleteAllButton.setTooltip ("Delete all songs (except the open one)");
+    clearCacheButton.setTooltip ("Clear the AI model cache");
+    removeToolsButton.setTooltip ("Remove the YouTube tools");
+    clearDownloadsButton.setTooltip ("Clear temporary downloads");
     showFolderButton.onClick = [] { paths::stems().revealToUser(); };
     deleteAllButton.onClick = [this] {
         confirm ("Delete all songs?",
@@ -92,7 +101,8 @@ void StoragePanel::refresh()
         auto* row = rows.add (new SongRow (s, s.folder == inUse));
         row->deleteButton.setEnabled (! busy && ! row->used);
         row->openButton.setEnabled (! busy && ! row->used);
-        row->openButton.setTooltip ("Load this song's stems again (no new split)");
+        row->openButton.setTooltip ("Open this song (no new split)");
+        row->deleteButton.setTooltip ("Delete this song");
         row->openButton.onClick = [this, folder = row->song.folder] { if (onOpen) onOpen (folder); };
         row->deleteButton.onClick = [this, row] {
             confirm ("Delete this song?", "\"" + row->song.title + "\" (" + size (row->song.bytes) + ") will be moved to the Trash.",
@@ -127,13 +137,13 @@ void StoragePanel::resized()
 {
     auto r = card().reduced (28, 24).withTop (card().getY() + headerH + 8);
     auto top = titleRow (card());
-    closeButton.setBounds (top.removeFromRight (90).withSizeKeepingCentre (90, 28));
+    closeButton.setBounds (top.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
 
     songsHeader = r.removeFromTop (30);
     auto h = songsHeader;
-    deleteAllButton.setBounds (h.removeFromRight (104).withSizeKeepingCentre (104, 26));
+    deleteAllButton.setBounds (h.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
     h.removeFromRight (8);
-    showFolderButton.setBounds (h.removeFromRight (120).withSizeKeepingCentre (120, 26));
+    showFolderButton.setBounds (h.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
 
     otherArea = r.removeFromBottom (3 * 44);
     r.removeFromBottom (28); // room for the busy warning above the footer
@@ -149,7 +159,7 @@ void StoragePanel::resized()
 
     auto other = otherArea;
     for (auto* b : { &clearCacheButton, &removeToolsButton, &clearDownloadsButton })
-        b->setBounds (other.removeFromTop (44).removeFromRight (90).withSizeKeepingCentre (90, 26));
+        b->setBounds (other.removeFromTop (44).removeFromRight (btn).withSizeKeepingCentre (btn, btn));
 }
 
 void StoragePanel::paintOverChildren (juce::Graphics& g)

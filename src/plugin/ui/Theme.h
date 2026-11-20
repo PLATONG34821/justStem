@@ -38,6 +38,8 @@ namespace icons
     juce::Path note();
     juce::Path fileImport(); // choose a file
     juce::Path split();      // a prism splitting light: start the split
+    juce::Path trash();
+    juce::Path open();       // a box with an arrow out of it: open a saved song
     juce::Path layers();
     juce::Path play();  // filled
     juce::Path pause(); // filled
