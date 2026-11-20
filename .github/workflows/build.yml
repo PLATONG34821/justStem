@@ -25,7 +25,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Linux packages (JUCE needs these)
         if: runner.os == 'Linux'
@@ -52,12 +52,12 @@ jobs:
 
       # The model is built from the public export (see scripts/prepare_demucs_onnx.py), cached
       # until the script changes.
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Model cache
         id: model
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: models/htdemucs_6s_opt.onnx
           key: model-${{ hashFiles('scripts/prepare_demucs_onnx.py') }}
@@ -75,7 +75,7 @@ jobs:
       - name: HQ model cache
         if: env.RELEASE == 'true'
         id: hqmodel
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: models/bs_roformer_sw_6stem_opt.onnx
           key: hqmodel-${{ hashFiles('scripts/prepare_roformer_onnx.py') }}
@@ -98,7 +98,7 @@ jobs:
       - name: Test separation
         run: build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx 12
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: justStem-${{ matrix.name }}
           path: |
@@ -114,7 +114,8 @@ jobs:
         run: |
           ver="${GITHUB_REF_NAME#v}"
           cmake_ver=$(sed -n 's/^project(justStem VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-          if [ "$ver" != "$cmake_ver" ]; then
+          # A suffix (v0.0.3-ci-test) is allowed, for test releases; the number must match.
+          if [ "${ver%%-*}" != "$cmake_ver" ]; then
             echo "::error::Tag $GITHUB_REF_NAME doesn't match the CMake version $cmake_ver"; exit 1
           fi
           test -f models/bs_roformer_sw_6stem_opt.onnx || { echo "::error::HQ model missing"; exit 1; }
@@ -131,7 +132,7 @@ jobs:
           ls -l "$out"
       - name: Upload release zips
         if: env.RELEASE == 'true'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.name }}
           path: release/*.zip
@@ -146,7 +147,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-*
           merge-multiple: true
@@ -156,5 +157,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -l release
-          gh release create "$GITHUB_REF_NAME" release/*.zip --repo "$GITHUB_REPOSITORY" --draft \
+          pre=(); case "$GITHUB_REF_NAME" in *-*) pre=(--prerelease) ;; esac # v0.0.3-ci-test
+          gh release create "$GITHUB_REF_NAME" release/*.zip --repo "$GITHUB_REPOSITORY" --draft "${pre[@]}" \
             --title "justStem ${GITHUB_REF_NAME#v}" --generate-notes
