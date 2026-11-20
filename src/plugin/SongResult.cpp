@@ -2,10 +2,26 @@
 #include "../core/PitchShift.h"
 #include "../io/AudioFiles.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace juststem
 {
+namespace
+{
+/** Adds `stem` into `sum` (the instrumental), growing it to fit. */
+void addInto (StereoAudio& sum, const StereoAudio& stem)
+{
+    sum.left.resize (std::max (sum.size(), stem.size()), 0.0f);
+    sum.right.resize (sum.left.size(), 0.0f);
+    for (std::size_t i = 0; i < stem.size(); ++i)
+    {
+        sum.left[i] += stem.left[i];
+        sum.right[i] += stem.right[i];
+    }
+}
+} // namespace
+
 void saveSong (const SongResult& song)
 {
     StereoAudio instrumental;
@@ -13,14 +29,7 @@ void saveSong (const SongResult& song)
     {
         const auto& s = song.stems.at (stem);
         writeWav (song.stemFile (stem), s);
-        if (stem == Stem::Vocals) continue;
-        instrumental.left.resize (s.size(), 0.0f);
-        instrumental.right.resize (s.size(), 0.0f);
-        for (size_t i = 0; i < s.size(); ++i)
-        {
-            instrumental.left[i] += s.left[i];
-            instrumental.right[i] += s.right[i];
-        }
+        if (stem != Stem::Vocals) addInto (instrumental, s);
     }
     writeWav (song.instrumentalFile(), instrumental);
     saveInfo (song);
@@ -38,14 +47,7 @@ bool saveTransposedStems (const SongResult& song, int semitones, const juce::Fil
         });
         if (shifted.size() == 0 && song.stems.at (stem).size() > 0) return false; // cancelled
         writeWav (dir.getChildFile (song.stemFile (stem).getFileName()), shifted);
-        if (stem == Stem::Vocals) continue;
-        instrumental.left.resize (shifted.size(), 0.0f);
-        instrumental.right.resize (shifted.size(), 0.0f);
-        for (std::size_t k = 0; k < shifted.size(); ++k)
-        {
-            instrumental.left[k] += shifted.left[k];
-            instrumental.right[k] += shifted.right[k];
-        }
+        if (stem != Stem::Vocals) addInto (instrumental, shifted);
     }
     writeWav (dir.getChildFile (song.instrumentalFile().getFileName()), instrumental);
     return true;
