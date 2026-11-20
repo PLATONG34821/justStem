@@ -83,6 +83,8 @@ public:
     explicit Stft (int chunk) : chunk (chunk), frames (1 + chunk / hop), fft (nfft), window ((size_t) nfft),
                                 frame ((size_t) nfft), spectrum ((size_t) nfft / 2), windowSum ((size_t) (chunk + nfft), 0.0f)
     {
+        // Not dsp::hann: that rounds once in double, and its window (at most 1 float ulp away from this
+        // one) moved the HQ selftest's SI-SDR by up to 0.8 dB. The fp16 model is that sensitive.
         for (int i = 0; i < nfft; ++i)
             window[(size_t) i] = 0.5f - 0.5f * (float) std::cos (2.0 * std::numbers::pi * i / nfft);
         for (int f = 0; f < frames; ++f)
