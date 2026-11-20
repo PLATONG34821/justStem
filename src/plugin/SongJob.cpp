@@ -204,6 +204,7 @@ SongResultPtr SongJob::process()
                    : "First run on this Mac: compiling the model for CoreML (only once; "
                          + juce::String (&spec == &model::hq ? "about 2.5 min" : "about 25 s") + ")");
 #endif
+    song->model = juce::String (std::string (spec.name));
     Separator separator (modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString());
 
     // The model is loaded when the first chunk runs, so the first progress report marks it ready.
@@ -219,10 +220,20 @@ SongResultPtr SongJob::process()
                     + (backendLogged ? juce::String() : " (model loaded in " + seconds (modelMs) + ")")
                     + ", " + juce::String (p.totalSegments) + " chunks of "
                     + juce::String ((double) spec.chunkSamples / sampleRate, 1) + " s");
+#if JUCE_MAC || JUCE_WINDOWS
+            if (p.backend == Backend::CPU)
+                addLog ("The GPU couldn't run the model, so this split runs on the CPU and will take much longer");
+#endif
             backendLogged = true;
             lastBackend = p.backend;
         }
-        setStatus ("Splitting stems (" + juce::String (p.segment) + "/" + juce::String (p.totalSegments) + ", about "
+        // On a Mac or PC the CPU only runs the model when the GPU failed: say so on the gauge.
+#if JUCE_MAC || JUCE_WINDOWS
+        const juce::String splitting = p.backend == Backend::CPU ? "Splitting on CPU" : "Splitting stems";
+#else
+        const juce::String splitting = "Splitting stems";
+#endif
+        setStatus (splitting + " (" + juce::String (p.segment) + "/" + juce::String (p.totalSegments) + ", about "
                        + juce::String (juce::roundToInt (p.etaSeconds)) + " s left)",
                    (double) p.segment / p.totalSegments);
     }, cancelled);

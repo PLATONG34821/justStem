@@ -58,6 +58,7 @@ void saveInfo (const SongResult& song)
     info->setProperty ("version", 1);
     info->setProperty ("title", song.title);
     info->setProperty ("durationSeconds", song.durationSeconds);
+    info->setProperty ("model", song.model);
     info->setProperty ("keyTonic", a.key.tonic);
     info->setProperty ("keyMinor", a.key.minor);
     info->setProperty ("keyConfidence", a.key.confidence);
@@ -87,6 +88,7 @@ std::shared_ptr<SongResult> loadSong (const juce::File& folder)
     auto& a = song->analysis;
     song->title = info["title"].toString();
     song->durationSeconds = (double) info["durationSeconds"];
+    song->model = info["model"].toString();
     a.key.tonic = (int) info["keyTonic"];
     a.key.minor = (bool) info["keyMinor"];
     a.key.confidence = (float) (double) info["keyConfidence"];

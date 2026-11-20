@@ -245,12 +245,13 @@ void justStemEditor::resized()
         splitButton.setBounds (top.removeFromRight (84));
         top.removeFromRight (8);
         chooseButton.setBounds (top.removeFromRight (chooseButton.idealWidth (40)));
-        top.removeFromRight (16);
         if (hqToggle.isVisible())
         {
+            top.removeFromRight (12);
             hqToggle.setBounds (top.removeFromRight (DashboardLookAndFeel::toggleWidth (hqToggle)));
-            top.removeFromRight (16);
+            top.removeFromRight (4); // the wordmark check below adds its own gap
         }
+        else top.removeFromRight (16);
     }
     else
     {
@@ -369,7 +370,21 @@ void justStemEditor::paint (juce::Graphics& g)
         // drawText can't take a baseline, so place the box so its centred text lands on it.
         const auto f = titleFont();
         const int y = baseline - juce::roundToInt ((f.getAscent() - f.getDescent()) * 0.5f) - t.getHeight() / 2;
-        g.drawText (song->title, t.withY (y), juce::Justification::centredLeft, true);
+        // An "HQ" tag after the title when the stems came from the HQ model.
+        if (song->isHQ())
+        {
+            const auto tagFont = capsFont (10.0f);
+            const int tagW = juce::roundToInt (juce::GlyphArrangement::getStringWidth (tagFont, "HQ")) + 14;
+            const int titleW = juce::jmin (t.getWidth() - tagW - 10,
+                                           juce::roundToInt (juce::GlyphArrangement::getStringWidth (f, song->title)) + 1);
+            g.drawText (song->title, t.withY (y).withWidth (juce::jmax (0, titleW)), juce::Justification::centredLeft, true);
+            const auto tag = juce::Rectangle<float> ((float) (t.getX() + titleW + 10), (float) topRow.getCentreY() - 9.0f, (float) tagW, 18.0f);
+            g.setColour (Palette::accentTo.withAlpha (0.85f));
+            g.drawRoundedRectangle (tag.reduced (0.5f), 9.0f, 1.0f);
+            g.setFont (tagFont);
+            g.drawText ("HQ", tag.translated (10.0f * 0.07f, 0.0f), juce::Justification::centred, false);
+        }
+        else g.drawText (song->title, t.withY (y), juce::Justification::centredLeft, true);
     }
 
     // An error, in red in the free space above TEMPO (while working, progress is on the gauge and in the log).
@@ -406,7 +421,11 @@ void justStemEditor::paint (juce::Graphics& g)
     const bool showLog = busy || (song == nullptr && ! log.isEmpty());
     g.setColour (Palette::dim);
     g.setFont (capsFont (11.5f));
-    if (! stemsTab.isVisible()) g.drawText (showLog ? "LOG" : "STEMS", stemsHeader, juce::Justification::centredLeft, false);
+    if (! stemsTab.isVisible())
+    {
+        // No heading over the empty list before a song is open.
+        if (showLog || song != nullptr) g.drawText (showLog ? "LOG" : "STEMS", stemsHeader, juce::Justification::centredLeft, false);
+    }
     else
     {
         const auto pill = tabsArea.toFloat().reduced (0.5f);

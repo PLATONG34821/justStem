@@ -300,7 +300,7 @@ void DashboardLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButt
     g.fillRoundedRectangle (sw, 8.0f);
     g.setColour (on ? Palette::bgBottom : Palette::dim);
     g.fillEllipse (on ? sw.getRight() - 14.0f : sw.getX() + 2.0f, sw.getY() + 2.0f, 12.0f, 12.0f);
-    g.setColour (Palette::dim);
+    g.setColour (on ? Palette::text : Palette::dim);
     g.setFont (capsFont (11.0f));
     // Right-aligned, nudged by the letter spacing after the last letter, so the label ends flush with the
     // button's right edge (which the editor puts on the window margin).

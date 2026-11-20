@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core/Analysis.h"
+#include "../core/Separator.h"
 
 #include <juce_core/juce_core.h>
 
@@ -18,6 +19,9 @@ struct SongResult
     StemMap stems; // 44.1 kHz stereo
     SongAnalysis analysis;
     double durationSeconds = 0;
+    juce::String model; // ModelSpec::name that made the stems (empty for songs from before HQ mode)
+
+    bool isHQ() const { return model == juce::String (std::string (model::hq.name)); }
 
     juce::File stemFile (Stem s) const { return folder.getChildFile (juce::String (std::string (stemName (s))) + ".wav"); }
     juce::File instrumentalFile() const { return folder.getChildFile ("instrumental.wav"); } // everything except vocals
