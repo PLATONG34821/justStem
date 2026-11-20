@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <vector>
 
 namespace juststem
 {
@@ -33,6 +34,22 @@ void saveSong (const SongResult& song)
     }
     writeWav (song.instrumentalFile(), instrumental);
     saveInfo (song);
+}
+
+bool copyStems (const SongResult& song, const juce::File& dir, const std::function<bool (double)>& progress)
+{
+    if (! dir.createDirectory()) throw std::runtime_error ("Couldn't create " + dir.getFullPathName().toStdString());
+    std::vector<juce::File> files;
+    for (auto stem : stemOrder) files.push_back (song.stemFile (stem));
+    files.push_back (song.instrumentalFile());
+    for (std::size_t i = 0; i < files.size(); ++i)
+    {
+        if (! progress ((double) i / (double) files.size())) return false;
+        if (! files[i].copyFileTo (dir.getChildFile (files[i].getFileName())))
+            throw std::runtime_error ("Couldn't copy " + files[i].getFileName().toStdString() + " to " + dir.getFullPathName().toStdString());
+    }
+    progress (1.0);
+    return true;
 }
 
 bool saveTransposedStems (const SongResult& song, int semitones, const juce::File& dir, const std::function<bool (double)>& progress)

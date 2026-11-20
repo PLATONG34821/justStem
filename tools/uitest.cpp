@@ -285,6 +285,15 @@ int main (int argc, char** argv)
         check (ok && files == 7 && sameLength && lastProgress > 0.99,
                juce::String (files) + " transposed WAVs, same length as the originals, in " + juce::String (secs, 1) + " s");
         dir.deleteRecursively();
+
+        // Save all without Transpose: copies of the saved WAVs.
+        const auto copies = outDir.getChildFile ("copied stems");
+        copies.deleteRecursively();
+        const bool copied = juststem::copyStems (*s, copies, [] (double) { return true; });
+        int same = copies.getChildFile (s->instrumentalFile().getFileName()).getSize() == s->instrumentalFile().getSize() ? 1 : 0;
+        for (auto stem : juststem::stemOrder) same += copies.getChildFile (s->stemFile (stem).getFileName()).getSize() == s->stemFile (stem).getSize() ? 1 : 0;
+        check (copied && same == 7, "Save all copies the 6 stems and the instrumental");
+        copies.deleteRecursively();
     }
 
     std::printf ("Save and reload, like reopening a DAW project\n");

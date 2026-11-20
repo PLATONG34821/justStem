@@ -34,6 +34,10 @@ using SongResultPtr = std::shared_ptr<const SongResult>;
 /** Write the stem WAVs, the instrumental and info.json into song.folder. Throws std::runtime_error. */
 void saveSong (const SongResult& song);
 
+/** Copy the stem WAVs and the instrumental into `dir` (created). `progress` gets 0..1 and returns false
+    to cancel. Returns false if cancelled. Throws std::runtime_error. */
+bool copyStems (const SongResult& song, const juce::File& dir, const std::function<bool (double)>& progress);
+
 /** Write the stems and the instrumental pitch-shifted by `semitones` (same names, same length)
     into `dir`. `progress` gets 0..1 and returns false to cancel. Returns false if cancelled.
     Throws std::runtime_error. */

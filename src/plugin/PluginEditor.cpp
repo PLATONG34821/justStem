@@ -37,25 +37,29 @@ void paintReadout (juce::Graphics& g, juce::Rectangle<int> r, Gauge::Lines lines
     g.drawText (detail, line (lines.unit, 22), just, false);
 }
 
-/** Saves pitch-shifted stems on a background thread, with a progress window and Cancel. Deletes itself. */
-class TransposedSave final : public juce::ThreadWithProgressWindow
+/** Saves the stems and the instrumental into a folder (copies, or pitch-shifted when transposed) on a
+    background thread, with a progress window and Cancel. Deletes itself. */
+class SaveStems final : public juce::ThreadWithProgressWindow
 {
 public:
-    TransposedSave (SongResultPtr s, int semis, juce::File folder)
-        : juce::ThreadWithProgressWindow ("Saving stems transposed " + juce::String (semis > 0 ? "+" : "") + juce::String (semis), true, true),
+    SaveStems (SongResultPtr s, int semis, juce::File folder)
+        : juce::ThreadWithProgressWindow (semis == 0 ? juce::String ("Saving stems")
+                                                     : "Saving stems transposed " + juce::String (semis > 0 ? "+" : "") + juce::String (semis),
+                                          true, true),
           song (std::move (s)), semitones (semis), dir (std::move (folder))
     {
-        setStatusMessage ("Pitch-shifting 6 stems and the instrumental...");
+        setStatusMessage (semis == 0 ? "Copying 6 stems and the instrumental..." : "Pitch-shifting 6 stems and the instrumental...");
     }
 
     void run() override
     {
         try
         {
-            done = saveTransposedStems (*song, semitones, dir, [this] (double f) {
+            const auto progress = [this] (double f) {
                 setProgress (f);
                 return ! threadShouldExit();
-            });
+            };
+            done = semitones == 0 ? copyStems (*song, dir, progress) : saveTransposedStems (*song, semitones, dir, progress);
         }
         catch (const std::exception& e)
         {
@@ -84,13 +88,14 @@ private:
 };
 } // namespace
 
-void justStemEditor::saveTransposed (SongResultPtr song, int semitones, const juce::File& dest)
+void justStemEditor::saveStems (SongResultPtr song, int semitones, const juce::File& dest)
 {
-    const auto key = song->analysis.key.transposed (semitones);
-    const auto dir = dest.getChildFile (juce::File::createLegalFileName (song->title + " stems (" + (semitones > 0 ? "+" : "")
-                                                                         + juce::String (semitones) + ", " + juce::String (key.name()) + ")"))
-                         .getNonexistentSibling();
-    (new TransposedSave (std::move (song), semitones, dir))->launchThread();
+    // A new folder each time ("... stems (2)"), so an earlier export is never overwritten.
+    auto name = song->title + " stems";
+    if (semitones != 0)
+        name << " (" << (semitones > 0 ? "+" : "") << semitones << ", " << juce::String (song->analysis.key.transposed (semitones).name()) << ")";
+    const auto dir = dest.getChildFile (juce::File::createLegalFileName (name)).getNonexistentSibling();
+    (new SaveStems (std::move (song), semitones, dir))->launchThread();
 }
 
 // ============================================================================ setup
@@ -555,14 +560,7 @@ void justStemEditor::saveAll()
     chooser = std::make_unique<juce::FileChooser> ("Save all stems to...", juce::File::getSpecialLocation (juce::File::userDesktopDirectory));
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
                           [song, semitones = proc.getTranspose()] (const juce::FileChooser& fc) {
-                              const auto dest = fc.getResult();
-                              if (! dest.isDirectory()) return;
-                              if (semitones != 0) return saveTransposed (song, semitones, dest);
-                              auto dir = dest.getChildFile (juce::File::createLegalFileName (song->title) + " stems");
-                              dir.createDirectory();
-                              for (auto stem : stemOrder) song->stemFile (stem).copyFileTo (dir.getChildFile (song->stemFile (stem).getFileName()));
-                              song->instrumentalFile().copyFileTo (dir.getChildFile (song->instrumentalFile().getFileName()));
-                              dir.revealToUser();
+                              if (const auto dest = fc.getResult(); dest.isDirectory()) saveStems (song, semitones, dest);
                           });
 }
 
