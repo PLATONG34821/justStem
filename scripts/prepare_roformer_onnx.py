@@ -26,9 +26,13 @@ Steps (all exact rewrites, no retraining):
 
 Usage:
   pip install onnx onnxruntime numpy onnxconverter-common
+  curl -L -o bs_roformer_sw_6stem_fp16.onnx \
+    https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx/resolve/main/bs_roformer_sw_6stem_fp16.onnx
   python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
 
-Licence: the BS-RoFormer SW weights are CC-BY-NC-SA-4.0 (non-commercial, share-alike).
+Licence: the input is elicwhite's ONNX export (MIT code) of the BS-RoFormer SW weights rehosted as
+jarredou/BS-ROFO-SW-Fixed. Its model card states no licence for the weights and says their provenance
+is unknown; justStem treats them as CC-BY-NC-SA-4.0 (non-commercial, share-alike).
 """
 from __future__ import annotations
 

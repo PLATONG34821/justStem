@@ -18,8 +18,11 @@ packages (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are d
    Optional, for HQ mode (BS-RoFormer 6-stem): build `models/bs_roformer_sw_6stem_opt.onnx` and the
    plug-in bundles it and shows the HQ switch; without it HQ mode is hidden. The script also needs
    `pip install onnxconverter-common` (the model runs its maths in fp16). See the top of
-   `scripts/prepare_roformer_onnx.py`. The weights are CC-BY-NC-SA-4.0 (non-commercial).
+   `scripts/prepare_roformer_onnx.py`. The weights are treated as CC-BY-NC-SA-4.0 (non-commercial);
+   see [Third-party licences](#third-party-licences) before distributing a build that includes them.
    ```sh
+   curl -L -o bs_roformer_sw_6stem_fp16.onnx \
+     https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx/resolve/main/bs_roformer_sw_6stem_fp16.onnx
    .venv/bin/python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
    ```
 2. Build:
@@ -159,5 +162,11 @@ stems + instrumental to a new folder (about 12 s for a 5-minute song).
   how you distribute justStem.
 - [HT-Demucs](https://github.com/facebookresearch/demucs) (Meta): MIT. ONNX export by
   [StemSplitio](https://huggingface.co/StemSplitio/htdemucs-6s-onnx) (MIT)
+- BS-RoFormer SW 6-stem (HQ mode; bundled only when you build it): weights rehosted as
+  [jarredou/BS-ROFO-SW-Fixed](https://huggingface.co/jarredou/BS-ROFO-SW-Fixed), ONNX export by
+  [elicwhite](https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx) (MIT code). The export's
+  model card states no licence for the weights themselves and says their provenance is unknown;
+  justStem treats them as CC-BY-NC-SA-4.0 (non-commercial, share-alike). Check this before
+  distributing builds with HQ mode.
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) and [Deno](https://deno.com) (MIT),
   downloaded at runtime, not bundled
