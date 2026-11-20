@@ -28,6 +28,14 @@ public:
     Lines lines() const;
 
 private:
+    /** Where everything goes, for paint() and lines(). */
+    struct Layout
+    {
+        float size;
+        juce::Rectangle<float> outer, disc, caption, value, unit;
+    };
+    Layout layout() const;
+
     State state;
 };
 

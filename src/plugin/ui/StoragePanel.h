@@ -21,7 +21,10 @@ public:
     std::function<void()> onClose;
     /** Open a saved song (its folder) in the plug-in. */
     std::function<void (const juce::File&)> onOpen;
+    /** Reads the disk again (sizes and the song list). */
     void refresh();
+    /** Call when the plug-in's state changes: refreshes only if being busy or the song in use changed. */
+    void stateChanged();
 
     void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
@@ -36,7 +39,8 @@ private:
     std::function<juce::File()> songInUse;
     std::function<bool()> isBusy;
 
-    std::vector<storage::SavedSong> songs;
+    bool shownBusy = false;
+    juce::File shownInUse;
     juce::int64 songsBytes = 0, cacheBytes = 0, toolsBytes = 0, downloadsBytes = 0;
 
     PillButton closeButton { {}, icons::close() }, deleteAllButton { {}, icons::trash() }, showFolderButton { {}, icons::folder() };

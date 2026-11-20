@@ -15,7 +15,7 @@ struct Palette
         text { 0xffeeeeef }, dim { 0xff9a9ca1 }, faint { 0xff5f6268 },
         accentFrom { 0xff2c5a99 }, accentTo { 0xffa8cbf2 }, // the blue gauge arc
         highlight { 0xffffd23f },                         // small yellow accents (solo)
-        good { 0xff2fbf71 }, warn { 0xffe9a23b }, bad { 0xffe5534b };
+        warn { 0xffe9a23b }, bad { 0xffe5534b };
 
     /** Muted per-stem colours (vocals, drums, bass, guitar, piano, other). */
     static juce::Colour forStem (int index);
@@ -26,8 +26,21 @@ enum class Weight { ExtraLight, Light, Regular, SemiBold };
 /** Inter at a weight and size, with optional letter spacing (kerning factor, e.g. 0.12). */
 juce::Font font (Weight, float size, float tracking = 0.0f);
 
+/** Letter spacing of the caps style. Spaced text has this much extra space after its last letter, which
+    right-aligned or centred caps text makes up for. */
+constexpr float capsTracking = 0.14f;
+
 /** Small uppercase label style used for headings ("TEMPO", "SOURCE"). */
-inline juce::Font capsFont (float size = 11.5f) { return font (Weight::Regular, size, 0.14f); }
+inline juce::Font capsFont (float size = 11.5f) { return font (Weight::Regular, size, capsTracking); }
+
+/** How far below a line's centre a single line of text in `f` sits on its baseline, so it looks centred. */
+inline float baselineOffset (const juce::Font& f) { return (f.getAscent() - f.getDescent()) * 0.5f; }
+
+/** The baseline that centres one line of `f` vertically in `row`. */
+inline int baselineFor (const juce::Font& f, juce::Rectangle<int> row) { return juce::roundToInt ((float) row.getCentreY() + baselineOffset (f)); }
+
+/** Takes `w` off the right of `r` and puts `c` there, `w` x `h`, centred vertically (the round icon buttons). */
+inline void placeRight (juce::Rectangle<int>& r, juce::Component& c, int w, int h) { c.setBounds (r.removeFromRight (w).withSizeKeepingCentre (w, h)); }
 
 /** Charcoal gradient + diagonal glass sheen. */
 void paintBackground (juce::Graphics&, juce::Rectangle<int> area);

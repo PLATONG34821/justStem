@@ -5,18 +5,36 @@ namespace juststem::ui
 namespace
 {
 juce::String size (juce::int64 bytes) { return juce::File::descriptionOfSizeInBytes (bytes); }
+
+constexpr int btn = 32;        // round icon buttons throughout the panel
+constexpr int headerH = 80;    // the darker band with the title and Close
+constexpr int songRowH = 46;   // a saved song in the list
+constexpr int otherRowH = 44;  // the cache / tools / downloads rows in the footer
+constexpr int scrollGap = 12;  // between the list and its scrollbar, out in the card's margin
+constexpr float radius = 18.0f;
+
+juce::Colour cardColour() { return Palette::bgTop.darker (0.25f); }
+
+/** The title row, centred in the header band. */
+juce::Rectangle<int> titleRow (juce::Rectangle<int> card) { return card.withHeight (headerH).reduced (28, (headerH - 44) / 2); }
+
+/** A darker band across the top or bottom of the card, rounded only on the card's side. */
+void fillBand (juce::Graphics& g, juce::Rectangle<float> r, bool top)
+{
+    juce::Path shape;
+    shape.addRoundedRectangle (r.getX(), r.getY(), r.getWidth(), r.getHeight(), radius, radius, top, top, ! top, ! top);
+    g.setColour (juce::Colours::black.withAlpha (0.28f));
+    g.fillPath (shape);
+}
 } // namespace
 
 /** One saved song: title, size and date, Open and Delete (both off for the song in use). */
-/** Round icon buttons throughout the panel. */
-constexpr int btn = 32;
-
 struct StoragePanel::SongRow final : public juce::Component
 {
     SongRow (storage::SavedSong s, bool inUse) : song (std::move (s)), used (inUse)
     {
-        deleteButton.setEnabled (! used);
-        openButton.setEnabled (! used);
+        openButton.setTooltip ("Open this song (no new split)");
+        deleteButton.setTooltip ("Delete this song");
         addAndMakeVisible (deleteButton);
         addAndMakeVisible (openButton);
     }
@@ -34,9 +52,9 @@ struct StoragePanel::SongRow final : public juce::Component
     void resized() override
     {
         auto r = getLocalBounds();
-        deleteButton.setBounds (r.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
+        placeRight (r, deleteButton, btn, btn);
         r.removeFromRight (8);
-        openButton.setBounds (r.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
+        placeRight (r, openButton, btn, btn);
     }
 
     storage::SavedSong song;
@@ -80,7 +98,7 @@ StoragePanel::StoragePanel (std::function<juce::File()> inUse, std::function<boo
     viewport.setViewedComponent (&listContent, false);
     viewport.setScrollBarsShown (true, false);
     viewport.setScrollBarThickness (6);
-    viewport.setSingleStepSizes (46, 46); // a row per step
+    viewport.setSingleStepSizes (songRowH, songRowH); // a row per step
     viewport.onScroll = [this] { repaint (viewport.getBounds()); };
     addAndMakeVisible (viewport);
     refresh();
@@ -88,21 +106,23 @@ StoragePanel::StoragePanel (std::function<juce::File()> inUse, std::function<boo
 
 StoragePanel::~StoragePanel() = default;
 
+void StoragePanel::stateChanged()
+{
+    if (isBusy() != shownBusy || songInUse() != shownInUse) refresh();
+}
+
 void StoragePanel::refresh()
 {
-    const bool busy = isBusy();
-    const auto inUse = songInUse();
-    songs = storage::savedSongs();
+    const bool busy = shownBusy = isBusy();
+    const auto inUse = shownInUse = songInUse();
     songsBytes = 0;
     rows.clear();
-    for (const auto& s : songs)
+    for (const auto& s : storage::savedSongs())
     {
         songsBytes += s.bytes;
         auto* row = rows.add (new SongRow (s, s.folder == inUse));
         row->deleteButton.setEnabled (! busy && ! row->used);
         row->openButton.setEnabled (! busy && ! row->used);
-        row->openButton.setTooltip ("Open this song (no new split)");
-        row->deleteButton.setTooltip ("Delete this song");
         row->openButton.onClick = [this, folder = row->song.folder] { if (onOpen) onOpen (folder); };
         row->deleteButton.onClick = [this, row] {
             confirm ("Delete this song?", "\"" + row->song.title + "\" (" + size (row->song.bytes) + ") will be moved to the Trash.",
@@ -125,49 +145,43 @@ void StoragePanel::refresh()
 
 juce::Rectangle<int> StoragePanel::card() const { return getLocalBounds().withSizeKeepingCentre (600, 490); } // list fits 4 whole rows
 
-namespace
-{
-constexpr int headerH = 80; // the darker band with the title and Close
-
-/** The title row, centred in the header band. */
-juce::Rectangle<int> titleRow (juce::Rectangle<int> card) { return card.withHeight (headerH).reduced (28, (headerH - 44) / 2); }
-} // namespace
-
 void StoragePanel::resized()
 {
     auto r = card().reduced (28, 24).withTop (card().getY() + headerH + 8);
     auto top = titleRow (card());
-    closeButton.setBounds (top.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
+    placeRight (top, closeButton, btn, btn);
 
     songsHeader = r.removeFromTop (30);
     auto h = songsHeader;
-    deleteAllButton.setBounds (h.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
+    placeRight (h, deleteAllButton, btn, btn);
     h.removeFromRight (8);
-    showFolderButton.setBounds (h.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
+    placeRight (h, showFolderButton, btn, btn);
 
-    otherArea = r.removeFromBottom (3 * 44);
+    otherArea = r.removeFromBottom (3 * otherRowH);
     r.removeFromBottom (28); // room for the busy warning above the footer
     // The scrollbar sits out in the card's margin, so the rows keep the full width and their
     // Delete buttons line up with the Clear / Remove buttons below.
     // Whole rows only, so the list doesn't stop halfway through a song (the rest goes to the gap above the footer).
-    constexpr int rowH = 46, scrollGap = 12;
     auto list = r.withTrimmedTop (4);
-    list.setHeight (std::max (rowH, list.getHeight() / rowH * rowH));
+    list.setHeight (std::max (songRowH, list.getHeight() / songRowH * songRowH));
     viewport.setBounds (list.withTrimmedRight (-(scrollGap + viewport.getScrollBarThickness())));
-    listContent.setSize (r.getWidth(), rows.size() * rowH);
-    for (int i = 0; i < rows.size(); ++i) rows[i]->setBounds (0, i * rowH, listContent.getWidth(), rowH);
+    listContent.setSize (r.getWidth(), rows.size() * songRowH);
+    for (int i = 0; i < rows.size(); ++i) rows[i]->setBounds (0, i * songRowH, listContent.getWidth(), songRowH);
 
     auto other = otherArea;
     for (auto* b : { &clearCacheButton, &removeToolsButton, &clearDownloadsButton })
-        b->setBounds (other.removeFromTop (44).removeFromRight (btn).withSizeKeepingCentre (btn, btn));
+    {
+        auto row = other.removeFromTop (otherRowH);
+        placeRight (row, *b, btn, btn);
+    }
 }
 
 void StoragePanel::paintOverChildren (juce::Graphics& g)
 {
     // Fade the list out at an edge that has more songs past it.
-    const auto v = viewport.getBounds().withTrimmedRight (viewport.getScrollBarThickness() + 12).toFloat();
+    const auto v = viewport.getBounds().withTrimmedRight (viewport.getScrollBarThickness() + scrollGap).toFloat();
     const int pos = viewport.getViewPositionY(), hidden = listContent.getHeight() - viewport.getViewHeight();
-    const auto bg = Palette::bgTop.darker (0.25f); // the card colour
+    const auto bg = cardColour();
     constexpr float fade = 18.0f;
     if (pos > 0)
     {
@@ -185,24 +199,17 @@ void StoragePanel::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colours::black.withAlpha (0.6f));
     const auto c = card();
-    g.setColour (Palette::bgTop.darker (0.25f));
-    g.fillRoundedRectangle (c.toFloat(), 18.0f);
+    g.setColour (cardColour());
+    g.fillRoundedRectangle (c.toFloat(), radius);
     g.setColour (Palette::panelBorder);
-    g.drawRoundedRectangle (c.toFloat().reduced (0.5f), 18.0f, 1.0f);
+    g.drawRoundedRectangle (c.toFloat().reduced (0.5f), radius, 1.0f);
 
     // The title sits in a darker header band, like the footer below.
-    {
-        const auto header = c.toFloat().withHeight ((float) headerH);
-        juce::Path shape;
-        shape.addRoundedRectangle (header.getX(), header.getY(), header.getWidth(), header.getHeight(), 18.0f, 18.0f,
-                                   true, true, false, false); // rounded top like the card, square bottom
-        g.setColour (juce::Colours::black.withAlpha (0.28f));
-        g.fillPath (shape);
-    }
+    fillBand (g, c.toFloat().withHeight ((float) headerH), true);
     auto top = titleRow (c);
     // Title and total on one baseline.
     const auto titleFont = font (Weight::Light, 26.0f);
-    const int baseline = juce::roundToInt ((float) top.getCentreY() + (titleFont.getAscent() - titleFont.getDescent()) * 0.5f);
+    const int baseline = baselineFor (titleFont, top);
     g.setColour (Palette::text);
     g.setFont (titleFont);
     g.drawSingleLineText ("Storage", top.getX(), baseline);
@@ -211,9 +218,9 @@ void StoragePanel::paint (juce::Graphics& g)
     g.drawSingleLineText (size (songsBytes + cacheBytes + toolsBytes + downloadsBytes) + " used", top.getX() + 130, baseline);
 
     g.setColour (Palette::dim);
-    g.setFont (capsFont (11.5f));
-    g.drawText ("SONGS   " + juce::String ((int) songs.size()) + "   " + size (songsBytes), songsHeader, juce::Justification::centredLeft, false);
-    if (songs.empty())
+    g.setFont (capsFont());
+    g.drawText ("SONGS   " + juce::String (rows.size()) + "   " + size (songsBytes), songsHeader, juce::Justification::centredLeft, false);
+    if (rows.isEmpty())
     {
         g.setColour (Palette::faint);
         g.setFont (font (Weight::Light, 15.0f));
@@ -233,19 +240,11 @@ void StoragePanel::paint (juce::Graphics& g)
                          { "YouTube tools", "yt-dlp and Deno, downloaded again when needed", toolsBytes },
                          { "Temporary downloads", "YouTube audio waiting to be split", downloadsBytes } };
     // They sit in a darker footer, set apart from the songs.
-    {
-        const auto cardF = c.toFloat();
-        const auto footer = cardF.withTop ((float) otherArea.getY() - 8.0f);
-        juce::Path shape;
-        shape.addRoundedRectangle (footer.getX(), footer.getY(), footer.getWidth(), footer.getHeight(), 18.0f, 18.0f,
-                                   false, false, true, true); // square top, rounded bottom like the card
-        g.setColour (juce::Colours::black.withAlpha (0.28f));
-        g.fillPath (shape);
-    }
+    fillBand (g, c.toFloat().withTop ((float) otherArea.getY() - 8.0f), false);
     auto other = otherArea;
     for (const auto& item : items)
     {
-        auto row = other.removeFromTop (44).withTrimmedRight (100);
+        auto row = other.removeFromTop (otherRowH).withTrimmedRight (100);
         g.setColour (Palette::text);
         g.setFont (font (Weight::Regular, 13.5f));
         g.drawText (juce::String (item.name) + "   " + size (item.bytes), row.removeFromTop (22).withTrimmedTop (2),

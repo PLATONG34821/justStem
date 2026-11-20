@@ -16,28 +16,37 @@ juce::ColourGradient accentGradient (juce::Rectangle<float> r)
 } // namespace
 
 // ============================================================================ gauge
+Gauge::Layout Gauge::layout() const
+{
+    const auto bounds = getLocalBounds().toFloat();
+    Layout l;
+    l.size = std::min (bounds.getWidth(), bounds.getHeight());
+    l.outer = bounds.withSizeKeepingCentre (l.size, l.size).reduced (4.0f);
+    l.disc = l.outer.reduced (l.size * 0.14f);
+    const auto& d = l.disc;
+    l.caption = { d.getX(), d.getY() + d.getHeight() * 0.18f, d.getWidth(), l.size * 0.06f };
+    l.value = d.withSizeKeepingCentre (d.getWidth() * 0.50f, l.size * 0.25f);
+    l.unit = { d.getX(), l.outer.getCentreY() + l.size * 0.13f, d.getWidth(), l.size * 0.07f };
+    return l;
+}
+
 Gauge::Lines Gauge::lines() const
 {
-    // Must match the text rectangles in paint().
-    const auto bounds = getLocalBounds().toFloat();
-    const float size = std::min (bounds.getWidth(), bounds.getHeight());
-    const auto outer = bounds.withSizeKeepingCentre (size, size).reduced (4.0f);
-    const auto disc = outer.reduced (size * 0.14f);
-    const float cy = outer.getCentreY();
-    return { disc.getY() + disc.getHeight() * 0.18f + size * 0.03f, cy, cy + size * 0.13f + size * 0.035f };
+    const auto l = layout();
+    return { l.caption.getCentreY(), l.value.getCentreY(), l.unit.getCentreY() };
 }
 
 void Gauge::paint (juce::Graphics& g)
 {
-    const auto bounds = getLocalBounds().toFloat();
-    const float size = std::min (bounds.getWidth(), bounds.getHeight());
-    const auto outer = bounds.withSizeKeepingCentre (size, size).reduced (4.0f);
+    const auto l = layout();
+    const float size = l.size;
+    const auto& outer = l.outer;
+    const auto& disc = l.disc;
     const auto c = outer.getCentre();
 
     // Outer hairline ring and a darker inner disc with a soft rim.
     g.setColour (Palette::hairline);
     g.drawEllipse (outer, 1.0f);
-    const auto disc = outer.reduced (size * 0.14f);
     g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1d1e21), c.x, c.y - disc.getHeight() * 0.5f,
                                              juce::Colour (0xff121315), c.x, c.y + disc.getHeight() * 0.5f, false));
     g.fillEllipse (disc);
@@ -93,19 +102,17 @@ void Gauge::paint (juce::Graphics& g)
         const float w = juce::GlyphArrangement::getStringWidth (f, caption);
         if (w > maxW) f = capsFont (size * 0.04f * std::max (0.7f, maxW / w));
         g.setFont (f);
-        g.drawText (caption, juce::Rectangle<float> (disc.getX(), disc.getY() + disc.getHeight() * 0.18f, disc.getWidth(), size * 0.06f),
-                    juce::Justification::centred, true);
+        g.drawText (caption, l.caption, juce::Justification::centred, true);
     }
     g.setColour (Palette::text);
     g.setFont (font (Weight::ExtraLight, size * 0.22f));
-    g.drawFittedText (state.value, disc.withSizeKeepingCentre (disc.getWidth() * 0.50f, size * 0.25f).toNearestInt(),
-                      juce::Justification::centred, 1, 0.6f);
+    g.drawFittedText (state.value, l.value.toNearestInt(), juce::Justification::centred, 1, 0.6f);
     g.setColour (Palette::dim);
     g.setFont (font (Weight::Light, size * 0.055f));
-    g.drawText (state.unit, juce::Rectangle<float> (disc.getX(), c.y + size * 0.13f, disc.getWidth(), size * 0.07f), juce::Justification::centred, false);
+    g.drawText (state.unit, l.unit, juce::Justification::centred, false);
 }
 
-// ============================================================================ icon button
+// ============================================================================ tab button
 void TabButton::paintButton (juce::Graphics& g, bool over, bool)
 {
     // One half of a segmented control (the editor draws the shared pill behind both halves):
@@ -127,6 +134,7 @@ void TabButton::paintButton (juce::Graphics& g, bool over, bool)
     g.drawText (getButtonText().toUpperCase(), getLocalBounds(), juce::Justification::centred, false);
 }
 
+// ============================================================================ icon button
 void IconButton::paintButton (juce::Graphics& g, bool over, bool down)
 {
     const auto r = getLocalBounds().toFloat().reduced (1.0f);

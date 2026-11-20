@@ -104,13 +104,15 @@ void drawIcon (juce::Graphics& g, const juce::Path& icon, juce::Rectangle<float>
 }
 
 // ---------------------------------------------------------------------------- pill button
-static float pillIconSize (int height) { return std::min (14.0f, std::round ((float) height * 0.42f)); }
-static constexpr float pillIconGap = 8.0f;
+// The text and the icon both scale with the button's height.
+static constexpr float pillScale = 0.42f, pillIconGap = 8.0f;
+static juce::Font pillFont (int height) { return capsFont (std::min (12.0f, (float) height * pillScale)); }
+static float pillIconSize (int height) { return std::min (14.0f, std::round ((float) height * pillScale)); }
 
 int PillButton::idealWidth (int height) const
 {
     if (getButtonText().isEmpty()) return height;
-    const auto f = capsFont (std::min (12.0f, (float) height * 0.42f));
+    const auto f = pillFont (height);
     const float textW = juce::GlyphArrangement::getStringWidth (f, getButtonText().toUpperCase());
     const float iconW = icon.isEmpty() ? 0.0f : pillIconSize (height) + pillIconGap;
     return (int) std::ceil (textW + iconW) + 2 * juce::jmax (14, height / 2);
@@ -165,7 +167,7 @@ void DashboardLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button
 
 juce::Font DashboardLookAndFeel::getTextButtonFont (juce::TextButton&, int height)
 {
-    return capsFont (std::min (12.0f, (float) height * 0.42f));
+    return pillFont (height);
 }
 
 void DashboardLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool)
@@ -196,6 +198,8 @@ void DashboardLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& 
     }
 }
 
+static juce::Font toggleFont() { return capsFont (11.0f); }
+
 void DashboardLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b, bool, bool)
 {
     // A small switch, then the label.
@@ -207,15 +211,17 @@ void DashboardLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButt
     g.setColour (on ? Palette::bgBottom : Palette::dim);
     g.fillEllipse (on ? sw.getRight() - 14.0f : sw.getX() + 2.0f, sw.getY() + 2.0f, 12.0f, 12.0f);
     g.setColour (on ? Palette::text : Palette::dim);
-    g.setFont (capsFont (11.0f));
+    const auto f = toggleFont();
+    g.setFont (f);
     // Right-aligned, nudged by the letter spacing after the last letter, so the label ends flush with the
     // button's right edge (which the editor puts on the window margin).
-    g.drawText (b.getButtonText().toUpperCase(), r.withTrimmedLeft (8.0f).translated (11.0f * 0.14f, 0.0f), juce::Justification::centredRight, false);
+    g.drawText (b.getButtonText().toUpperCase(), r.withTrimmedLeft (8.0f).translated (f.getHeight() * capsTracking, 0.0f),
+                juce::Justification::centredRight, false);
 }
 
 int DashboardLookAndFeel::toggleWidth (const juce::ToggleButton& b)
 {
-    return 38 + (int) std::ceil (juce::GlyphArrangement::getStringWidth (capsFont (11.0f), b.getButtonText().toUpperCase()));
+    return 38 + (int) std::ceil (juce::GlyphArrangement::getStringWidth (toggleFont(), b.getButtonText().toUpperCase()));
 }
 
 void DashboardLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,
@@ -242,6 +248,7 @@ void DashboardLookAndFeel::drawTextEditorOutline (juce::Graphics& g, int w, int 
     g.setColour (e.hasKeyboardFocus (true) ? Palette::accentTo.withAlpha (0.6f) : Palette::panelBorder);
     g.drawRoundedRectangle (0.5f, 0.5f, (float) w - 1.0f, (float) h - 1.0f, (float) h * 0.5f, 1.0f);
 }
+
 void DashboardLookAndFeel::drawScrollbar (juce::Graphics& g, juce::ScrollBar& bar, int x, int y, int w, int h, bool vertical,
                                           int thumbStart, int thumbSize, bool over, bool down)
 {

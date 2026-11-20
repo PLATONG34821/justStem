@@ -49,6 +49,8 @@ private:
     bool inputShown() const;
     void showInput (bool);
     void refreshPasteButton();
+    /** The song on screen: the open one, or none while a new one is being split. */
+    juststem::SongResultPtr visibleSong() const { return proc.isBusy() ? nullptr : proc.getSong(); }
 
     justStemProcessor& proc;
     juststem::ui::DashboardLookAndFeel lnf;
@@ -69,13 +71,7 @@ private:
 
     juststem::ui::Gauge gauge;
     juce::OwnedArray<juststem::ui::StemRow> rows;
-#if JUCE_MAC
     juststem::ui::PillButton revealButton { {}, juststem::ui::icons::folder() };
-#elif JUCE_WINDOWS
-    juststem::ui::PillButton revealButton { {}, juststem::ui::icons::folder() };
-#else
-    juststem::ui::PillButton revealButton { {}, juststem::ui::icons::folder() };
-#endif
     juststem::ui::PillButton saveAllButton { {}, juststem::ui::icons::download() };
     juststem::ui::PillButton storageButton { {}, juststem::ui::icons::drive() };
     std::unique_ptr<juststem::ui::StoragePanel> storagePanel;
