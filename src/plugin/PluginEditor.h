@@ -89,6 +89,7 @@ private:
     juststem::ui::PlayerBar playerBar { proc.player() };
 
     juststem::SongResultPtr shownSong;
+    int shownLogLines = -1; // log lines on screen while working
     bool dropHover = false;
 
     // Shows the buttons' tooltips. A child of the editor (not a desktop window), so it stays inside the

@@ -524,7 +524,12 @@ void justStemEditor::timerCallback()
     if (proc.isBusy())
     {
         updateGauge();
-        repaint (stemsArea); // the log
+        // The log only ever grows: repaint it when a line was added.
+        if (const int lines = proc.jobLog().size(); lines != shownLogLines)
+        {
+            shownLogLines = lines;
+            repaint (stemsArea);
+        }
     }
     else
     {
