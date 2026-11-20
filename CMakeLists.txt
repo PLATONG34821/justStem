@@ -161,7 +161,7 @@ juststem_package(justStem_Standalone)
 # ---------------------------------------------------------------- developer tools (not shipped)
 # juststem_cli: separate / analyse / import from the command line, plus self-tests.
 juce_add_console_app(juststem_cli PRODUCT_NAME "juststem_cli" NEEDS_CURL TRUE) # `import` downloads too
-target_sources(juststem_cli PRIVATE tools/cli.cpp ${JUSTSTEM_IO_SOURCES})
+target_sources(juststem_cli PRIVATE tools/cli.cpp tools/selftest.cpp ${JUSTSTEM_IO_SOURCES})
 juststem_juce_settings(juststem_cli PRIVATE)
 target_link_libraries(juststem_cli PRIVATE juce::juce_recommended_config_flags)
 juststem_copy_runtime(juststem_cli)
