@@ -130,6 +130,7 @@ void justStemProcessor::setStateInformation (const void* data, int size)
         juce::MessageManager::callAsync ([this, token = std::weak_ptr<bool> (alive), folder] {
             if (! token.expired()) startJob (SongJob::Kind::Reload, folder.getFullPathName());
         });
+    sendChangeMessage(); // an open window shows the restored settings
 }
 
 juce::AudioProcessorEditor* justStemProcessor::createEditor()

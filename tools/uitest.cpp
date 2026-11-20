@@ -323,6 +323,19 @@ int main (int argc, char** argv)
     std::printf ("Save and reload, like reopening a DAW project\n");
     juce::MemoryBlock state;
     proc->getStateInformation (state);
+    {
+        // The host restores the state with the same song open (so nothing reloads): the window must still update.
+        struct Listener final : juce::ChangeListener
+        {
+            int calls = 0;
+            void changeListenerCallback (juce::ChangeBroadcaster*) override { ++calls; }
+        } listener;
+        proc->addChangeListener (&listener);
+        proc->setStateInformation (state.getData(), (int) state.getSize());
+        pumpUntil ([&] { return listener.calls > 0; }, 1000);
+        proc->removeChangeListener (&listener);
+        check (listener.calls > 0, "restoring the state refreshes the open window");
+    }
     auto proc2 = std::make_unique<justStemProcessor> (model);
     proc2->prepareToPlay (44100, 256);
     proc2->setStateInformation (state.getData(), (int) state.getSize());
