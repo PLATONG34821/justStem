@@ -123,11 +123,10 @@ std::string chordChart (const ChordResult& r, double length, const KeyResult& ke
 }
 
 // ------------------------------------------------------------------------------------ beats
-std::vector<double> trackBeats (const std::vector<float>& x, int rate, float bpm)
+std::vector<double> trackBeats (const std::vector<float>& env, double length, int rate, float bpm)
 {
     // Dynamic programming beat tracker (Ellis 2007): beats sit on strong onsets and are spaced
     // close to the tempo's period.
-    const auto env = dsp::onsetEnvelope (x, rate);
     if (env.size() < 64 || bpm <= 0) return {};
     double mean = 0, var = 0;
     for (float v : env) mean += v;
@@ -159,7 +158,7 @@ std::vector<double> trackBeats (const std::vector<float>& x, int rate, float bpm
     std::reverse (beats.begin(), beats.end());
 
     // Continue the grid to the start and the end of the song.
-    const double step = 60.0 / bpm, length = (double) x.size() / rate;
+    const double step = 60.0 / bpm;
     while (beats.front() - step >= 0) beats.insert (beats.begin(), beats.front() - step);
     while (beats.back() + step < length) beats.push_back (beats.back() + step);
     return beats;
@@ -169,11 +168,18 @@ std::vector<double> trackBeats (const std::vector<float>& x, int rate, float bpm
 ChordResult detectChords (const std::vector<float>& harmonic, const std::vector<float>& bass, const std::vector<float>& rhythm,
                           int rate, float bpm, const KeyResult& key)
 {
+    return detectChordsOnBeats (harmonic, bass, trackBeats (dsp::onsetEnvelope (rhythm, rate), (double) rhythm.size() / rate, rate, bpm),
+                                rate, bpm, key);
+}
+
+ChordResult detectChordsOnBeats (const std::vector<float>& harmonic, const std::vector<float>& bass, std::vector<double> beats,
+                                 int rate, float bpm, const KeyResult& key)
+{
     ChordResult result;
     const double length = (double) harmonic.size() / rate;
     if (length <= 0) return result;
 
-    result.beats = trackBeats (rhythm, rate, bpm);
+    result.beats = std::move (beats);
     if (result.beats.empty()) // no rhythm to follow: a plain grid
         for (double t = 0, step = 60.0 / (bpm > 0 ? bpm : 120.0); t < length; t += step) result.beats.push_back (t);
 
@@ -339,32 +345,4 @@ ChordResult detectChords (const std::vector<float>& harmonic, const std::vector<
     return result;
 }
 
-ChordResult detectSongChords (const StereoAudio& mix, const StemMap& stems, float bpm, const KeyResult& key)
-{
-    const std::size_t n = stems.empty() ? mix.size() : stems.begin()->second.size();
-    std::vector<float> harmonic (n, 0.0f), bass (n, 0.0f), drums (n, 0.0f);
-    auto addMono = [n] (std::vector<float>& dst, const StereoAudio& src) {
-        for (std::size_t i = 0; i < std::min (n, src.size()); ++i) dst[i] += 0.5f * (src.left[i] + src.right[i]);
-    };
-    if (stems.empty())
-    {
-        addMono (harmonic, mix);
-        bass = drums = harmonic;
-    }
-    else
-        for (const auto& [stem, audio] : stems)
-            switch (stem)
-            {
-                case Stem::Vocals: break; // melody, not harmony
-                case Stem::Drums: addMono (drums, audio); break;
-                case Stem::Bass: addMono (bass, audio); break;
-                default: addMono (harmonic, audio); break;
-            }
-    // Songs without drums: find the beats in everything else.
-    double drumEnergy = 0;
-    for (float v : drums) drumEnergy += (double) v * v;
-    if (n > 0 && std::sqrt (drumEnergy / (double) n) < 1e-3)
-        for (std::size_t i = 0; i < n; ++i) drums[i] = harmonic[i] + bass[i];
-    return detectChords (harmonic, bass, drums, sampleRate, bpm, key);
-}
 } // namespace juststem

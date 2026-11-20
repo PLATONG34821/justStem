@@ -150,10 +150,12 @@ KeyResult detectKey (const std::vector<float>& x, int sr)
 }
 
 // ------------------------------------------------------------------------------------ tempo
-TempoResult detectTempo (const std::vector<float>& x, int sr)
+namespace
+{
+/** detectTempo from the audio's onset envelope (dsp::onsetEnvelope). */
+TempoResult tempoFromOnsets (const std::vector<float>& env, int sr)
 {
     const double frameRate = (double) sr / dsp::onsetHop;
-    const auto env = dsp::onsetEnvelope (x, sr);
     if (env.size() < 64) return {};  // too short to measure
 
     // Autocorrelation over ~8 s of lags, so the comb below can compare up to 16 beats.
@@ -195,6 +197,9 @@ TempoResult detectTempo (const std::vector<float>& x, int sr)
 
     return { (float) fine };
 }
+} // namespace
+
+TempoResult detectTempo (const std::vector<float>& x, int sr) { return tempoFromOnsets (dsp::onsetEnvelope (x, sr), sr); }
 
 // ------------------------------------------------------------------------------------ loudness
 std::array<std::array<double, 5>, 2> kWeightingCoefficients (double fs)
@@ -274,26 +279,84 @@ LoudnessResult measureLoudness (const std::vector<float>& left, const std::vecto
     return r;
 }
 // ------------------------------------------------------------------------------------ whole song
+namespace
+{
+/** Mono mixes of a song's parts, made once for all the detectors: from the separated stems, or
+    the mix for every part when there are no stems. */
+struct SongParts
+{
+    std::vector<float> nonDrums; // everything but the drums (key)
+    std::vector<float> harmonic; // guitar + piano + other: the chord instruments (no vocals, no bass)
+    std::vector<float> bass, drums;
+
+    SongParts (const StereoAudio& mix, const StemMap& stems)
+    {
+        const std::size_t n = stems.empty() ? mix.size() : stems.begin()->second.size();
+        auto mono = [n] (std::vector<float>& dst, const StereoAudio& src) {
+            for (std::size_t i = 0; i < std::min (n, src.size()); ++i) dst[i] += 0.5f * (src.left[i] + src.right[i]);
+        };
+        nonDrums.assign (n, 0.0f);
+        if (stems.empty())
+        {
+            mono (nonDrums, mix);
+            harmonic = bass = drums = nonDrums;
+            return;
+        }
+        for (auto* v : { &harmonic, &bass, &drums }) v->assign (n, 0.0f);
+        for (const auto& [stem, audio] : stems)
+        {
+            if (stem != Stem::Drums) mono (nonDrums, audio);
+            switch (stem)
+            {
+                case Stem::Vocals: break; // melody, not harmony
+                case Stem::Drums: mono (drums, audio); break;
+                case Stem::Bass: mono (bass, audio); break;
+                default: mono (harmonic, audio); break;
+            }
+        }
+    }
+};
+
+/** Chords from the parts. `drumOnsets`: onsetEnvelope (parts.drums) when already worked out. */
+ChordResult songChords (const SongParts& parts, float bpm, const KeyResult& key, const std::vector<float>* drumOnsets)
+{
+    const std::size_t n = parts.drums.size();
+    const double length = (double) n / sampleRate;
+    double drumEnergy = 0;
+    for (float v : parts.drums) drumEnergy += (double) v * v;
+    std::vector<float> computed;
+    const std::vector<float>* onsets = drumOnsets;
+    if (n > 0 && std::sqrt (drumEnergy / (double) n) < 1e-3)
+    {
+        // Songs without drums: find the beats in everything else.
+        std::vector<float> rhythm (n);
+        for (std::size_t i = 0; i < n; ++i) rhythm[i] = parts.harmonic[i] + parts.bass[i];
+        computed = dsp::onsetEnvelope (rhythm, sampleRate);
+        onsets = &computed;
+    }
+    else if (onsets == nullptr)
+    {
+        computed = dsp::onsetEnvelope (parts.drums, sampleRate);
+        onsets = &computed;
+    }
+    return detectChordsOnBeats (parts.harmonic, parts.bass, trackBeats (*onsets, length, sampleRate, bpm), sampleRate, bpm, key);
+}
+} // namespace
+
 SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems)
 {
-    // Key from everything except drums; tempo from the drums; loudness from the original mix.
-    // Without stems, all three use the mix.
-    std::vector<float> harmonic (mix.size(), 0.0f), drums (mix.size(), 0.0f);
-    auto addMono = [] (std::vector<float>& dst, const StereoAudio& src) {
-        for (std::size_t i = 0; i < std::min (dst.size(), src.size()); ++i) dst[i] += 0.5f * (src.left[i] + src.right[i]);
-    };
-    if (stems.empty())
-    {
-        addMono (harmonic, mix);
-        drums = harmonic;
-    }
-    else
-        for (const auto& [stem, audio] : stems)
-            addMono (stem == Stem::Drums ? drums : harmonic, audio);
-
-    SongAnalysis a { detectKey (harmonic, sampleRate), detectTempo (drums, sampleRate),
+    // Key from everything except drums; tempo and beats from the drums; loudness from the original
+    // mix; chords from the chord instruments and the bass. Without stems, all of them use the mix.
+    const SongParts parts (mix, stems);
+    const auto drumOnsets = dsp::onsetEnvelope (parts.drums, sampleRate);
+    SongAnalysis a { detectKey (parts.nonDrums, sampleRate), tempoFromOnsets (drumOnsets, sampleRate),
                      measureLoudness (mix.left, mix.right, sampleRate), {} };
-    a.chords = detectSongChords (mix, stems, a.tempo.bpm, a.key);
+    a.chords = songChords (parts, a.tempo.bpm, a.key, &drumOnsets);
     return a;
+}
+
+ChordResult detectSongChords (const StereoAudio& mix, const StemMap& stems, float bpm, const KeyResult& key)
+{
+    return songChords (SongParts (mix, stems), bpm, key, nullptr);
 }
 } // namespace juststem
