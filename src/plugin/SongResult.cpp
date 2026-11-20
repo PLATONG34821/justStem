@@ -110,6 +110,16 @@ std::shared_ptr<SongResult> loadSong (const juce::File& folder)
 
     for (auto stem : stemOrder)
         song->stems[stem] = loadAudioFile (song->stemFile (stem));
+    // A stem edited outside justStem (trimmed, or bounced again) can come back shorter or longer than
+    // the others: pad them all to the longest, so they still play and export in step.
+    std::size_t longest = 0;
+    for (const auto& [stem, audio] : song->stems) longest = std::max (longest, audio.size());
+    for (auto& [stem, audio] : song->stems)
+    {
+        audio.left.resize (longest, 0.0f);
+        audio.right.resize (longest, 0.0f);
+    }
+    song->durationSeconds = (double) longest / sampleRate;
     return song;
 }
 } // namespace juststem

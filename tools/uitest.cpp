@@ -321,6 +321,19 @@ int main (int argc, char** argv)
         check (juce::JSON::parse (s->infoFile())["chords"].size() == (int) a.chords.segments.size(), "and saved to info.json");
     }
 
+    std::printf ("A stem edited outside justStem\n");
+    {
+        // Trimmed to 10 s, e.g. in an audio editor: on reload every stem must still have one length.
+        auto drums = s->stems.at (juststem::Stem::Drums);
+        drums.left.resize ((size_t) juststem::sampleRate * 10);
+        drums.right.resize (drums.left.size());
+        juststem::writeWav (s->stemFile (juststem::Stem::Drums), drums);
+        const auto edited = juststem::loadSong (s->folder);
+        bool sameLength = true;
+        for (const auto& [stem, audio] : edited->stems) sameLength = sameLength && audio.size() == s->stems.at (juststem::Stem::Vocals).size();
+        check (sameLength && edited->stems.at (juststem::Stem::Drums).left.back() == 0.0f, "a shortened stem is padded to the others' length on reload");
+    }
+
     editor.reset();
     proc2.reset();
     s->folder.deleteRecursively(); // the test's own stems

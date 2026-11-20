@@ -43,6 +43,7 @@ bool saveTransposedStems (const SongResult& song, int semitones, const juce::Fil
 void saveInfo (const SongResult& song);
 
 /** Reload a song written by saveSong (e.g. when a DAW project is reopened). Songs saved before
-    chord detection existed come back with no chord segments. Throws std::runtime_error. */
+    chord detection existed come back with no chord segments. Stems edited since (a different
+    length) are padded with silence to the longest. Throws std::runtime_error. */
 std::shared_ptr<SongResult> loadSong (const juce::File& folder);
 } // namespace juststem
