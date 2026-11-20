@@ -18,7 +18,7 @@ packages and libcurl for HTTPS (see `.github/workflows/build.yml`). JUCE, ONNX R
    Optional, for HQ mode (BS-RoFormer 6-stem): build `models/bs_roformer_sw_6stem_opt.onnx` and the
    plug-in bundles it and shows the HQ switch; without it HQ mode is hidden. The script also needs
    `pip install onnxconverter-common` (the model runs its maths in fp16). See the top of
-   `scripts/prepare_roformer_onnx.py`. The weights are treated as CC-BY-NC-SA-4.0 (non-commercial);
+   `scripts/prepare_roformer_onnx.py`. The weights have no stated licence (justStem treats them as CC-BY-NC-SA-4.0);
    see [Third-party licences](#third-party-licences) before distributing a build that includes them.
    ```sh
    curl -L -o bs_roformer_sw_6stem_fp16.onnx \
@@ -170,11 +170,17 @@ stems + instrumental to a new folder, three stems at a time (about 4 s for a 5-m
   how you distribute justStem.
 - [HT-Demucs](https://github.com/facebookresearch/demucs) (Meta): MIT. ONNX export by
   [StemSplitio](https://huggingface.co/StemSplitio/htdemucs-6s-onnx) (MIT)
-- BS-RoFormer SW 6-stem (HQ mode; bundled only when you build it): weights rehosted as
-  [jarredou/BS-ROFO-SW-Fixed](https://huggingface.co/jarredou/BS-ROFO-SW-Fixed), ONNX export by
-  [elicwhite](https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx) (MIT code). The export's
-  model card states no licence for the weights themselves and says their provenance is unknown;
-  justStem treats them as CC-BY-NC-SA-4.0 (non-commercial, share-alike). Check this before
-  distributing builds with HQ mode.
+- BS-RoFormer SW 6-stem (HQ mode; bundled only when you build it): ONNX export by
+  [elicwhite](https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx) (MIT code) of weights
+  that were rehosted as `jarredou/BS-ROFO-SW-Fixed`. **No licence has ever been stated for the
+  weights.** That repo (created 16 Aug 2025, marked `license: unknown`) was deleted between
+  Feb and Jul 2026; its archived
+  [model card](https://web.archive.org/web/20250902051524/https://huggingface.co/jarredou/BS-ROFO-SW-Fixed)
+  and [discussion](https://web.archive.org/web/20260125081636/https://huggingface.co/jarredou/BS-ROFO-SW-Fixed/discussions/1)
+  say it was an edited checkpoint first shared on Discord, with no information on who trained it
+  or on what. Mirrors such as `enerjazzer/BS-ROFO-SW-Fixed` are also `license: unknown`.
+  justStem treats the weights as CC-BY-NC-SA-4.0 (non-commercial, share-alike) as its own
+  cautious choice, not an inherited licence. Don't bundle them in releases; let users build
+  HQ mode themselves.
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) and [Deno](https://deno.com) (MIT),
   downloaded at runtime, not bundled
