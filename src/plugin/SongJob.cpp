@@ -318,7 +318,16 @@ SongResultPtr SongJob::process()
     setStatus ("Saving stems", -1);
     const auto saveStart = nowMs();
     song->folder = newSongFolder (song->title);
-    saveSong (*song);
+    try
+    {
+        saveSong (*song);
+    }
+    catch (...)
+    {
+        // Half a song (e.g. the disk filled up): without its info.json, Storage could neither list nor free it.
+        song->folder.deleteRecursively();
+        throw;
+    }
     juce::int64 bytes = 0;
     for (const auto& f : song->folder.findChildFiles (juce::File::findFiles, false, "*.wav")) bytes += f.getSize();
     addLog ("Saved 6 stems + instrumental (24-bit WAV, " + juce::File::descriptionOfSizeInBytes (bytes) + ") in "
