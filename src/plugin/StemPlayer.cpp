@@ -16,6 +16,9 @@ void StemPlayer::prepare (double rate, int maxBlock)
     interpL.reset();
     interpR.reset();
     shifter.prepare (2, rate, maxBlock);
+    // The shifter starts over, so playback stops reading ahead: back to the position you hear. (process()
+    // reads ahead again, by the new delay, while Transpose is on.)
+    position = std::max<juce::int64> (0, position - readAhead);
     shiftedBy = 0;
     readAhead = 0;
 }

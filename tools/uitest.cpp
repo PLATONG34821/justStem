@@ -284,6 +284,13 @@ int main (int argc, char** argv)
         check (std::abs (bestLag) <= 1, "shifted preview in time with the original (" + juce::String (bestLag * 10) + " ms)");
         check (rmsShifted > 0.05, "shifted preview plays (RMS " + juce::String (rmsShifted, 3) + ")");
         check (std::fabs (listened - (testPosition + 400 * 512 / 48000.0)) < 0.02, "position shows what you hear (" + juce::String (listened, 2) + " s)");
+        // A host may prepare the plug-in again (e.g. a new block size) while it plays transposed.
+        const double beforePrepare = pl.positionSeconds();
+        proc->prepareToPlay (48000, 512);
+        render (*proc, 1);
+        const double moved = pl.positionSeconds() - beforePrepare;
+        check (std::fabs (moved - 512 / 48000.0) < 0.005,
+               "preparing again while transposed keeps the position (moved " + juce::String (juce::roundToInt (moved * 1000)) + " ms in an 11 ms block)");
         pl.setPlaying (false);
 
         const auto dir = outDir.getChildFile ("transposed stems");
