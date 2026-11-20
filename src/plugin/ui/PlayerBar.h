@@ -29,6 +29,7 @@ private:
     StemPlayer& player;
     SongResultPtr song;
     IconButton playButton;
+    bool showsPause = false; // playButton's icon
     juce::Slider position;
     juce::ToggleButton followHost { "Follow DAW" };
     juce::Rectangle<int> timeArea;

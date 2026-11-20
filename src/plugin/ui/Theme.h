@@ -49,23 +49,23 @@ void paintBackground (juce::Graphics&, juce::Rectangle<int> area);
     Light weight (Fill for play and pause, Bold for the grip dots), plus our own prism for Split. */
 namespace icons
 {
-    juce::Path note();
-    juce::Path fileImport(); // choose a file
-    juce::Path split();      // a prism splitting light: start the split
-    juce::Path trash();
-    juce::Path open();       // a box with an arrow out of it: open a saved song
-    juce::Path layers();
-    juce::Path play();
-    juce::Path pause();
-    juce::Path folder();
-    juce::Path download();
-    juce::Path grip();  // dots
-    juce::Path plus();
-    juce::Path minus();
-    juce::Path close();
-    juce::Path copy();
-    juce::Path drive();  // storage: a stack of disks
-    juce::Path paste();  // clipboard
+    const juce::Path& note();
+    const juce::Path& fileImport(); // choose a file
+    const juce::Path& split();      // a prism splitting light: start the split
+    const juce::Path& trash();
+    const juce::Path& open();       // a box with an arrow out of it: open a saved song
+    const juce::Path& layers();
+    const juce::Path& play();
+    const juce::Path& pause();
+    const juce::Path& folder();
+    const juce::Path& download();
+    const juce::Path& grip();  // dots
+    const juce::Path& plus();
+    const juce::Path& minus();
+    const juce::Path& close();
+    const juce::Path& copy();
+    const juce::Path& drive();  // storage: a stack of disks
+    const juce::Path& paste();  // clipboard
 } // namespace icons
 
 /** Stroke (or fill) an icon path scaled to fit `area`. */

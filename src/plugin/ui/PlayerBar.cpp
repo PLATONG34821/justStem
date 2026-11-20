@@ -42,7 +42,11 @@ void PlayerBar::update()
     const bool follow = player.followsHost();
     const bool manual = hasSong && ! follow;
     playButton.setEnabled (manual);
-    playButton.setIcon (manual && player.isPlaying() ? icons::pause() : icons::play());
+    if (const bool pause = manual && player.isPlaying(); pause != showsPause) // update() runs 30 times a second
+    {
+        showsPause = pause;
+        playButton.setIcon (pause ? icons::pause() : icons::play());
+    }
     position.setEnabled (hasSong);
     followHost.setToggleState (follow, juce::dontSendNotification);
     // Following the DAW: the bar shows the DAW's position but can't move it (plug-ins can't seek the host).
