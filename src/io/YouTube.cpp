@@ -51,6 +51,7 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
     const juce::StringArray args {
         ytdlp.getFullPathName(),
         "--ignore-config", "--no-playlist",
+        "--encoding", "utf-8", // the title and paths it prints (on Windows it would use the ANSI code page)
         // Too long (or live, with no length): refused before anything is downloaded; yt-dlp exits with 101.
         "--break-match-filters", "duration <= " + juce::String ((int) maxSongSeconds),
         "--js-runtimes", "deno:" + deno.getFullPathName(),
