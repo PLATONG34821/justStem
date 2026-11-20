@@ -125,7 +125,7 @@ void SongJob::run()
     }
     catch (const std::exception& e)
     {
-        error = e.what();
+        error = juce::String::fromUTF8 (e.what()); // file names, titles and paths in it can be any language
     }
     if (cancelled) error = "cancelled";
     if (error == "cancelled") addLog ("Cancelled");

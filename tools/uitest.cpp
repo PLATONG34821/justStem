@@ -95,6 +95,17 @@ int main (int argc, char** argv)
     std::printf ("UI\n");
     snapshot (*editor, outDir.getChildFile ("1-idle.png"));
 
+    std::printf ("Error messages\n");
+    {
+        // A file that isn't audio, with a Thai name: the error must show the name, not mojibake.
+        const auto bad = outDir.getChildFile (juce::String::fromUTF8 ("\xe0\xb9\x80\xe0\xb8\x9e\xe0\xb8\xa5\xe0\xb8\x87") + ".mp3");
+        bad.replaceWithText ("not audio");
+        proc->startFile (bad);
+        pumpUntil ([&] { return ! proc->isBusy(); }, 10000);
+        check (proc->lastError().contains (bad.getFileName()), "error shows the file's Thai name: " + proc->lastError());
+        bad.deleteFile();
+    }
+
     proc->startFile (song);
     // On a first run (no compiled CoreML model) the gauge counts down while the model compiles.
     pumpUntil ([&] { auto s = proc->jobStatus(); return (s.secondsLeft >= 0 && s.fraction > 0.1) || s.step.startsWith ("Splitting"); }, 600000);

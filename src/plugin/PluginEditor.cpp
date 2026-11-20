@@ -59,7 +59,7 @@ public:
         }
         catch (const std::exception& e)
         {
-            error = e.what();
+            error = juce::String::fromUTF8 (e.what());
         }
     }
 
