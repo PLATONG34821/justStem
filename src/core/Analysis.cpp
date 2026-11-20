@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
-#include <numeric>
 
 namespace juststem
 {

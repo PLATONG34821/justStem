@@ -7,7 +7,6 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <numbers>
 
 namespace juststem

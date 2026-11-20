@@ -44,8 +44,6 @@ public:
         for (int k = 0; k <= n / 2; ++k) mag[k] = std::abs (buf[(size_t) k]);
     }
 
-    int size() const { return n; }
-
 private:
     int n;
     std::vector<std::complex<float>> tw, buf;

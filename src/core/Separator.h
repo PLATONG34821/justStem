@@ -89,7 +89,6 @@ public:
     const std::string& cacheFolder() const;
 
     Backend backend() const { return currentBackend; }
-    const ModelSpec& spec() const { return modelSpec; }
 
     /** Chunk overlap (0..0.5). */
     float overlap = 0.25f;
@@ -98,6 +97,5 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl;
     Backend currentBackend = Backend::CPU;
-    const ModelSpec& modelSpec;
 };
 } // namespace juststem
