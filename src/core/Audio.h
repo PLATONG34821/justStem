@@ -2,6 +2,7 @@
 
 #include <array>
 #include <map>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -37,6 +38,9 @@ constexpr std::string_view stemName (Stem s)
     }
     return "";
 }
+
+/** The stem's WAV in a song folder: "vocals.wav". */
+inline std::string stemFileName (Stem s) { return std::string (stemName (s)) + ".wav"; }
 
 using StemMap = std::map<Stem, StereoAudio>;
 } // namespace juststem

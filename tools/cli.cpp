@@ -12,7 +12,6 @@
 #include "../src/core/Separator.h"
 #include "../src/io/AudioFiles.h"
 #include "../src/io/YouTube.h"
-#include "../src/plugin/Text.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -140,7 +139,7 @@ static int separateFile (const std::string& model, const juce::File& in, const j
     outDir.createDirectory();
     for (const auto& [stem, audio] : stems)
     {
-        const auto file = outDir.getChildFile (text::from (stemName (stem)) + ".wav");
+        const auto file = outDir.getChildFile (juce::String (stemFileName (stem)));
         writeWav (file, audio);
         std::printf ("wrote %s\n", file.getFullPathName().toRawUTF8());
     }
@@ -501,7 +500,7 @@ static int analyzeFolder (const juce::File& folder)
     StereoAudio mix;
     for (auto stem : stemOrder)
     {
-        auto audio = loadAudioFile (folder.getChildFile (text::from (stemName (stem)) + ".wav"));
+        auto audio = loadAudioFile (folder.getChildFile (juce::String (stemFileName (stem))));
         mix.left.resize (std::max (mix.size(), audio.size()), 0.0f);
         mix.right.resize (mix.left.size(), 0.0f);
         for (std::size_t i = 0; i < audio.size(); ++i) { mix.left[i] += audio.left[i]; mix.right[i] += audio.right[i]; }

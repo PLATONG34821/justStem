@@ -24,7 +24,7 @@ struct SongResult
 
     bool isHQ() const { return model == text::from (model::hq.name); }
 
-    juce::File stemFile (Stem s) const { return folder.getChildFile (text::from (stemName (s)) + ".wav"); }
+    juce::File stemFile (Stem s) const { return folder.getChildFile (juce::String (stemFileName (s))); }
     juce::File instrumentalFile() const { return folder.getChildFile ("instrumental.wav"); } // everything except vocals
     juce::File infoFile() const { return folder.getChildFile ("info.json"); }
 };
