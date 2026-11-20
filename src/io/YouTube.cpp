@@ -1,4 +1,5 @@
 #include "YouTube.h"
+#include "AudioFiles.h"
 #include "ToolInstaller.h"
 
 #include <stdexcept>
@@ -26,6 +27,8 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
     const juce::StringArray args {
         ytdlp.getFullPathName(),
         "--ignore-config", "--no-playlist",
+        // Too long (or live, with no length): refused before anything is downloaded; yt-dlp exits with 101.
+        "--break-match-filters", "duration <= " + juce::String ((int) maxSongSeconds),
         "--js-runtimes", "deno:" + deno.getFullPathName(),
         "-f", "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]",
         "-o", paths::downloads().getChildFile ("%(id)s.%(ext)s").getFullPathName(),
@@ -75,6 +78,8 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
         }
     }
 
+    if (proc.getExitCode() == 101)
+        throw std::runtime_error (std::string (songTooLong().what()) + ", and neither are live streams");
     if (proc.getExitCode() != 0 || ! result.file.existsAsFile())
     {
         auto msg = errors.trim();
