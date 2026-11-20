@@ -47,26 +47,31 @@ build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.o
 - `analyze-selftest`: the resampler against exact sine waves and an aliasing test, loudness
   against the EBU reference signals, key detection in all 24 keys, tempo from 72 to 174 BPM,
   beats, bar lines and chords (7ths, sus, dim, slash chords) in a synthetic band recording in 4
-  keys, and pitch shifting (pitch within 5 cents, no timing offset, same level).
+  keys, the tempo of that band with its drums muted, and pitch shifting (pitch within 5 cents, no
+  timing offset, same level).
 - `selftest`: separates a synthetic track and scores each stem against the original parts.
 - `juststem_uitest`: runs the real plug-in code without a DAW. It renders every screen to PNGs
-  (the README screenshots come from it), splits a song, and checks the preview audio, New song and
-  Paste, the Storage panel, the chord view, the transposed preview (in time with the original),
-  transposed stem saving, and saving / reloading the plug-in state.
+  (the README screenshots come from it), splits a song, and checks the preview audio (including a
+  host block larger than the one it prepared for), New song and Paste, the Storage panel, the chord
+  view, the transposed preview (in time with the original), transposed stem saving, and saving /
+  reloading the plug-in state.
 
 Set `JUSTSTEM_DATA_DIR` to an absolute folder to keep a run's songs and caches there instead of
 in your Music folder and app data (useful for tests and screenshots).
 
 `juststem_cli` can also `separate`, `analyze` or `import` real songs, or print the `chords` of a
-song folder the plug-in saved; see the top of `tools/cli.cpp`.
+song folder the plug-in saved; see the top of `tools/cli.cpp`. Paths can be relative and contain
+any characters (they're read as UTF-8).
 
 ## Code layout
 
 ```
 src/core/      Separation and analysis. Plain C++ + ONNX Runtime, no JUCE.
   Audio.h        shared types: StereoAudio, Stem, sample rate
-  Separator.*    runs HT-Demucs in crossfaded chunks (CoreML / DirectML / CPU)
-  Analysis.*     key, tempo, loudness (EBU R128)
+  Pitch.h        note names and pitch classes
+  Separator.*    runs the model (HT-Demucs, or BS-RoFormer in HQ mode) in crossfaded chunks
+                 (CoreML / DirectML / CPU); each model's settings are in its ModelSpec
+  Analysis.*     key, tempo, loudness (EBU R128), and analyzeSong: the whole song from its stems
   Chords.*       beat tracking, bar lines and chord recognition
   Dsp.*          shared spectral peaks and onset envelope
   PitchShift.*   real-time and offline pitch shifting (Signalsmith Stretch)
@@ -83,11 +88,13 @@ src/plugin/    The plug-in.
   SongJob.*          background work: import -> split -> analyse -> save, and its log
   SongResult.*       a split song; saves and reloads it
   StemPlayer.*       real-time stem preview (lock-free on the audio thread)
+  Text.h             text helpers: BPM, m:ss, stem names
   ui/                theme (Inter font, colours, icons, buttons), widgets (key gauge, stem rows,
-                     segmented tabs), the chord view and the Storage panel
+                     segmented tabs), the song title, the player bar, the chord view and the
+                     Storage panel
 tools/         Developer tools, not shipped (see Testing).
 scripts/       Builds the model file.
-resources/     Embedded fonts.
+resources/     Embedded fonts, and the font and icon licences.
 docs/          This file and the README screenshots.
 cmake/         ONNX Runtime download (per OS), packaging.
 .github/       CI: build + test on macOS, Windows and Linux.
@@ -117,7 +124,9 @@ sample-exactly with the original file in a DAW.
 ## How chords are found
 
 The chords come from the separated stems: guitar + piano + other for the harmony, the bass stem
-for the bass note, and the drums for the beats. Vocals are left out (they carry the melody).
+for the bass note, and the drums for the beats. Vocals are left out (they carry the melody). In a
+song without drums (a near-silent drums stem), the tempo and the beats come from the harmony and
+the bass instead.
 
 1. **Beats**: a dynamic-programming beat tracker follows the detected tempo through the drums.
 2. **Per beat**: the strength of each of the 12 notes (chroma) in the chord instruments, and the
