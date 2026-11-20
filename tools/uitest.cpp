@@ -188,6 +188,17 @@ int main (int argc, char** argv)
     check (vox > 0.001 && vox < all, "solo vocals is quieter than the full mix (" + juce::String (vox, 4) + " < " + juce::String (all, 4) + ")");
     check (pl.positionSeconds() > testPosition, "position advances (" + juce::String (pl.positionSeconds(), 2) + " s)");
     pl.setSolo (0, false);
+    {
+        // Some hosts send more samples than prepareToPlay announced (512 here).
+        juce::AudioBuffer<float> big (2, 4096);
+        juce::MidiBuffer midi;
+        big.clear();
+        const double before = pl.positionSeconds();
+        proc->processBlock (big, midi);
+        const double advanced = pl.positionSeconds() - before;
+        check (big.getRMSLevel (0, 3584, 512) > 0.001 && std::fabs (advanced - 4096 / 48000.0) < 0.002,
+               "a 4096-sample block from a host prepared for 512 plays all of it (" + juce::String (advanced * 1000.0, 1) + " ms)");
+    }
     pl.setVolume (1, 0.5f);
     pl.setPlaying (false);
 
