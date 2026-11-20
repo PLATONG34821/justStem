@@ -32,16 +32,21 @@ inline juce::Font capsFont (float size = 11.5f) { return font (Weight::Regular, 
 /** Charcoal gradient + diagonal glass sheen. */
 void paintBackground (juce::Graphics&, juce::Rectangle<int> area);
 
-/** Thin line icons, drawn in a 0..1 box (stroke them with drawIcon). */
+/** Icons as filled shapes in a 0..1 box (draw them with drawIcon): Phosphor Icons (MIT, phosphoricons.com),
+    Light weight (Fill for play and pause, Bold for the grip dots), plus our own prism for Split. */
 namespace icons
 {
     juce::Path note();
+    juce::Path fileImport(); // choose a file
+    juce::Path split();      // a prism splitting light: start the split
+    juce::Path trash();
+    juce::Path open();       // a box with an arrow out of it: open a saved song
     juce::Path layers();
-    juce::Path play();  // filled
-    juce::Path pause(); // filled
+    juce::Path play();
+    juce::Path pause();
     juce::Path folder();
     juce::Path download();
-    juce::Path grip();  // filled dots
+    juce::Path grip();  // dots
     juce::Path plus();
     juce::Path minus();
     juce::Path close();
@@ -51,8 +56,7 @@ namespace icons
 } // namespace icons
 
 /** Stroke (or fill) an icon path scaled to fit `area`. */
-void drawIcon (juce::Graphics&, const juce::Path& icon, juce::Rectangle<float> area, juce::Colour, bool filled = false,
-               float strokeWidth = 1.4f);
+void drawIcon (juce::Graphics&, const juce::Path& icon, juce::Rectangle<float> area, juce::Colour);
 
 /** The usual pill button, with an optional line icon before its text (icon only when the text is empty). */
 class PillButton final : public juce::TextButton
@@ -62,6 +66,8 @@ public:
     const juce::Path& getIcon() const { return icon; }
     /** Width that fits the icon and text at `height` (a circle when there's no text). */
     int idealWidth (int height) const;
+    /** Draw the icon larger (or smaller) than usual, e.g. for the round buttons inside the link box. */
+    float iconScale = 1.0f;
 
 private:
     juce::Path icon;

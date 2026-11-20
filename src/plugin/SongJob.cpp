@@ -73,7 +73,23 @@ SongJob::~SongJob()
 SongJob::Status SongJob::status() const
 {
     const juce::ScopedLock sl (statusLock);
-    return current;
+    auto s = current;
+    if (timedSeconds > 0)
+    {
+        // Never reaches 100 %: the real length varies from Mac to Mac.
+        const double elapsed = (juce::Time::getMillisecondCounterHiRes() - timedStartMs) / 1000.0;
+        s.fraction = std::min (0.97, elapsed / timedSeconds);
+        s.secondsLeft = std::max (0.0, timedSeconds - elapsed);
+    }
+    return s;
+}
+
+void SongJob::setTimedStatus (const juce::String& step, double expectedSeconds)
+{
+    setStatus (step, -1);
+    const juce::ScopedLock sl (statusLock);
+    timedStartMs = juce::Time::getMillisecondCounterHiRes();
+    timedSeconds = expectedSeconds;
 }
 
 juce::StringArray SongJob::log() const
@@ -99,6 +115,7 @@ void SongJob::setStatus (const juce::String& step, double fraction)
     {
         const juce::ScopedLock sl (statusLock);
         current = { step, fraction };
+        timedSeconds = 0;
         if (base != lastStep)
         {
             lastStep = base;
@@ -188,17 +205,27 @@ SongResultPtr SongJob::process()
     addLog ("Decoded " + mmss (song->durationSeconds) + " of audio in " + seconds (decodeMs)
             + " (working at 44.1 kHz stereo, " + juce::String (rmsDb (mix), 1) + " dB RMS)");
 
-    // On macOS the first run also compiles the model for CoreML (about 25 s); later runs reuse it.
+    // On macOS the first run of each model also compiles it for CoreML; later runs reuse it.
     setStatus ("Preparing AI model", -1);
     if (! modelFile.existsAsFile()) throw std::runtime_error ("The AI model is missing from the plug-in. Please reinstall justStem.");
-    addLog ("Model: " + modelFile.getFileName() + " (HT-Demucs, 6 stems, "
+    const auto& spec = model::forFile (modelFile.getFullPathName().toStdString());
+    addLog ("Model: " + modelFile.getFileName() + " (" + juce::String (std::string (spec.name)) + ", 6 stems, "
             + juce::File::descriptionOfSizeInBytes (modelFile.getSize()) + ")");
+    // One cache folder per model file version, so "already compiled" is known for each.
+    const juce::File coremlCache (juce::String::fromUTF8 (Separator::coremlCacheFolder (
+        modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString()).c_str()));
 #if JUCE_MAC
-    const bool cached = paths::coremlCache().isDirectory()
-                        && paths::coremlCache().getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0;
+    const bool cached = coremlCache.isDirectory()
+                        && coremlCache.getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0;
+    // Typical compile times on an M4 (HQ measured at 129 s, standard at 25-35 s); slower Macs take longer.
+    const double compileSeconds = &spec == &model::hq ? 150.0 : 35.0;
     addLog (cached ? "Using the CoreML model compiled on an earlier run"
-                   : "First run on this Mac: compiling the model for CoreML (about 25 s, only once)");
+                   : "First run on this Mac: compiling the model for CoreML (only once; about "
+                         + (compileSeconds >= 60 ? juce::String (compileSeconds / 60.0, 1) + " min" : juce::String ((int) compileSeconds) + " s") + ")");
+    // Compiling happens when the first chunk runs; the first progress report ends the countdown.
+    if (! cached) setTimedStatus ("Compiling AI model", compileSeconds);
 #endif
+    song->model = juce::String (std::string (spec.name));
     Separator separator (modelFile.getFullPathName().toStdString(), paths::coremlCache().getFullPathName().toStdString());
 
     // The model is loaded when the first chunk runs, so the first progress report marks it ready.
@@ -212,11 +239,22 @@ SongResultPtr SongJob::process()
             if (! backendLogged) modelMs = nowMs() - splitStart;
             addLog (juce::String (backendLogged ? "Fell back to " : "Running on ") + backendName (p.backend)
                     + (backendLogged ? juce::String() : " (model loaded in " + seconds (modelMs) + ")")
-                    + ", " + juce::String (p.totalSegments) + " chunks of 7.8 s");
+                    + ", " + juce::String (p.totalSegments) + " chunks of "
+                    + juce::String ((double) spec.chunkSamples / sampleRate, 1) + " s");
+#if JUCE_MAC || JUCE_WINDOWS
+            if (p.backend == Backend::CPU)
+                addLog ("The GPU couldn't run the model, so this split runs on the CPU and will take much longer");
+#endif
             backendLogged = true;
             lastBackend = p.backend;
         }
-        setStatus ("Splitting stems (" + juce::String (p.segment) + "/" + juce::String (p.totalSegments) + ", about "
+        // On a Mac or PC the CPU only runs the model when the GPU failed: say so on the gauge.
+#if JUCE_MAC || JUCE_WINDOWS
+        const juce::String splitting = p.backend == Backend::CPU ? "Splitting on CPU" : "Splitting stems";
+#else
+        const juce::String splitting = "Splitting stems";
+#endif
+        setStatus (splitting + " (" + juce::String (p.segment) + "/" + juce::String (p.totalSegments) + ", about "
                        + juce::String (juce::roundToInt (p.etaSeconds)) + " s left)",
                    (double) p.segment / p.totalSegments);
     }, cancelled);
@@ -235,7 +273,7 @@ SongResultPtr SongJob::process()
     addLog ("Stem levels (dB RMS): " + levels.joinIntoString (", "));
     if (! quiet.isEmpty()) addLog ("Almost silent: " + quiet.joinIntoString (", ") + " (probably not in this song)");
 
-    setStatus ("Detecting key, tempo and chords", -1);
+    setStatus ("Analysing song", -1); // key, tempo and chords
     const auto analysisStart = nowMs();
     song->analysis = analyzeSong (mix, song->stems);
     const double analysisMs = nowMs() - analysisStart;

@@ -85,9 +85,17 @@ void Gauge::paint (juce::Graphics& g)
     }
     // Caption, big value, unit.
     g.setColour (Palette::dim);
-    g.setFont (capsFont (size * 0.04f));
-    g.drawText (state.caption.toUpperCase(), juce::Rectangle<float> (disc.getX(), disc.getY() + disc.getHeight() * 0.18f, disc.getWidth(), size * 0.06f),
-                juce::Justification::centred, true);
+    // Long captions (e.g. a translated one) shrink to stay inside the disc at that height.
+    {
+        const auto caption = state.caption.toUpperCase();
+        auto f = capsFont (size * 0.04f);
+        const float maxW = disc.getWidth() * 0.80f;
+        const float w = juce::GlyphArrangement::getStringWidth (f, caption);
+        if (w > maxW) f = capsFont (size * 0.04f * std::max (0.7f, maxW / w));
+        g.setFont (f);
+        g.drawText (caption, juce::Rectangle<float> (disc.getX(), disc.getY() + disc.getHeight() * 0.18f, disc.getWidth(), size * 0.06f),
+                    juce::Justification::centred, true);
+    }
     g.setColour (Palette::text);
     g.setFont (font (Weight::ExtraLight, size * 0.22f));
     g.drawFittedText (state.value, disc.withSizeKeepingCentre (disc.getWidth() * 0.50f, size * 0.25f).toNearestInt(),
@@ -127,7 +135,7 @@ void IconButton::paintButton (juce::Graphics& g, bool over, bool down)
     g.setColour (Palette::panelBorder);
     g.drawEllipse (r, 1.0f);
     drawIcon (g, icon, r.withSizeKeepingCentre (r.getWidth() * 0.34f, r.getHeight() * 0.34f),
-              Palette::text.withAlpha (isEnabled() ? 1.0f : 0.3f), true);
+              Palette::text.withAlpha (isEnabled() ? 1.0f : 0.3f));
 }
 
 // ============================================================================ segment bar
@@ -165,7 +173,7 @@ void DragHandle::paint (juce::Graphics& g)
     g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
     g.setColour (Palette::panelBorder);
     g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 1.0f);
-    drawIcon (g, icons::grip(), r.withSizeKeepingCentre (12.0f, 14.0f), enabled ? Palette::text : Palette::faint, true);
+    drawIcon (g, icons::grip(), r.withSizeKeepingCentre (12.0f, 14.0f), enabled ? Palette::text : Palette::faint);
 }
 
 void DragHandle::mouseDrag (const juce::MouseEvent& e)

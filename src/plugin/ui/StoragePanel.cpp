@@ -7,17 +7,22 @@ namespace
 juce::String size (juce::int64 bytes) { return juce::File::descriptionOfSizeInBytes (bytes); }
 } // namespace
 
-/** One saved song: title, size and date, Delete (or "in use"). */
+/** One saved song: title, size and date, Open and Delete (both off for the song in use). */
+/** Round icon buttons throughout the panel. */
+constexpr int btn = 32;
+
 struct StoragePanel::SongRow final : public juce::Component
 {
     SongRow (storage::SavedSong s, bool inUse) : song (std::move (s)), used (inUse)
     {
         deleteButton.setEnabled (! used);
+        openButton.setEnabled (! used);
         addAndMakeVisible (deleteButton);
+        addAndMakeVisible (openButton);
     }
     void paint (juce::Graphics& g) override
     {
-        auto r = getLocalBounds().withTrimmedRight (100);
+        auto r = getLocalBounds().withTrimmedRight (2 * btn + 16);
         g.setColour (Palette::text);
         g.setFont (font (Weight::Regular, 13.5f));
         g.drawText (song.folder.getFileName(), r.removeFromTop (getHeight() / 2 + 2).withTrimmedTop (4), juce::Justification::bottomLeft, true);
@@ -26,17 +31,29 @@ struct StoragePanel::SongRow final : public juce::Component
         g.drawText (size (song.bytes) + "   " + song.created.formatted ("%d %b %Y") + (used ? "   in use" : ""), r,
                     juce::Justification::topLeft, true);
     }
-    void resized() override { deleteButton.setBounds (getLocalBounds().removeFromRight (90).withSizeKeepingCentre (90, 26)); }
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        deleteButton.setBounds (r.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
+        r.removeFromRight (8);
+        openButton.setBounds (r.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
+    }
 
     storage::SavedSong song;
     bool used;
-    juce::TextButton deleteButton { "Delete" };
+    PillButton deleteButton { {}, icons::trash() }, openButton { {}, icons::open() };
 };
 
 StoragePanel::StoragePanel (std::function<juce::File()> inUse, std::function<bool()> busy)
     : songInUse (std::move (inUse)), isBusy (std::move (busy))
 {
     closeButton.onClick = [this] { if (onClose) onClose(); };
+    closeButton.setTooltip ("Close");
+    showFolderButton.setTooltip ("Show the songs folder");
+    deleteAllButton.setTooltip ("Delete all songs (except the open one)");
+    clearCacheButton.setTooltip ("Clear the AI model cache");
+    removeToolsButton.setTooltip ("Remove the YouTube tools");
+    clearDownloadsButton.setTooltip ("Clear temporary downloads");
     showFolderButton.onClick = [] { paths::stems().revealToUser(); };
     deleteAllButton.onClick = [this] {
         confirm ("Delete all songs?",
@@ -49,7 +66,7 @@ StoragePanel::StoragePanel (std::function<juce::File()> inUse, std::function<boo
                  });
     };
     clearCacheButton.onClick = [this] {
-        confirm ("Clear the AI model cache?", "It's rebuilt automatically the next time you split a song (about 25 seconds, once).",
+        confirm ("Clear the AI model cache?", "It's rebuilt automatically the next time you split a song (about 35 seconds, or about 2.5 minutes in HQ mode, once).",
                  "Clear", [this] { storage::clearFolder (paths::coremlCache()); refresh(); });
     };
     removeToolsButton.onClick = [this] {
@@ -83,6 +100,10 @@ void StoragePanel::refresh()
         songsBytes += s.bytes;
         auto* row = rows.add (new SongRow (s, s.folder == inUse));
         row->deleteButton.setEnabled (! busy && ! row->used);
+        row->openButton.setEnabled (! busy && ! row->used);
+        row->openButton.setTooltip ("Open this song (no new split)");
+        row->deleteButton.setTooltip ("Delete this song");
+        row->openButton.onClick = [this, folder = row->song.folder] { if (onOpen) onOpen (folder); };
         row->deleteButton.onClick = [this, row] {
             confirm ("Delete this song?", "\"" + row->song.title + "\" (" + size (row->song.bytes) + ") will be moved to the Trash.",
                      "Move to Trash", [this, song = row->song] { storage::moveSongToTrash (song); refresh(); });
@@ -116,13 +137,13 @@ void StoragePanel::resized()
 {
     auto r = card().reduced (28, 24).withTop (card().getY() + headerH + 8);
     auto top = titleRow (card());
-    closeButton.setBounds (top.removeFromRight (90).withSizeKeepingCentre (90, 28));
+    closeButton.setBounds (top.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
 
     songsHeader = r.removeFromTop (30);
     auto h = songsHeader;
-    deleteAllButton.setBounds (h.removeFromRight (104).withSizeKeepingCentre (104, 26));
+    deleteAllButton.setBounds (h.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
     h.removeFromRight (8);
-    showFolderButton.setBounds (h.removeFromRight (120).withSizeKeepingCentre (120, 26));
+    showFolderButton.setBounds (h.removeFromRight (btn).withSizeKeepingCentre (btn, btn));
 
     otherArea = r.removeFromBottom (3 * 44);
     r.removeFromBottom (28); // room for the busy warning above the footer
@@ -138,7 +159,7 @@ void StoragePanel::resized()
 
     auto other = otherArea;
     for (auto* b : { &clearCacheButton, &removeToolsButton, &clearDownloadsButton })
-        b->setBounds (other.removeFromTop (44).removeFromRight (90).withSizeKeepingCentre (90, 26));
+        b->setBounds (other.removeFromTop (44).removeFromRight (btn).withSizeKeepingCentre (btn, btn));
 }
 
 void StoragePanel::paintOverChildren (juce::Graphics& g)
@@ -208,7 +229,7 @@ void StoragePanel::paint (juce::Graphics& g)
 
     // Cache / tools / downloads rows.
     struct Item { const char* name; const char* note; juce::int64 bytes; };
-    const Item items[] { { "AI model cache", "Rebuilt automatically (about 25 s, once)", cacheBytes },
+    const Item items[] { { "AI model cache", "Rebuilt automatically on the next split (35 s, 2.5 min for HQ)", cacheBytes },
                          { "YouTube tools", "yt-dlp and Deno, downloaded again when needed", toolsBytes },
                          { "Temporary downloads", "YouTube audio waiting to be split", downloadsBytes } };
     // They sit in a darker footer, set apart from the songs.

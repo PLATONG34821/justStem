@@ -13,7 +13,14 @@ packages (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are d
    python3 -m venv .venv && .venv/bin/pip install onnx onnxruntime numpy
    curl -L -o htdemucs_6s_fp16weights.onnx \
      https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx
-   .venv/bin/python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_web2.onnx
+   .venv/bin/python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
+   ```
+   Optional, for HQ mode (BS-RoFormer 6-stem): build `models/bs_roformer_sw_6stem_opt.onnx` and the
+   plug-in bundles it and shows the HQ switch; without it HQ mode is hidden. The script also needs
+   `pip install onnxconverter-common` (the model runs its maths in fp16). See the top of
+   `scripts/prepare_roformer_onnx.py`. The weights are CC-BY-NC-SA-4.0 (non-commercial).
+   ```sh
+   .venv/bin/python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
    ```
 2. Build:
    ```sh
@@ -33,8 +40,8 @@ Every push is built and tested on macOS, Windows and Linux by GitHub Actions
 
 ```sh
 build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
-build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_web2.onnx
-build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_web2.onnx <song> <screenshot folder>
+build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx
+build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx <song> <screenshot folder>   # add --hq to split with the HQ model
 ```
 
 - `analyze-selftest`: the resampler against exact sine waves and an aliasing test, loudness
@@ -134,6 +141,7 @@ stems + instrumental to a new folder (about 12 s for a 5-minute song).
 - [JUCE](https://juce.com): AGPL-3.0 / commercial
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime): MIT
 - [Inter](https://rsms.me/inter/) font (UI typeface, embedded): SIL Open Font License 1.1, see `resources/fonts/OFL-LICENSE.txt`
+- [Phosphor Icons](https://phosphoricons.com) (UI icons, path data in `src/plugin/ui/Theme.cpp`): MIT, see `resources/icons/PHOSPHOR-LICENSE.txt`
 - [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) and
   [Signalsmith Linear](https://github.com/Signalsmith-Audio/linear) (pitch shifting): MIT
 - [FAAD2](https://github.com/knik0/faad2) (AAC decoder): GPL-2.0-or-later, used under GPL-3.0 with the AGPL

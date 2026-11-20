@@ -1,5 +1,5 @@
 """
-Build models/htdemucs_6s_web2.onnx, the model bundled in the plug-in, from the public
+Build models/htdemucs_6s_opt.onnx, the model bundled in the plug-in, from the public
 htdemucs_6s export (StemSplitio/htdemucs-6s-onnx).
 
 Steps:
@@ -16,13 +16,11 @@ Steps:
 Converting the model to fp16 *compute* doesn't work: it isn't faster and the stems come out
 as noise.
 
-(The "web" in the file name is historical: these steps were first needed for onnxruntime-web.)
-
 Usage:
   pip install onnx onnxruntime numpy
   curl -L -o htdemucs_6s_fp16weights.onnx \
     https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx
-  python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_web2.onnx
+  python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
 """
 from __future__ import annotations
 

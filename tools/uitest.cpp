@@ -1,4 +1,4 @@
-// juststem_uitest <model.onnx> <song> <output folder>: drives the real plug-in code without a DAW.
+// juststem_uitest <model.onnx> <song> <output folder> [--hq]: drives the real plug-in code without a DAW.
 // Renders the editor to PNGs, runs a full split, checks the preview audio and state save/reload.
 #include "../src/io/AudioFiles.h"
 #include "../src/plugin/PluginEditor.h"
@@ -60,7 +60,8 @@ static std::vector<float> render (justStemProcessor& p, int blocks)
 
 int main (int argc, char** argv)
 {
-    if (argc < 4) { std::fprintf (stderr, "usage: juststem_uitest <model.onnx> <song> <output folder>\n"); return 2; }
+    if (argc < 4) { std::fprintf (stderr, "usage: juststem_uitest <model.onnx> <song> <output folder> [--hq]\n"); return 2; }
+    const bool hq = argc > 4 && std::string (argv[4]) == "--hq";
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::File model (juce::String::fromUTF8 (argv[1])), song (juce::String::fromUTF8 (argv[2])),
         outDir (juce::String::fromUTF8 (argv[3]));
@@ -68,16 +69,27 @@ int main (int argc, char** argv)
 
     auto proc = std::make_unique<justStemProcessor> (model);
     proc->prepareToPlay (48000, 512);
+    if (hq)
+    {
+        if (! proc->hqAvailable()) { std::fprintf (stderr, "--hq: no HQ model next to %s\n", model.getFullPathName().toRawUTF8()); return 2; }
+        proc->setHQ (true);
+    }
     std::unique_ptr<juce::AudioProcessorEditor> editor (proc->createEditor());
 
     std::printf ("UI\n");
     snapshot (*editor, outDir.getChildFile ("1-idle.png"));
 
     proc->startFile (song);
-    pumpUntil ([&] { auto s = proc->jobStatus(); return s.step.startsWith ("Splitting") && s.fraction > 0.3; }, 120000);
+    // On a first run (no compiled CoreML model) the gauge counts down while the model compiles.
+    pumpUntil ([&] { auto s = proc->jobStatus(); return (s.secondsLeft >= 0 && s.fraction > 0.1) || s.step.startsWith ("Splitting"); }, 600000);
+    if (proc->jobStatus().secondsLeft >= 0) snapshot (*editor, outDir.getChildFile ("2a-compiling.png"));
+    pumpUntil ([&] { auto s = proc->jobStatus(); return s.step.startsWith ("Splitting") && s.fraction > 0.3; }, 600000);
     snapshot (*editor, outDir.getChildFile ("2-progress.png"));
     const auto t0 = juce::Time::getMillisecondCounterHiRes();
-    pumpUntil ([&] { return ! proc->isBusy(); }, 600000);
+    pumpUntil ([&] { return ! proc->isBusy(); }, 900000);
+    for (const auto& line : proc->jobLog())
+        if (line.contains ("Model:") || line.contains ("Running on") || line.contains ("Split 6 stems"))
+            std::printf ("  log: %s\n", line.toRawUTF8());
     std::printf ("  job finished %.1f s after the progress snapshot\n", (juce::Time::getMillisecondCounterHiRes() - t0) / 1000);
     check (proc->getSong() != nullptr, "song processed" + (proc->lastError().isEmpty() ? juce::String() : ": " + proc->lastError()));
     for (const auto& line : proc->jobLog()) std::printf ("    | %s\n", line.toRawUTF8());

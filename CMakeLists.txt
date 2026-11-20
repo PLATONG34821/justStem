@@ -66,7 +66,7 @@ add_library(juststem_core STATIC
     src/core/PitchShift.cpp
     src/core/Resampler.cpp)
 target_include_directories(juststem_core PUBLIC src/core)
-target_link_libraries(juststem_core PUBLIC onnxruntime::onnxruntime PRIVATE signalsmith-stretch)
+target_link_libraries(juststem_core PUBLIC onnxruntime::onnxruntime PRIVATE signalsmith-stretch signalsmith-linear)
 if(MSVC)
     target_compile_options(juststem_core PRIVATE /W4 /utf-8 /bigobj) # bigobj: Signalsmith templates
 else()

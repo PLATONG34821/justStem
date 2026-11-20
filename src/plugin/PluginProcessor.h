@@ -10,15 +10,18 @@
 class justStemProcessor final : public juce::AudioProcessor, public juce::ChangeBroadcaster
 {
 public:
-    /** The model shipped with the plug-in (in its bundle's Contents/Resources, or next to the binary). */
+    /** The fast model shipped with the plug-in (in its bundle's Contents/Resources, or next to the
+        binary). The HQ model, when bundled, sits next to it. */
     static juce::File bundledModelFile();
 
-    explicit justStemProcessor (juce::File modelFile = bundledModelFile());
+    explicit justStemProcessor (juce::File fastModelFile = bundledModelFile());
     ~justStemProcessor() override;
 
     // ---- song workflow (message thread)
     void startYouTube (const juce::String& link) { startJob (juststem::SongJob::Kind::YouTube, link); }
     void startFile (const juce::File& file) { startJob (juststem::SongJob::Kind::File, file.getFullPathName()); }
+    /** Load a song split earlier (its folder under the songs folder) without splitting it again. */
+    void openSaved (const juce::File& folder) { startJob (juststem::SongJob::Kind::Reload, folder.getFullPathName()); }
     void cancelJob();
     bool isBusy() const { return job != nullptr; }
     juststem::SongJob::Status jobStatus() const;
@@ -28,6 +31,14 @@ public:
     void showError (const juce::String& message) { error = message; sendChangeMessage(); }
     juststem::SongResultPtr getSong() const { return song; }
     juststem::StemPlayer& player() { return stemPlayer; }
+    /** HQ mode splits with BS-RoFormer instead of HT-Demucs (saved with the DAW project). */
+    bool hqAvailable() const { return hqModelFile.existsAsFile(); }
+    bool getHQ() const { return hq && hqAvailable(); }
+    void setHQ (bool on)
+    {
+        hq = on;
+        sendChangeMessage();
+    }
     /** Semitones to transpose the chords and the preview by (saved with the DAW project). */
     int getTranspose() const { return transpose; }
     void setTranspose (int semitones)
@@ -65,13 +76,14 @@ public:
 private:
     void startJob (juststem::SongJob::Kind, const juce::String& source);
 
-    const juce::File modelFile;
+    const juce::File fastModelFile, hqModelFile;
     juststem::StemPlayer stemPlayer;
     std::unique_ptr<juststem::SongJob> job;
     juststem::SongResultPtr song;
     juce::String error;
     juce::StringArray lastLog;
     int transpose = 0;
+    bool hq = false;
     std::shared_ptr<bool> alive = std::make_shared<bool> (true); // guards async job callbacks
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (justStemProcessor)

@@ -19,6 +19,8 @@ public:
     ~StoragePanel() override;
 
     std::function<void()> onClose;
+    /** Open a saved song (its folder) in the plug-in. */
+    std::function<void (const juce::File&)> onOpen;
     void refresh();
 
     void paint (juce::Graphics&) override;
@@ -37,8 +39,8 @@ private:
     std::vector<storage::SavedSong> songs;
     juce::int64 songsBytes = 0, cacheBytes = 0, toolsBytes = 0, downloadsBytes = 0;
 
-    juce::TextButton closeButton { "Close" }, deleteAllButton { "Delete all" }, showFolderButton { "Show folder" };
-    juce::TextButton clearCacheButton { "Clear" }, removeToolsButton { "Remove" }, clearDownloadsButton { "Clear" };
+    PillButton closeButton { {}, icons::close() }, deleteAllButton { {}, icons::trash() }, showFolderButton { {}, icons::folder() };
+    PillButton clearCacheButton { {}, icons::trash() }, removeToolsButton { {}, icons::trash() }, clearDownloadsButton { {}, icons::trash() };
     /** Tells the panel when the list scrolls, so the edge fades follow. */
     struct ListViewport final : juce::Viewport
     {

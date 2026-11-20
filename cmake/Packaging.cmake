@@ -3,17 +3,26 @@
 #   juststem_package(<target> [INSTALL_DIR <dir>])
 #
 # Layout (the model is found by justStemProcessor::bundledModelFile):
-#   macOS bundles  Contents/Frameworks/<runtime>, Contents/Resources/<model>; ad-hoc signed
-#   VST3 bundles   Contents/<arch>/<runtime> next to the binary, Contents/Resources/<model>
-#   Standalone     <runtime> and <model> next to the executable
+#   macOS bundles  Contents/Frameworks/<runtime>, Contents/Resources/<models>; ad-hoc signed
+#   VST3 bundles   Contents/<arch>/<runtime> next to the binary, Contents/Resources/<models>
+#   Standalone     <runtime> and <models> next to the executable
 #
 # Done here rather than with JUCE's COPY_PLUGIN_AFTER_BUILD, which installs before the extra
 # files are added and (on macOS) before the bundle is re-signed.
 
-set(JUSTSTEM_MODEL "${CMAKE_SOURCE_DIR}/models/htdemucs_6s_web2.onnx")
+set(JUSTSTEM_MODEL "${CMAKE_SOURCE_DIR}/models/htdemucs_6s_opt.onnx")
 if(NOT EXISTS "${JUSTSTEM_MODEL}")
     message(FATAL_ERROR "Missing ${JUSTSTEM_MODEL}.\n"
         "Build it with scripts/prepare_demucs_onnx.py (see the comment at the top of that script).")
+endif()
+# The HQ model (BS-RoFormer) is optional: bundled when present, otherwise the plug-in hides HQ mode.
+set(JUSTSTEM_MODELS "${JUSTSTEM_MODEL}")
+set(JUSTSTEM_HQ_MODEL "${CMAKE_SOURCE_DIR}/models/bs_roformer_sw_6stem_opt.onnx")
+if(EXISTS "${JUSTSTEM_HQ_MODEL}")
+    list(APPEND JUSTSTEM_MODELS "${JUSTSTEM_HQ_MODEL}")
+    message(STATUS "Bundling the HQ model: ${JUSTSTEM_HQ_MODEL}")
+else()
+    message(STATUS "No HQ model (${JUSTSTEM_HQ_MODEL}); building without HQ mode. See scripts/prepare_roformer_onnx.py.")
 endif()
 
 # Copy ONNX Runtime next to a developer tool so it runs from the build folder.
@@ -37,7 +46,7 @@ function(juststem_package target)
         add_custom_command(TARGET ${target} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory "${contents}/Frameworks" "${contents}/Resources"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ORT_RUNTIME_FILES} "${contents}/Frameworks/"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${JUSTSTEM_MODEL}" "${contents}/Resources/"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${JUSTSTEM_MODELS} "${contents}/Resources/"
             # On CI, re-signing Microsoft's signed dylib prints "timestamps differ by 181 seconds" and the
             # chain stops there (touch did not help). Drop the existing signature first (unconfirmed; see CI).
             COMMAND codesign --remove-signature "${contents}/Frameworks/libonnxruntime.1.dylib"
@@ -59,7 +68,7 @@ function(juststem_package target)
         add_custom_command(TARGET ${target} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ORT_RUNTIME_FILES} "${binary_dir}"
             COMMAND ${CMAKE_COMMAND} -E make_directory "${model_dir}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${JUSTSTEM_MODEL}" "${model_dir}/"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${JUSTSTEM_MODELS} "${model_dir}/"
             VERBATIM)
         if(UNIX) # Linux: find the runtime next to the binary
             set_target_properties(${target} PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")

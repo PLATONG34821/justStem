@@ -20,6 +20,9 @@ public:
     {
         juce::String step;     // human-readable phase
         double fraction = -1;  // 0..1, or -1 when unknown
+        /** During a one-time step with a known typical length (compiling the model): seconds left, 0 once
+            it runs over, -1 otherwise. status() works this and `fraction` out from the clock. */
+        double secondsLeft = -1;
     };
 
     /** Called on the message thread when the job ends. `error` is "cancelled" after cancel(). */
@@ -39,6 +42,8 @@ public:
 private:
     void run() override;
     void setStatus (const juce::String& step, double fraction);
+    /** Like setStatus, but the gauge counts down from `expectedSeconds` until the next setStatus. */
+    void setTimedStatus (const juce::String& step, double expectedSeconds);
     void addLog (const juce::String& line);
     SongResultPtr process();
 
@@ -52,6 +57,7 @@ private:
     juce::StringArray logLines;
     juce::String lastStep;
     int lastTenth = 0;
+    double timedStartMs = 0, timedSeconds = 0; // setTimedStatus; timedSeconds 0 when not counting down
     const double startMs = juce::Time::getMillisecondCounterHiRes();
 };
 } // namespace juststem

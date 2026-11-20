@@ -53,7 +53,7 @@ jobs:
         id: model
         uses: actions/cache@v5
         with:
-          path: models/htdemucs_6s_web2.onnx
+          path: models/htdemucs_6s_opt.onnx
           key: model-${{ hashFiles('scripts/prepare_demucs_onnx.py') }}
       - name: Build the model
         if: steps.model.outputs.cache-hit != 'true'
@@ -62,7 +62,7 @@ jobs:
           python -m pip install onnx onnxruntime numpy
           curl -L -o htdemucs_6s_fp16weights.onnx \
             https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx
-          python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_web2.onnx
+          python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -72,7 +72,7 @@ jobs:
       - name: Test analysis (resampler, loudness, key, tempo)
         run: build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
       - name: Test separation
-        run: build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_web2.onnx 12
+        run: build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx 12
 
       - uses: actions/upload-artifact@v6
         with:
