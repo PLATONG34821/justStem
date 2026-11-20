@@ -43,8 +43,6 @@ private:
     void startFromInput();
     void chooseFile();
     void saveAll();
-    /** Copies the stems (pitch-shifted when transposed) into a new folder in `dest`, in the background. */
-    static void saveStems (juststem::SongResultPtr, int semitones, const juce::File& dest);
     void showStorage();
     void showChords (bool);
     void copyChords();
