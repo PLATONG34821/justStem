@@ -3,6 +3,8 @@
 #include "../core/Separator.h"
 #include "Text.h"
 
+#include <utility>
+
 using namespace juststem;
 
 juce::File justStemProcessor::bundledModelFile()
@@ -79,9 +81,17 @@ void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source
         else if (err != "cancelled")
             error = err;
         sendChangeMessage();
+        if (restoredFolder != juce::File()) reloadRestored (std::exchange (restoredFolder, {}));
     });
     job->start();
     sendChangeMessage();
+}
+
+void justStemProcessor::reloadRestored (const juce::File& folder)
+{
+    // The project's song wins, as when nothing is running; a song split meanwhile is saved, in Storage.
+    if (job != nullptr) restoredFolder = folder;
+    else if (folder.isDirectory() && (song == nullptr || song->folder != folder)) startJob (SongJob::Kind::Reload, folder.getFullPathName());
 }
 
 void justStemProcessor::cancelJob()
@@ -139,7 +149,7 @@ void justStemProcessor::setStateInformation (const void* data, int size)
     }
     if (folder.isDirectory() && ! sameSong)
         juce::MessageManager::callAsync ([this, token = std::weak_ptr<bool> (alive), folder] {
-            if (! token.expired()) startJob (SongJob::Kind::Reload, folder.getFullPathName());
+            if (! token.expired()) reloadRestored (folder);
         });
     sendChangeMessage(); // an open window shows the restored settings
 }

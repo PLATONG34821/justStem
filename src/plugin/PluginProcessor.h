@@ -81,6 +81,8 @@ public:
 
 private:
     void startJob (juststem::SongJob::Kind, const juce::String& source);
+    /** Loads the song saved with a restored project, once any running job has ended. */
+    void reloadRestored (const juce::File& folder);
 
     const juce::File fastModelFile, hqModelFile;
     juststem::StemPlayer stemPlayer;
@@ -90,6 +92,7 @@ private:
     juce::CriticalSection songLock;
     juce::String error;
     juce::StringArray lastLog;
+    juce::File restoredFolder; // a restored project's song, waiting for the running job (message thread)
     std::atomic<int> transpose { 0 };
     std::atomic<bool> hq { false };
     juce::SharedResourcePointer<juststem::UpdateCheck> updateCheck;
