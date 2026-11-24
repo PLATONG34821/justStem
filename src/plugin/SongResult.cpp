@@ -10,6 +10,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <future>
 #include <stdexcept>
 #include <vector>
@@ -29,14 +30,51 @@ void addInto (StereoAudio& sum, const StereoAudio& stem)
         sum.right[i] += stem.right[i];
     }
 }
+
+/** The left channel's bytes, then the right's, without copying the song (300 MB at 15 minutes). */
+class StereoBytes final : public juce::InputStream
+{
+public:
+    explicit StereoBytes (const StereoAudio& a) : audio (a) {}
+
+    juce::int64 getTotalLength() override { return bytes (audio.left) + bytes (audio.right); }
+    bool isExhausted() override { return pos >= getTotalLength(); }
+    juce::int64 getPosition() override { return pos; }
+    bool setPosition (juce::int64 p) override
+    {
+        pos = juce::jlimit ((juce::int64) 0, getTotalLength(), p);
+        return true;
+    }
+
+    // Fills `dest` across the left/right boundary: SHA256 takes a short read as the end.
+    int read (void* dest, int maxBytes) override
+    {
+        int done = 0;
+        while (done < maxBytes && ! isExhausted())
+        {
+            const bool right = pos >= bytes (audio.left);
+            const auto& channel = right ? audio.right : audio.left;
+            const auto offset = right ? pos - bytes (audio.left) : pos;
+            const int n = (int) std::min<juce::int64> (maxBytes - done, bytes (channel) - offset);
+            std::memcpy (static_cast<char*> (dest) + done, reinterpret_cast<const char*> (channel.data()) + offset, (std::size_t) n);
+            done += n;
+            pos += n;
+        }
+        return done;
+    }
+
+private:
+    static juce::int64 bytes (const std::vector<float>& v) { return (juce::int64) (v.size() * sizeof (float)); }
+
+    const StereoAudio& audio;
+    juce::int64 pos = 0;
+};
 } // namespace
 
 juce::String audioFingerprint (const StereoAudio& audio)
 {
-    juce::MemoryBlock data;
-    data.append (audio.left.data(), audio.left.size() * sizeof (float));
-    data.append (audio.right.data(), audio.right.size() * sizeof (float));
-    return juce::SHA256 (data).toHexString();
+    StereoBytes stream (audio);
+    return juce::SHA256 (stream).toHexString();
 }
 
 juce::File findSavedSong (const juce::String& audioHash, const juce::String& model)
