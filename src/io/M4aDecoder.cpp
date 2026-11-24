@@ -115,10 +115,19 @@ struct Track
     std::vector<juce::uint8> config;
     std::vector<Frame> frames;            // classic layout (empty for fragmented files)
     juce::int64 editListSkip = -1;        // from 'elst', in the track timescale (-1: none)
+    double maxSeconds = 0;
+
+    /** The frame counts come from the file, and a damaged one can claim billions of frames: refuse
+        more than `maxSeconds` could hold at the highest AAC rate (96 kHz), before they fill the memory. */
+    void addFrame (Frame f)
+    {
+        if ((double) frames.size() * 1024.0 >= (maxSeconds + 1.0) * 96000.0) throw songTooLong (maxSeconds);
+        frames.push_back (f);
+    }
 };
 
 /** The first AAC audio track in 'moov', with its classic sample table if it has one. */
-Track findAudioTrack (const Bytes& b, const Box& moov)
+Track findAudioTrack (const Bytes& b, const Box& moov, double maxSeconds)
 {
     for (auto& trak : children (b, moov.payload, moov.end))
     {
@@ -128,6 +137,7 @@ Track findAudioTrack (const Bytes& b, const Box& moov)
         if (! hdlr || ! b.is (hdlr->payload + 8, "soun")) continue; // not audio
 
         Track t;
+        t.maxSeconds = maxSeconds;
         if (auto tkhd = child (b, trak, "tkhd"))
             t.id = b.u32 (tkhd->payload + (b.u8 (tkhd->payload) == 1 ? 20 : 12));
         if (auto mdhd = child (b, *mdia, "mdhd"))
@@ -191,7 +201,7 @@ Track findAudioTrack (const Bytes& b, const Box& moov)
                     for (juce::uint32 k = 0; k < perChunk && sample < count; ++k, ++sample)
                     {
                         const std::size_t size = fixedSize != 0 ? fixedSize : b.u32 (stsz->payload + 12 + 4 * (std::size_t) sample);
-                        t.frames.push_back ({ offset, size });
+                        t.addFrame ({ offset, size });
                         offset += size;
                     }
                 }
@@ -245,7 +255,7 @@ void addFragments (const Bytes& b, const std::vector<Box>& top, const Box& moov,
                     if (tf & 0x200) { size = b.u32 (p); p += 4; }
                     if (tf & 0x400) p += 4; // flags
                     if (tf & 0x800) p += 4; // composition offset
-                    t.frames.push_back ({ next, size });
+                    t.addFrame ({ next, size });
                     next += size;
                 }
             }
@@ -296,7 +306,7 @@ DecodedAudio decodeM4a (const juce::File& file, double maxSeconds)
     const auto top = children (b, 0, b.size);
     const auto moov = std::find_if (top.begin(), top.end(), [] (const Box& x) { return std::strcmp (x.type, "moov") == 0; });
     if (moov == top.end()) fail ("it has no movie header");
-    auto track = findAudioTrack (b, *moov);
+    auto track = findAudioTrack (b, *moov, maxSeconds);
     if (track.frames.empty()) addFragments (b, top, *moov, track);
     if (track.frames.empty()) fail ("it contains no audio");
 
