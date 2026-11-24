@@ -70,7 +70,10 @@ void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source
         job.reset();
         if (result != nullptr)
         {
-            song = result;
+            {
+                const juce::ScopedLock sl (songLock);
+                song = result;
+            }
             stemPlayer.setSong (song);
         }
         else if (err != "cancelled")
@@ -94,10 +97,13 @@ SongJob::Status justStemProcessor::jobStatus() const
 void justStemProcessor::getStateInformation (juce::MemoryBlock& data)
 {
     juce::ValueTree state ("justStem");
-    if (song != nullptr) state.setProperty ("folder", song->folder.getFullPathName(), nullptr);
+    {
+        const juce::ScopedLock sl (songLock);
+        if (song != nullptr) state.setProperty ("folder", song->folder.getFullPathName(), nullptr);
+    }
     state.setProperty ("followHost", stemPlayer.followsHost(), nullptr);
-    state.setProperty ("transpose", transpose, nullptr);
-    state.setProperty ("hq", hq, nullptr);
+    state.setProperty ("transpose", transpose.load(), nullptr);
+    state.setProperty ("hq", hq.load(), nullptr);
     for (int i = 0; i < numStems; ++i)
     {
         juce::ValueTree s ("Stem");
@@ -117,7 +123,7 @@ void justStemProcessor::setStateInformation (const void* data, int size)
     stemPlayer.setFollowHost (state["followHost"]);
     transpose = juce::jlimit (-11, 11, (int) state["transpose"]);
     stemPlayer.setTranspose (transpose);
-    hq = state["hq"];
+    hq = (bool) state["hq"];
     for (int i = 0; i < numStems && i < state.getNumChildren(); ++i)
     {
         const auto s = state.getChild (i);
@@ -126,7 +132,12 @@ void justStemProcessor::setStateInformation (const void* data, int size)
         stemPlayer.setSolo (i, s["solo"]);
     }
     const juce::File folder (state["folder"].toString());
-    if (folder.isDirectory() && (song == nullptr || song->folder != folder))
+    bool sameSong = false;
+    {
+        const juce::ScopedLock sl (songLock);
+        sameSong = song != nullptr && song->folder == folder;
+    }
+    if (folder.isDirectory() && ! sameSong)
         juce::MessageManager::callAsync ([this, token = std::weak_ptr<bool> (alive), folder] {
             if (! token.expired()) startJob (SongJob::Kind::Reload, folder.getFullPathName());
         });
