@@ -68,7 +68,8 @@ DecodedAudio readWithJuce (const juce::File& file, double maxSeconds)
 
     const int n = (int) reader->lengthInSamples;
     const int ch = (int) reader->numChannels;
-    juce::AudioBuffer<float> buf (std::max (1, ch), n);
+    // Only the first two channels are kept, so only those are read (a long 5.1 file would fill GBs).
+    juce::AudioBuffer<float> buf (std::clamp (ch, 1, 2), n);
     reader->read (&buf, 0, n, 0, true, ch > 1);
 
     // MP3 gapless playback: JUCE's decoder keeps the encoder delay and its own 529-sample decoder
