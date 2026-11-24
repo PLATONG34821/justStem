@@ -138,6 +138,7 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     addChildComponent (playerBar);
 
     setSize (windowW, windowH);
+    proc.updates().start(); // not before: see UpdateCheck::start
     proc.addChangeListener (this);
     refreshAll();
     startTimerHz (30);

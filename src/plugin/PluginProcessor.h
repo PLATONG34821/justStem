@@ -82,7 +82,7 @@ public:
     static bool anyBusy();
 
     /** Whether a newer release is out (checked once a day, shared by every instance). */
-    const juststem::UpdateCheck& updates() const { return *updateCheck; }
+    juststem::UpdateCheck& updates() { return *updateCheck; }
 
 private:
     void startJob (juststem::SongJob::Kind, const juce::String& source);

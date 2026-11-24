@@ -17,6 +17,11 @@ public:
     UpdateCheck();
     ~UpdateCheck() override;
 
+    /** Starts the check, the first time it's called: when a plug-in window opens. Not on creating the
+        plug-in, as DAWs' plug-in scanners and validators (Logic's auval) create and delete it many
+        times, and each delete would wait for the request. Message thread. */
+    void start();
+
     /** The newer release's version (e.g. "0.0.3"), or empty while checking / when up to date. Thread-safe. */
     juce::String newerVersion() const;
 
@@ -36,6 +41,7 @@ private:
 
     mutable juce::CriticalSection lock;
     juce::String newer;
+    bool started = false; // message thread
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UpdateCheck)
 };
