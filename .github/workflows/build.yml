@@ -155,7 +155,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Checksums, so downloads can be checked (see the README's Install section).
+          (cd release && sha256sum *.zip > SHA256SUMS && cat SHA256SUMS)
           ls -l release
           pre=(); case "$GITHUB_REF_NAME" in *-*) pre=(--prerelease) ;; esac # v0.0.3-ci-test
-          gh release create "$GITHUB_REF_NAME" release/*.zip --repo "$GITHUB_REPOSITORY" --draft "${pre[@]}" \
+          gh release create "$GITHUB_REF_NAME" release/*.zip release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --draft "${pre[@]}" \
             --title "justStem ${GITHUB_REF_NAME#v}" --generate-notes

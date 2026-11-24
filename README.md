@@ -33,6 +33,11 @@ plug-in into this folder, then rescan plug-ins in your DAW:
 | **Windows** | `justStem.vst3` | `C:\Program Files\Common Files\VST3\` |
 | **Linux** | `justStem.vst3` | `~/.vst3/` |
 
+**Checking a download** (from 0.0.4): each release has a `SHA256SUMS` file. Download it next to the
+zip, then run `shasum -a 256 -c --ignore-missing SHA256SUMS` (macOS) or
+`sha256sum -c --ignore-missing SHA256SUMS` (Linux); it should say `OK`. On Windows, compare
+`(Get-FileHash <zip>).Hash` in PowerShell with the zip's line in the file.
+
 **macOS:** the builds aren't notarized yet, so run this once after copying:
 
 ```sh
