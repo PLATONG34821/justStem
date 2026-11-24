@@ -180,6 +180,11 @@ int main (int argc, char** argv)
     check (s->audioHash.isNotEmpty() && juststem::findSavedSong (s->audioHash, s->model) == s->folder
                && juststem::findSavedSong (s->audioHash, "another model") == juce::File(),
            "the same song with the same model is found among the saved songs");
+    auto& dropTarget = dynamic_cast<juce::FileDragAndDropTarget&> (*editor);
+    check (! dropTarget.isInterestedInFileDrag ({ s->stemFile (juststem::Stem::Vocals).getFullPathName() })
+               && ! dropTarget.isInterestedInFileDrag ({ s->instrumentalFile().getFullPathName() })
+               && dropTarget.isInterestedInFileDrag ({ song.getFullPathName() }),
+           "a stem dragged out and dropped back on the window isn't split again; other audio files are");
 
     std::printf ("Preview audio (host at 48 kHz)\n");
     auto& pl = proc->player();
