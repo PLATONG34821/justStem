@@ -156,6 +156,15 @@ int analysisSelftest()
         check (rejection > 70, "23 kHz tone (can't exist at 44.1 kHz) removed by " + juce::String (rejection, 1).toStdString() + " dB, no aliasing");
     }
 
+    std::printf ("Tuning on a click track (flat spectra)\n");
+    {
+        std::vector<float> clicks ((size_t) sampleRate * 2, 0.0f);
+        for (std::size_t i = 0; i < clicks.size(); i += (std::size_t) sampleRate / 2) clicks[i] = 0.9f;
+        const auto key = detectKey (clicks, sampleRate);
+        check (std::isfinite (key.tuningCents) && std::fabs (key.tuningCents) <= 50.0f,
+               "tuning is a number: " + juce::String (key.tuningCents, 1).toStdString() + " cents");
+    }
+
     std::printf ("Key (I-IV-V-I in major, i-iv-V-i in harmonic minor, all 24 keys)\n");
     {
         int exact = 0, relativeOnly = 0;
