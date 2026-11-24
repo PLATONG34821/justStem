@@ -85,6 +85,13 @@ struct Stamp
     }
     void touch() const { file.replaceWithText (juce::String (juce::Time::currentTimeMillis())); }
 };
+
+/** A temporary file or folder next to `exe`, of its own: plug-ins installing at the same time don't
+    share (and delete) each other's downloads. */
+juce::File scratchFor (const juce::File& exe, const char* suffix)
+{
+    return exe.getSiblingFile (exe.getFileNameWithoutExtension() + "-" + juce::Uuid().toString() + suffix);
+}
 } // namespace
 
 juce::File ensureYtDlp (const ProgressCallback& progress, const std::atomic<bool>& cancel)
@@ -96,11 +103,21 @@ juce::File ensureYtDlp (const ProgressCallback& progress, const std::atomic<bool
 
     if (! exe.existsAsFile())
     {
-        const auto tmp = exe.getSiblingFile ("yt-dlp.part");
-        download (juce::URL (release + binary), tmp, "Downloading yt-dlp", progress, cancel);
-        verifyChecksum (tmp, juce::URL (release + "SHA2-256SUMS"), binary);
-        tmp.setExecutePermission (true);
-        if (! tmp.moveFileTo (exe)) throw std::runtime_error ("Can't install yt-dlp");
+        const auto tmp = scratchFor (exe, ".part");
+        try
+        {
+            download (juce::URL (release + binary), tmp, "Downloading yt-dlp", progress, cancel);
+            verifyChecksum (tmp, juce::URL (release + "SHA2-256SUMS"), binary);
+            tmp.setExecutePermission (true);
+            // Another plug-in may have installed it meanwhile (and, on Windows, be running it).
+            if (! tmp.moveFileTo (exe) && ! exe.existsAsFile()) throw std::runtime_error ("Can't install yt-dlp");
+        }
+        catch (...)
+        {
+            tmp.deleteFile();
+            throw;
+        }
+        tmp.deleteFile();
         stamp.touch();
     }
     else if (stamp.olderThanDays (1))
@@ -109,7 +126,11 @@ juce::File ensureYtDlp (const ProgressCallback& progress, const std::atomic<bool
         if (progress) progress ("Updating yt-dlp", -1.0);
         juce::ChildProcess p;
         if (p.start (juce::StringArray { exe.getFullPathName(), "--ignore-config", "-U" }))
-            p.waitForProcessToFinish (120000);
+            for (const auto end = juce::Time::getMillisecondCounter() + 120000; ! p.waitForProcessToFinish (50);)
+            {
+                if (cancel.load()) { p.kill(); throw std::runtime_error ("cancelled"); } // the update is tried again next time
+                if (juce::Time::getMillisecondCounter() > end) break;
+            }
         stamp.touch();
     }
     return exe;
@@ -124,8 +145,8 @@ juce::File ensureDeno (const ProgressCallback& progress, const std::atomic<bool>
     const Stamp stamp { paths::tools().getChildFile ("deno.lastupdate") };
     if (exe.existsAsFile() && ! stamp.olderThanDays (30)) return exe;
 
-    const auto zip = paths::tools().getChildFile ("deno.zip.part");
-    const auto unpackDir = paths::tools().getChildFile ("deno.unpack");
+    const auto zip = scratchFor (exe, ".zip.part");
+    const auto unpackDir = scratchFor (exe, ".unpack");
     try
     {
         download (juce::URL (release + zipName), zip, "Downloading Deno", progress, cancel);

@@ -6,6 +6,8 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <atomic>
+
 /** The plug-in: passes its input through, adds the stem preview, and runs song jobs.
     Broadcasts a change message whenever a job starts or finishes. */
 class justStemProcessor final : public juce::AudioProcessor, public juce::ChangeBroadcaster
@@ -79,15 +81,20 @@ public:
 
 private:
     void startJob (juststem::SongJob::Kind, const juce::String& source);
+    /** Loads the song saved with a restored project, once any running job has ended. */
+    void reloadRestored (const juce::File& folder);
 
     const juce::File fastModelFile, hqModelFile;
     juststem::StemPlayer stemPlayer;
     std::unique_ptr<juststem::SongJob> job;
-    juststem::SongResultPtr song;
+    juststem::SongResultPtr song; // set on the message thread, under songLock
+    // Hosts may save or restore the state on any thread, which reads `song` while a job replaces it.
+    juce::CriticalSection songLock;
     juce::String error;
     juce::StringArray lastLog;
-    int transpose = 0;
-    bool hq = false;
+    juce::File restoredFolder; // a restored project's song, waiting for the running job (message thread)
+    std::atomic<int> transpose { 0 };
+    std::atomic<bool> hq { false };
     juce::SharedResourcePointer<juststem::UpdateCheck> updateCheck;
     std::shared_ptr<bool> alive = std::make_shared<bool> (true); // guards async job callbacks
 
