@@ -42,9 +42,11 @@ PeakFrames spectralPeaks (const std::vector<float>& x, int sr, int n, int hop, f
         {
             const float m = mag[(size_t) k];
             if (m < frameMax * 0.01f || m <= mag[(size_t) k - 1] || m < mag[(size_t) k + 1]) continue;
-            // Parabolic interpolation on log magnitude.
+            // Parabolic interpolation on log magnitude. A peak lies within half a bin; neighbours that are
+            // (nearly) equal make the curve flat, and the division NaN or huge, which would spoil the tuning.
             const float a = std::log (mag[(size_t) k - 1] + 1e-9f), b = std::log (m + 1e-9f), c = std::log (mag[(size_t) k + 1] + 1e-9f);
-            const float d = 0.5f * (a - c) / (a - 2 * b + c);
+            const float curve = a - 2 * b + c;
+            const float d = curve < 0 ? std::clamp (0.5f * (a - c) / curve, -0.5f, 0.5f) : 0.0f;
             const float f = (k + d) * sr / (float) n;
             const float pm = std::exp (b - 0.25f * (a - c) * d);
             fp.push_back ({ f, pm });

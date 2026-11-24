@@ -79,7 +79,7 @@ juce::String ChordView::chartText (const SongResult& s, int transpose)
               + (transpose != 0 ? " (transposed " + juce::String (transpose > 0 ? "+" : "") + juce::String (transpose) + " from "
                                       + juce::String (a.key.name()) + ")"
                                 : juce::String())
-              + "\nTempo: " + juce::String (juce::roundToInt (a.tempo.bpm)) + " BPM\n\n";
+              + (a.tempo.bpm > 0 ? "\nTempo: " + juce::String (juce::roundToInt (a.tempo.bpm)) + " BPM\n\n" : juce::String ("\n\n"));
     return text + juce::String (chordChart (a.chords, s.durationSeconds, a.key, transpose));
 }
 

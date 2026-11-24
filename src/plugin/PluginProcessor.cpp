@@ -3,9 +3,17 @@
 #include "../core/Separator.h"
 #include "Text.h"
 
+#include <algorithm>
 #include <utility>
 
 using namespace juststem;
+
+namespace
+{
+/** Every live processor (see songsInUse); hosts may create and delete them on any thread. */
+juce::CriticalSection instancesLock;
+juce::Array<justStemProcessor*> instances;
+} // namespace
 
 juce::File justStemProcessor::bundledModelFile()
 {
@@ -31,10 +39,16 @@ justStemProcessor::justStemProcessor (juce::File fastModel)
       fastModelFile (std::move (fastModel)),
       hqModelFile (fastModelFile.getSiblingFile (text::from (model::hq.fileName)))
 {
+    const juce::ScopedLock sl (instancesLock);
+    instances.add (this);
 }
 
 justStemProcessor::~justStemProcessor()
 {
+    {
+        const juce::ScopedLock sl (instancesLock);
+        instances.removeFirstMatchingValue (this);
+    }
     SongJob::abandon (std::move (job)); // don't wait for it: see abandon
 }
 
@@ -94,6 +108,26 @@ void justStemProcessor::reloadRestored (const juce::File& folder)
     else if (folder.isDirectory() && (song == nullptr || song->folder != folder)) startJob (SongJob::Kind::Reload, folder.getFullPathName());
 }
 
+juce::Array<juce::File> justStemProcessor::songsInUse()
+{
+    juce::Array<juce::File> folders;
+    const juce::ScopedLock sl (instancesLock);
+    for (auto* p : instances)
+    {
+        if (p->restoredFolder != juce::File()) folders.addIfNotAlreadyThere (p->restoredFolder); // about to load
+        const juce::ScopedLock songSl (p->songLock);
+        if (p->song != nullptr) folders.addIfNotAlreadyThere (p->song->folder);
+    }
+    return folders;
+}
+
+bool justStemProcessor::anyBusy()
+{
+    // A closed plug-in's job may still be ending (see SongJob::abandon), and using the tools.
+    const juce::ScopedLock sl (instancesLock);
+    return SongJob::numAbandoned() > 0 || std::any_of (instances.begin(), instances.end(), [] (const auto* p) { return p->isBusy(); });
+}
+
 void justStemProcessor::cancelJob()
 {
     if (job != nullptr) job->cancel();
@@ -141,15 +175,19 @@ void justStemProcessor::setStateInformation (const void* data, int size)
         stemPlayer.setMute (i, s["mute"]);
         stemPlayer.setSolo (i, s["solo"]);
     }
-    const juce::File folder (state["folder"].toString());
+    const auto path = state["folder"].toString();
+    const juce::File folder = juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File();
     bool sameSong = false;
     {
         const juce::ScopedLock sl (songLock);
         sameSong = song != nullptr && song->folder == folder;
     }
-    if (folder.isDirectory() && ! sameSong)
+    if (folder != juce::File() && ! sameSong)
         juce::MessageManager::callAsync ([this, token = std::weak_ptr<bool> (alive), folder] {
-            if (! token.expired()) reloadRestored (folder);
+            if (token.expired()) return;
+            // Deleted, or the project came from another computer: say so rather than opening empty.
+            if (folder.isDirectory()) reloadRestored (folder);
+            else showError ("The stems saved with this project weren't found (" + folder.getFullPathName() + "). Split the song again to get them back.");
         });
     sendChangeMessage(); // an open window shows the restored settings
 }

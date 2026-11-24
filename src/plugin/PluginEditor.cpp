@@ -292,10 +292,14 @@ void justStemEditor::paint (juce::Graphics& g)
     if (song != nullptr)
     {
         const auto& a = song->analysis;
-        // The detected tempo octave is a guess, so offer half and double time too.
-        paintReadout (g, tempoArea, lines, "TEMPO", text::bpm (a.tempo.bpm) + " BPM",
-                      "half " + text::bpm (a.tempo.bpm / 2) + juce::String::fromUTF8 ("  \xc2\xb7  ") + "double " + text::bpm (a.tempo.bpm * 2),
-                      juce::Justification::centredLeft, true);
+        // The detected tempo octave is a guess, so offer half and double time too. 0: none found (too
+        // short, or no beat).
+        if (a.tempo.bpm > 0)
+            paintReadout (g, tempoArea, lines, "TEMPO", text::bpm (a.tempo.bpm) + " BPM",
+                          "half " + text::bpm (a.tempo.bpm / 2) + juce::String::fromUTF8 ("  \xc2\xb7  ") + "double " + text::bpm (a.tempo.bpm * 2),
+                          juce::Justification::centredLeft, true);
+        else
+            paintReadout (g, tempoArea, lines, "TEMPO", "--", "not found", juce::Justification::centredLeft, false);
         paintReadout (g, loudArea, lines, "LOUDNESS", juce::String (a.loudness.integratedLufs, 1) + " LUFS",
                       "peak " + juce::String (a.loudness.samplePeakDb > 0 ? "+" : "") + juce::String (a.loudness.samplePeakDb, 1) + " dBFS",
                       juce::Justification::centredRight, true);
@@ -572,7 +576,7 @@ void justStemEditor::showStorage()
 {
     storagePanel = std::make_unique<StoragePanel> (
         [this] { auto s = proc.getSong(); return s != nullptr ? s->folder : juce::File(); },
-        [this] { return proc.isBusy(); });
+        [this] { return proc.isBusy(); }, &justStemProcessor::songsInUse, &justStemProcessor::anyBusy);
     storagePanel->onClose = [this] {
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<justStemEditor> (this)] {
             if (safe != nullptr) safe->storagePanel.reset();
