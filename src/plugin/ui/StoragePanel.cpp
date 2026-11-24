@@ -104,9 +104,9 @@ StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool
                      // Checked again: another justStem may have started or opened one while this asked.
                      if (! isBusy())
                      {
-                         const auto inUse = songsInUse();
+                         const auto openNow = songsInUse();
                          for (auto* row : rows)
-                             if (! inUse.contains (row->song.folder)) storage::moveSongToTrash (row->song);
+                             if (! openNow.contains (row->song.folder)) storage::moveSongToTrash (row->song);
                      }
                      refresh();
                  });
