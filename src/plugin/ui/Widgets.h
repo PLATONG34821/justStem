@@ -29,9 +29,14 @@ public:
     {
         if (s == state) return;
         state = std::move (s);
+        setTitle ((state.caption + ": " + state.value + " " + state.unit).trim()); // what a screen reader says
         repaint();
     }
     void paint (juce::Graphics&) override;
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::staticText);
+    }
 
     /** Vertical centres of the caption, value and unit lines, in the gauge's own coordinates,
         so text beside the gauge can line up with them. */
@@ -48,6 +53,18 @@ private:
     Layout layout() const;
 
     State state;
+};
+
+/** Text the editor paints itself (tempo, loudness), for screen readers: an invisible component over it,
+    which lets the mouse through. Its title is the text. */
+class ReadoutText final : public juce::Component
+{
+public:
+    ReadoutText() { setInterceptsMouseClicks (false, false); }
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::staticText);
+    }
 };
 
 /** One segment of a segmented control: spaced uppercase text, a filled pill when selected (toggle state). */
@@ -70,17 +87,25 @@ private:
     juce::Path icon;
 };
 
-/** Volume as a row of segments (0 .. 1.5; unity is marked). Drag or click to set, double-click resets. */
+/** Volume as a row of segments (0 .. 1.5; unity is marked). Drag or click to set, double-click resets.
+    With the keyboard: arrows move a segment, Home resets; screen readers see a slider in percent. */
 class SegmentBar final : public juce::Component
 {
 public:
+    SegmentBar() { setWantsKeyboardFocus (true); }
     std::function<void (float)> onChange;
-    void setValue (float v) { value = juce::jlimit (0.0f, maxValue, v); repaint(); }
+    void setValue (float v);
     float getValue() const { return value; }
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent& e) override { setFromX (e.position.x); }
     void mouseDrag (const juce::MouseEvent& e) override { setFromX (e.position.x); }
-    void mouseDoubleClick (const juce::MouseEvent&) override { setValue (1.0f); if (onChange) onChange (value); }
+    void mouseDoubleClick (const juce::MouseEvent&) override { change (1.0f); }
+    bool keyPressed (const juce::KeyPress&) override;
+    void focusGained (FocusChangeType) override { repaint(); }
+    void focusLost (FocusChangeType) override { repaint(); }
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+    /** Sets the value and tells onChange, as the user changing it does. */
+    void change (float v);
 
     static constexpr int segments = 15;
     static constexpr float maxValue = 1.5f;

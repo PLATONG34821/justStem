@@ -2,6 +2,8 @@
 
 #include "AppPaths.h"
 
+#include <utility>
+
 #ifndef JUSTSTEM_VERSION
  #error "JUSTSTEM_VERSION must be defined (CMakeLists.txt sets it from the project version)"
 #endif
@@ -20,8 +22,11 @@ juce::File dismissedFile() { return paths::supportRoot().getChildFile ("update-d
 juce::String stripV (const juce::String& tag) { return tag.trim().trimCharactersAtStart ("vV"); }
 } // namespace
 
-UpdateCheck::UpdateCheck() : juce::Thread ("justStem update check")
+UpdateCheck::UpdateCheck() : juce::Thread ("justStem update check") {}
+
+void UpdateCheck::start()
 {
+    if (std::exchange (started, true)) return;
     const auto env = [] (const char* name) { return juce::SystemStats::getEnvironmentVariable (name, {}).isNotEmpty(); };
     if (! env ("JUSTSTEM_DATA_DIR") && ! env ("JUSTSTEM_NO_UPDATE_CHECK"))
         startThread (juce::Thread::Priority::low);

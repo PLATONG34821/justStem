@@ -11,6 +11,8 @@ juce::Font timeFont() { return font (Weight::Regular, 13.0f); }
 PlayerBar::PlayerBar (StemPlayer& p) : player (p)
 {
     playButton.setIcon (icons::play());
+    playButton.setTitle ("Play");
+    position.setTitle ("Position");
     playButton.onClick = [this] { player.setPlaying (! player.isPlaying()); };
     position.setSliderStyle (juce::Slider::LinearHorizontal);
     position.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
@@ -41,6 +43,7 @@ void PlayerBar::update()
     {
         showsPause = pause;
         playButton.setIcon (pause ? icons::pause() : icons::play());
+        playButton.setTitle (pause ? "Pause" : "Play");
     }
     position.setEnabled (hasSong);
     followHost.setToggleState (follow, juce::dontSendNotification);

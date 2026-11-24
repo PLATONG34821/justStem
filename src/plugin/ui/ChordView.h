@@ -14,6 +14,12 @@ class ChordView final : public juce::Component
 public:
     std::function<void (double seconds)> onSeek;
 
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        // Screen readers get the chord chart as text (see describe).
+        return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::staticText);
+    }
+
     void setSong (SongResultPtr);
     void setTranspose (int semitones);
     /** Call regularly with the player position; repaints only when something visible changes. */
@@ -30,6 +36,8 @@ public:
     int firstVisibleRow() const { return firstRow; }
 
 private:
+    /** Title and the chart as text, for screen readers. */
+    void describe();
     static constexpr int barsPerRow = 4, rowH = 34, numberW = 34;
     juce::Rectangle<int> barBounds (int bar) const;
     int visibleRows() const { return juce::jmax (1, grid.getHeight() / rowH); }

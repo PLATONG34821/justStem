@@ -6,7 +6,7 @@ set(JUSTSTEM_LANGUAGES C CXX)
 if(APPLE)
     list(APPEND JUSTSTEM_LANGUAGES OBJC OBJCXX)
 endif()
-project(justStem VERSION 0.0.3 LANGUAGES ${JUSTSTEM_LANGUAGES})
+project(justStem VERSION 0.0.4 LANGUAGES ${JUSTSTEM_LANGUAGES})
 
 # windows.h defines min/max macros, which break std::min/std::max calls throughout the code.
 if(WIN32)
@@ -25,10 +25,12 @@ if(APPLE)
 endif()
 
 include(FetchContent)
+# JUCE 8.0.15 (commit 91ad83ae34a81e0833b1a2b0866f54846370ae53), checked like the other downloads:
+# a git tag can be moved, the hash can't.
 FetchContent_Declare(JUCE
-    GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-    GIT_TAG 8.0.15
-    GIT_SHALLOW TRUE)
+    URL https://github.com/juce-framework/JUCE/archive/refs/tags/8.0.15.tar.gz
+    URL_HASH SHA256=0eafd736286c6e7bb6958d79fce18d42cb654b8e231890d327b7cece379bd156
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(JUCE)
 
 include(cmake/OnnxRuntime.cmake)

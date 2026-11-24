@@ -25,9 +25,8 @@ Steps (all exact rewrites, no retraining):
      compile them in fp16.
 
 Usage:
-  pip install onnx onnxruntime numpy onnxconverter-common
-  curl -L -o bs_roformer_sw_6stem_fp16.onnx \
-    https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx/resolve/main/bs_roformer_sw_6stem_fp16.onnx
+  pip install -r scripts/requirements.txt
+  scripts/fetch_model.sh hq   # bs_roformer_sw_6stem_fp16.onnx, at a pinned commit, checked
   python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
 
 Licence: the input is elicwhite's ONNX export (MIT code) of the BS-RoFormer SW weights that were

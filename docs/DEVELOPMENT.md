@@ -7,22 +7,21 @@ Studio 2022 (run from a "Developer" command prompt) on Windows, GCC or Clang on 
 packages and libcurl for HTTPS (see `.github/workflows/build.yml`). JUCE, ONNX Runtime and FAAD2 are downloaded by CMake
 (pinned versions, checked against their SHA-256).
 
-1. Build the model once (needs Python 3); see the top of `scripts/prepare_demucs_onnx.py`. The
-   model isn't in git (`models/` is ignored), so every clone needs this step:
+1. Build the model once (needs Python 3.12, as onnxruntime has no wheels for newer versions yet);
+   see the top of `scripts/prepare_demucs_onnx.py`. The model isn't in git (`models/` is ignored),
+   so every clone needs this step. `fetch_model.sh` downloads it from a pinned commit and checks its
+   SHA-256, and `requirements.txt` pins the packages, so every build makes the same model:
    ```sh
-   python3 -m venv .venv && .venv/bin/pip install onnx onnxruntime numpy
-   curl -L -o htdemucs_6s_fp16weights.onnx \
-     https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx
+   python3.12 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt
+   scripts/fetch_model.sh fast
    .venv/bin/python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
    ```
    Optional, for HQ mode (BS-RoFormer 6-stem): build `models/bs_roformer_sw_6stem_opt.onnx` and the
-   plug-in bundles it and shows the HQ switch; without it HQ mode is hidden. The script also needs
-   `pip install onnxconverter-common` (the model runs its maths in fp16). See the top of
+   plug-in bundles it and shows the HQ switch; without it HQ mode is hidden. See the top of
    `scripts/prepare_roformer_onnx.py`. The weights have no stated licence (justStem treats them as CC-BY-NC-SA-4.0);
    see [Third-party licences](#third-party-licences) before distributing a build that includes them.
    ```sh
-   curl -L -o bs_roformer_sw_6stem_fp16.onnx \
-     https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx/resolve/main/bs_roformer_sw_6stem_fp16.onnx
+   scripts/fetch_model.sh hq
    .venv/bin/python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
    ```
 2. Build:
