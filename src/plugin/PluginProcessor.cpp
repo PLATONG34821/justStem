@@ -175,15 +175,19 @@ void justStemProcessor::setStateInformation (const void* data, int size)
         stemPlayer.setMute (i, s["mute"]);
         stemPlayer.setSolo (i, s["solo"]);
     }
-    const juce::File folder (state["folder"].toString());
+    const auto path = state["folder"].toString();
+    const juce::File folder = juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File();
     bool sameSong = false;
     {
         const juce::ScopedLock sl (songLock);
         sameSong = song != nullptr && song->folder == folder;
     }
-    if (folder.isDirectory() && ! sameSong)
+    if (folder != juce::File() && ! sameSong)
         juce::MessageManager::callAsync ([this, token = std::weak_ptr<bool> (alive), folder] {
-            if (! token.expired()) reloadRestored (folder);
+            if (token.expired()) return;
+            // Deleted, or the project came from another computer: say so rather than opening empty.
+            if (folder.isDirectory()) reloadRestored (folder);
+            else showError ("The stems saved with this project weren't found (" + folder.getFullPathName() + "). Split the song again to get them back.");
         });
     sendChangeMessage(); // an open window shows the restored settings
 }
