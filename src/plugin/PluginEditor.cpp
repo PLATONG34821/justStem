@@ -533,14 +533,16 @@ void justStemEditor::saveAll()
 
 bool justStemEditor::isInterestedInFileDrag (const juce::StringArray& files)
 {
-    return ! proc.isBusy() && files.size() == 1;
+    // Not justStem's own stems: one dragged out to a DAW track and let go over this window by
+    // mistake would start splitting it.
+    return ! proc.isBusy() && files.size() == 1 && ! juce::File (files[0]).isAChildOf (juststem::paths::stems());
 }
 
 void justStemEditor::filesDropped (const juce::StringArray& files, int, int)
 {
     dropHover = false;
     repaint();
-    if (files.size() == 1 && ! proc.isBusy()) proc.startFile (juce::File (files[0]));
+    if (isInterestedInFileDrag (files)) proc.startFile (juce::File (files[0]));
 }
 
 void justStemEditor::refreshPasteButton()

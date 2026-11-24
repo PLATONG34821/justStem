@@ -57,7 +57,8 @@ build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.o
   (the README screenshots come from it), splits a song, and checks:
   - the preview audio, including a host block larger than prepared and preparing again while
     transposed, and the transposed preview (in time with the original);
-  - the UI: New song and Paste, the Storage panel, the chord view and its scrolling;
+  - the UI: New song and Paste, the Storage panel, the chord view and its scrolling, and a stem
+    dropped back on the window (not split again);
   - saving: Save all (copies), transposed stems (and Cancel), saving / reloading the plug-in state
     and refreshing an open window when it's restored;
   - the awkward cases: an error naming a file in Thai, closing the plug-in mid-job, a stem edited
