@@ -315,8 +315,9 @@ SongResultPtr SongJob::process()
             + (std::abs (a.key.tuningCents) < 1.0f ? juce::String ("tuned to A = 440 Hz")
                                                    : "tuned " + juce::String (a.key.tuningCents > 0 ? "+" : "")
                                                          + juce::String (juce::roundToInt (a.key.tuningCents)) + " cents from A = 440 Hz"));
-    addLog ("Tempo " + text::bpm (a.tempo.bpm) + " BPM (could also be " + text::bpm (a.tempo.bpm / 2) + " or "
-            + text::bpm (a.tempo.bpm * 2) + ")");
+    addLog (a.tempo.bpm > 0 ? "Tempo " + text::bpm (a.tempo.bpm) + " BPM (could also be " + text::bpm (a.tempo.bpm / 2) + " or "
+                                  + text::bpm (a.tempo.bpm * 2) + ")"
+                            : juce::String ("No tempo found (too short, or no beat)"));
     addLog ("Loudness " + juce::String (a.loudness.integratedLufs, 1) + " LUFS integrated, sample peak "
             + (a.loudness.samplePeakDb > 0 ? "+" : "") + juce::String (a.loudness.samplePeakDb, 1) + " dBFS"
             + (a.loudness.samplePeakDb > 0 ? " (the source clips)" : ""));
