@@ -50,8 +50,9 @@ jobs:
             if ($_ -match '^([^=]+)=(.*)$') { "$($Matches[1])=$($Matches[2])" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV }
           }
 
-      # The model is built from the public export (see scripts/prepare_demucs_onnx.py), cached
-      # until the script changes.
+      # The model is built from the public export (see scripts/prepare_demucs_onnx.py), downloaded
+      # at a pinned commit and checked (scripts/fetch_model.sh), with pinned packages; cached until
+      # any of those change.
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -60,14 +61,13 @@ jobs:
         uses: actions/cache@v6
         with:
           path: models/htdemucs_6s_opt.onnx
-          key: model-${{ hashFiles('scripts/prepare_demucs_onnx.py') }}
+          key: model-${{ hashFiles('scripts/prepare_demucs_onnx.py', 'scripts/fetch_model.sh', 'scripts/requirements.txt') }}
       - name: Build the model
         if: steps.model.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          python -m pip install onnx onnxruntime numpy
-          curl -L -o htdemucs_6s_fp16weights.onnx \
-            https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx
+          python -m pip install -r scripts/requirements.txt
+          bash scripts/fetch_model.sh fast
           python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
 
       # Releases also bundle the HQ model (see scripts/prepare_roformer_onnx.py; non-commercial,
@@ -78,14 +78,13 @@ jobs:
         uses: actions/cache@v6
         with:
           path: models/bs_roformer_sw_6stem_opt.onnx
-          key: hqmodel-${{ hashFiles('scripts/prepare_roformer_onnx.py') }}
+          key: hqmodel-${{ hashFiles('scripts/prepare_roformer_onnx.py', 'scripts/fetch_model.sh', 'scripts/requirements.txt') }}
       - name: Build the HQ model
         if: env.RELEASE == 'true' && steps.hqmodel.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          python -m pip install onnx onnxruntime numpy onnxconverter-common
-          curl -L -o bs_roformer_sw_6stem_fp16.onnx \
-            https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx/resolve/main/bs_roformer_sw_6stem_fp16.onnx
+          python -m pip install -r scripts/requirements.txt
+          bash scripts/fetch_model.sh hq
           python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
 
       - name: Configure

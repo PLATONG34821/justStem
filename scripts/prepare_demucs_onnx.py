@@ -17,9 +17,8 @@ Converting the model to fp16 *compute* doesn't work: it isn't faster and the ste
 as noise.
 
 Usage:
-  pip install onnx onnxruntime numpy
-  curl -L -o htdemucs_6s_fp16weights.onnx \
-    https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx
+  pip install -r scripts/requirements.txt
+  scripts/fetch_model.sh fast   # htdemucs_6s_fp16weights.onnx, at a pinned commit, checked
   python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
 """
 from __future__ import annotations
