@@ -76,6 +76,11 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
+    /** The songs open in every justStem in this process (justStem on several tracks), and whether any
+        of them is working: Storage mustn't delete from under another one. Message thread. */
+    static juce::Array<juce::File> songsInUse();
+    static bool anyBusy();
+
     /** Whether a newer release is out (checked once a day, shared by every instance). */
     const juststem::UpdateCheck& updates() const { return *updateCheck; }
 

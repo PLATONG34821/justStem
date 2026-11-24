@@ -38,10 +38,11 @@ void fillBand (juce::Graphics& g, juce::Rectangle<float> r, bool top)
 }
 } // namespace
 
-/** One saved song: title, size and date, Open and Delete (both off for the song in use). */
+/** One saved song: title, size and date, Open (off for the song open here) and Delete (off for
+    songs open in any justStem). */
 struct StoragePanel::SongRow final : public juce::Component
 {
-    SongRow (storage::SavedSong s, bool inUse) : song (std::move (s)), used (inUse)
+    SongRow (storage::SavedSong s, bool inUse, bool here) : song (std::move (s)), used (inUse), openHere (here)
     {
         openButton.setTooltip ("Open this song (no new split)");
         deleteButton.setTooltip ("Delete this song");
@@ -68,42 +69,48 @@ struct StoragePanel::SongRow final : public juce::Component
     }
 
     storage::SavedSong song;
-    bool used;
+    bool used, openHere;
     PillButton deleteButton { {}, icons::trash() }, openButton { {}, icons::open() };
 };
 
-StoragePanel::StoragePanel (std::function<juce::File()> inUse, std::function<bool()> busy)
-    : songInUse (std::move (inUse)), isBusy (std::move (busy))
+StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool()> workingHere,
+                            std::function<juce::Array<juce::File>()> inUse, std::function<bool()> busy)
+    : songOpenHere (std::move (here)), busyHere (std::move (workingHere)), songsInUse (std::move (inUse)), isBusy (std::move (busy))
 {
     closeButton.onClick = [this] { if (onClose) onClose(); };
     closeButton.setTooltip ("Close");
     showFolderButton.setTooltip ("Show the songs folder");
-    deleteAllButton.setTooltip ("Delete all songs (except the open one)");
+    deleteAllButton.setTooltip ("Delete all songs (except the ones open in justStem)");
     clearCacheButton.setTooltip ("Clear the AI model cache");
     removeToolsButton.setTooltip ("Remove the YouTube tools");
     clearDownloadsButton.setTooltip ("Clear temporary downloads");
     showFolderButton.onClick = [] { paths::stems().revealToUser(); };
     deleteAllButton.onClick = [this] {
-        // The song open in the plug-in isn't deleted, so it isn't counted either.
+        // Songs open in a justStem aren't deleted, so they aren't counted either.
         const auto deletable = (int) std::count_if (rows.begin(), rows.end(), [] (const SongRow* r) { return ! r->used; });
         confirm ("Delete all songs?",
                  "The stems of " + juce::String (deletable) + (deletable == 1 ? " song" : " songs") + " will be moved to the Trash."
-                     + (deletable < rows.size() ? " The song open in this plug-in is kept." : ""),
+                     + (deletable < rows.size() ? " Songs open in justStem are kept." : ""),
                  "Move to Trash", [this] {
-                     for (auto* row : rows)
-                         if (! row->used) storage::moveSongToTrash (row->song);
+                     // Checked again: another justStem may have started or opened one while this asked.
+                     if (! isBusy())
+                     {
+                         const auto inUse = songsInUse();
+                         for (auto* row : rows)
+                             if (! inUse.contains (row->song.folder)) storage::moveSongToTrash (row->song);
+                     }
                      refresh();
                  });
     };
     clearCacheButton.onClick = [this] {
         confirm ("Clear the AI model cache?", "It's rebuilt automatically the next time you split a song (once; about " + compileTimes() + ").",
-                 "Clear", [this] { storage::clearFolder (paths::coremlCache()); refresh(); });
+                 "Clear", [this] { if (! isBusy()) storage::clearFolder (paths::coremlCache()); refresh(); });
     };
     removeToolsButton.onClick = [this] {
         confirm ("Remove the YouTube tools?", "yt-dlp and Deno are downloaded again the next time you paste a YouTube link.",
-                 "Remove", [this] { storage::clearFolder (paths::tools()); refresh(); });
+                 "Remove", [this] { if (! isBusy()) storage::clearFolder (paths::tools()); refresh(); });
     };
-    clearDownloadsButton.onClick = [this] { storage::clearFolder (paths::downloads()); refresh(); };
+    clearDownloadsButton.onClick = [this] { if (! isBusy()) storage::clearFolder (paths::downloads()); refresh(); };
 
     for (auto* b : { &closeButton, &deleteAllButton, &showFolderButton, &clearCacheButton, &removeToolsButton, &clearDownloadsButton })
         addAndMakeVisible (*b);
@@ -114,31 +121,38 @@ StoragePanel::StoragePanel (std::function<juce::File()> inUse, std::function<boo
     viewport.onScroll = [this] { repaint (viewport.getBounds()); };
     addAndMakeVisible (viewport);
     refresh();
+    startTimerHz (2);
 }
 
 StoragePanel::~StoragePanel() = default;
 
 void StoragePanel::stateChanged()
 {
-    if (isBusy() != shownBusy || songInUse() != shownInUse) refresh();
+    if (isBusy() != shownBusy || busyHere() != shownBusyHere || songsInUse() != shownInUse || songOpenHere() != shownOpenHere)
+        refresh();
 }
 
 void StoragePanel::refresh()
 {
     const bool busy = shownBusy = isBusy();
-    const auto inUse = shownInUse = songInUse();
+    const bool working = shownBusyHere = busyHere();
+    const auto inUse = shownInUse = songsInUse();
+    const auto here = shownOpenHere = songOpenHere();
     songsBytes = 0;
     rows.clear();
     for (const auto& s : storage::savedSongs())
     {
         songsBytes += s.bytes;
-        auto* row = rows.add (new SongRow (s, s.folder == inUse));
+        auto* row = rows.add (new SongRow (s, inUse.contains (s.folder), s.folder == here));
         row->deleteButton.setEnabled (! busy && ! row->used);
-        row->openButton.setEnabled (! busy && ! row->used);
+        row->openButton.setEnabled (! working && ! row->openHere);
         row->openButton.onClick = [this, folder = row->song.folder] { if (onOpen) onOpen (folder); };
         row->deleteButton.onClick = [this, row] {
             confirm ("Delete this song?", "\"" + row->song.title + "\" (" + size (row->song.bytes) + ") will be moved to the Trash.",
-                     "Move to Trash", [this, song = row->song] { storage::moveSongToTrash (song); refresh(); });
+                     "Move to Trash", [this, song = row->song] {
+                         if (! isBusy() && ! songsInUse().contains (song.folder)) storage::moveSongToTrash (song);
+                         refresh();
+                     });
         };
         listContent.addAndMakeVisible (row);
     }

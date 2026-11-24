@@ -570,7 +570,7 @@ void justStemEditor::showStorage()
 {
     storagePanel = std::make_unique<StoragePanel> (
         [this] { auto s = proc.getSong(); return s != nullptr ? s->folder : juce::File(); },
-        [this] { return proc.isBusy(); });
+        [this] { return proc.isBusy(); }, &justStemProcessor::songsInUse, &justStemProcessor::anyBusy);
     storagePanel->onClose = [this] {
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<justStemEditor> (this)] {
             if (safe != nullptr) safe->storagePanel.reset();

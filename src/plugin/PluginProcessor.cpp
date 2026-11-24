@@ -3,9 +3,17 @@
 #include "../core/Separator.h"
 #include "Text.h"
 
+#include <algorithm>
 #include <utility>
 
 using namespace juststem;
+
+namespace
+{
+/** Every live processor (see songsInUse); hosts may create and delete them on any thread. */
+juce::CriticalSection instancesLock;
+juce::Array<justStemProcessor*> instances;
+} // namespace
 
 juce::File justStemProcessor::bundledModelFile()
 {
@@ -31,10 +39,16 @@ justStemProcessor::justStemProcessor (juce::File fastModel)
       fastModelFile (std::move (fastModel)),
       hqModelFile (fastModelFile.getSiblingFile (text::from (model::hq.fileName)))
 {
+    const juce::ScopedLock sl (instancesLock);
+    instances.add (this);
 }
 
 justStemProcessor::~justStemProcessor()
 {
+    {
+        const juce::ScopedLock sl (instancesLock);
+        instances.removeFirstMatchingValue (this);
+    }
     SongJob::abandon (std::move (job)); // don't wait for it: see abandon
 }
 
@@ -92,6 +106,26 @@ void justStemProcessor::reloadRestored (const juce::File& folder)
     // The project's song wins, as when nothing is running; a song split meanwhile is saved, in Storage.
     if (job != nullptr) restoredFolder = folder;
     else if (folder.isDirectory() && (song == nullptr || song->folder != folder)) startJob (SongJob::Kind::Reload, folder.getFullPathName());
+}
+
+juce::Array<juce::File> justStemProcessor::songsInUse()
+{
+    juce::Array<juce::File> folders;
+    const juce::ScopedLock sl (instancesLock);
+    for (auto* p : instances)
+    {
+        if (p->restoredFolder != juce::File()) folders.addIfNotAlreadyThere (p->restoredFolder); // about to load
+        const juce::ScopedLock songSl (p->songLock);
+        if (p->song != nullptr) folders.addIfNotAlreadyThere (p->song->folder);
+    }
+    return folders;
+}
+
+bool justStemProcessor::anyBusy()
+{
+    // A closed plug-in's job may still be ending (see SongJob::abandon), and using the tools.
+    const juce::ScopedLock sl (instancesLock);
+    return SongJob::numAbandoned() > 0 || std::any_of (instances.begin(), instances.end(), [] (const auto* p) { return p->isBusy(); });
 }
 
 void justStemProcessor::cancelJob()
