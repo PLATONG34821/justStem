@@ -5,6 +5,8 @@
 #include "../src/core/Fft.h"
 #include "../src/core/PitchShift.h"
 #include "../src/core/Resampler.h"
+#include "../src/io/AudioFiles.h"
+#include "../src/io/M4aDecoder.h"
 
 #include <juce_core/juce_core.h>
 
@@ -13,6 +15,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <numbers>
+#include <string>
 
 using namespace juststem;
 
@@ -398,6 +401,40 @@ int analysisSelftest()
                        + juce::String (offsetMs, 1).toStdString() + " ms off, level " + juce::String (gainDb, 2).toStdString() + " dB, "
                        + std::to_string ((int) (60000.0 / ms)) + "x realtime");
         }
+    }
+
+    std::printf ("Damaged M4A files\n");
+    {
+        // Minimal MP4 boxes: big-endian sizes, then the type and payload.
+        const auto u32 = [] (std::uint32_t v) { return std::string { (char) (v >> 24), (char) (v >> 16), (char) (v >> 8), (char) v }; };
+        const auto box = [&] (const char* type, const std::string& payload) { return u32 ((std::uint32_t) payload.size() + 8) + type + payload; };
+        const auto zeros = [] (std::size_t n) { return std::string (n, '\0'); };
+        const auto esds = box ("esds", zeros (4) + "\x03\x19" + zeros (3) + "\x04\x11\x40" + zeros (12) + "\x05\x02\x12\x10");
+        const auto stsd = box ("stsd", zeros (4) + u32 (1) + box ("mp4a", zeros (28) + esds));
+        const auto trak = [&] (const std::string& sampleTable) {
+            return box ("trak", box ("tkhd", zeros (12) + u32 (1) + zeros (8))
+                                    + box ("mdia", box ("mdhd", zeros (12) + u32 (44100) + zeros (4))
+                                                       + box ("hdlr", zeros (8) + "soun" + zeros (13))
+                                                       + box ("minf", box ("stbl", stsd + sampleTable))));
+        };
+        const auto ftyp = box ("ftyp", "M4A " + zeros (4) + "M4A ");
+        const auto many = 0xffffffffu; // frames claimed: about 4 billion, of 1 byte each
+        const std::pair<const char*, std::string> files[] {
+            { "classic (stsz)", ftyp + box ("moov", trak (box ("stsz", zeros (4) + u32 (1) + u32 (many)) + box ("stco", zeros (4) + u32 (1) + u32 (0))
+                                                          + box ("stsc", zeros (4) + u32 (1) + u32 (1) + u32 (many) + u32 (1)))) },
+            { "fragmented (trun)", ftyp + box ("moov", trak ({}) + box ("mvex", box ("trex", zeros (4) + u32 (1) + zeros (8) + u32 (1) + zeros (4))))
+                                       + box ("moof", box ("traf", box ("tfhd", zeros (4) + u32 (1)) + box ("trun", zeros (4) + u32 (many)))) },
+        };
+        const auto file = juce::File::createTempFile (".m4a");
+        for (const auto& [name, bytes] : files)
+        {
+            file.replaceWithData (bytes.data(), bytes.size());
+            std::string error;
+            try { decodeM4a (file, maxSongSeconds); }
+            catch (const std::exception& e) { error = e.what(); }
+            check (error == songTooLong().what(), std::string (name) + ", claiming 4 billion frames, is refused before they're read: \"" + error + "\"");
+        }
+        file.deleteFile();
     }
 
     std::printf ("%s\n", failures == 0 ? "ALL PASSED" : (std::to_string (failures) + " FAILED").c_str());
