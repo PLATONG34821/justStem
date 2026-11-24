@@ -147,11 +147,54 @@ void IconButton::paintButton (juce::Graphics& g, bool over, bool down)
 }
 
 // ============================================================================ segment bar
+void SegmentBar::setValue (float v)
+{
+    const float clamped = juce::jlimit (0.0f, maxValue, v);
+    if (juce::exactlyEqual (clamped, value)) return;
+    value = clamped;
+    repaint();
+    if (auto* h = getAccessibilityHandler()) h->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
+}
+
+void SegmentBar::change (float v)
+{
+    setValue (v);
+    if (onChange) onChange (value);
+}
+
 void SegmentBar::setFromX (float x)
 {
     const float f = juce::jlimit (0.0f, 1.0f, x / (float) getWidth());
-    setValue (std::round (f * segments) / segments * maxValue);
-    if (onChange) onChange (value);
+    change (std::round (f * segments) / segments * maxValue);
+}
+
+bool SegmentBar::keyPressed (const juce::KeyPress& key)
+{
+    constexpr float step = maxValue / segments;
+    const int code = key.getKeyCode();
+    if (code == juce::KeyPress::rightKey || code == juce::KeyPress::upKey) change (value + step);
+    else if (code == juce::KeyPress::leftKey || code == juce::KeyPress::downKey) change (value - step);
+    else if (code == juce::KeyPress::homeKey) change (1.0f);
+    else return false;
+    return true;
+}
+
+std::unique_ptr<juce::AccessibilityHandler> SegmentBar::createAccessibilityHandler()
+{
+    // Read and set in percent of unity gain (100% = as split, up to 150%).
+    struct Value final : juce::AccessibilityValueInterface
+    {
+        explicit Value (SegmentBar& b) : bar (b) {}
+        bool isReadOnly() const override { return false; }
+        double getCurrentValue() const override { return bar.getValue(); }
+        void setValue (double v) override { bar.change ((float) v); }
+        juce::String getCurrentValueAsString() const override { return juce::String (juce::roundToInt (bar.getValue() * 100.0f)) + "%"; }
+        void setValueAsString (const juce::String& s) override { bar.change (s.retainCharacters ("0123456789.").getFloatValue() / 100.0f); }
+        AccessibleValueRange getRange() const override { return { { 0.0, (double) maxValue }, (double) (maxValue / segments) }; }
+        SegmentBar& bar;
+    };
+    return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::slider, juce::AccessibilityActions {},
+                                                         juce::AccessibilityHandler::Interfaces { std::make_unique<Value> (*this) });
 }
 
 void SegmentBar::paint (juce::Graphics& g)
@@ -170,6 +213,11 @@ void SegmentBar::paint (juce::Graphics& g)
     g.setColour (Palette::faint);
     const float ux = r.getX() + (float) unity * (w + gap) - gap * 0.5f;
     g.drawLine (ux, r.getY() - 5.0f, ux, r.getBottom() + 5.0f, 1.0f);
+    if (hasKeyboardFocus (false)) // where the arrow keys go
+    {
+        g.setColour (Palette::accentTo.withAlpha (0.8f));
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), 4.0f, 1.0f);
+    }
 }
 
 // ============================================================================ drag handle
@@ -204,6 +252,10 @@ StemRow::StemRow (StemPlayer& p, int i, juce::String n) : player (&p), index (i)
     soloButton.setColour (juce::TextButton::buttonOnColourId, Palette::highlight);
     muteButton.setTooltip ("Mute");
     soloButton.setTooltip ("Solo");
+    // Screen readers would say "M" and "S"; say what and which.
+    muteButton.setTitle ("Mute " + name);
+    soloButton.setTitle ("Solo " + name);
+    volume.setTitle (name + " volume");
     muteButton.onClick = [this] { player->setMute (index, muteButton.getToggleState()); repaint(); };
     soloButton.onClick = [this] { player->setSolo (index, soloButton.getToggleState()); };
     volume.onChange = [this] (float v) { player->setVolume (index, v); };

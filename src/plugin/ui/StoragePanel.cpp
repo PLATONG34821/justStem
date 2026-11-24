@@ -46,6 +46,8 @@ struct StoragePanel::SongRow final : public juce::Component
     {
         openButton.setTooltip ("Open this song (no new split)");
         deleteButton.setTooltip ("Delete this song");
+        openButton.setTitle ("Open " + song.title); // icon-only: screen readers say these
+        deleteButton.setTitle ("Delete " + song.title);
         addAndMakeVisible (deleteButton);
         addAndMakeVisible (openButton);
     }
@@ -80,6 +82,13 @@ StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool
     closeButton.onClick = [this] { if (onClose) onClose(); };
     closeButton.setTooltip ("Close");
     showFolderButton.setTooltip ("Show the songs folder");
+    // Icon-only buttons: titles for screen readers (the tooltips are read as help).
+    closeButton.setTitle ("Close");
+    showFolderButton.setTitle ("Show songs folder");
+    deleteAllButton.setTitle ("Delete all songs");
+    clearCacheButton.setTitle ("Clear model cache");
+    removeToolsButton.setTitle ("Remove YouTube tools");
+    clearDownloadsButton.setTitle ("Clear temporary downloads");
     deleteAllButton.setTooltip ("Delete all songs (except the ones open in justStem)");
     clearCacheButton.setTooltip ("Clear the AI model cache");
     removeToolsButton.setTooltip ("Remove the YouTube tools");

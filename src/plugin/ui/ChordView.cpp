@@ -9,13 +9,21 @@ void ChordView::setSong (SongResultPtr s)
     currentBar = currentSegment = -1;
     firstRow = 0;
     setPosition (position);
+    describe();
     repaint();
+}
+
+void ChordView::describe()
+{
+    setTitle ("Chords");
+    setDescription (song != nullptr ? chartText (*song, transpose) : juce::String());
 }
 
 void ChordView::setTranspose (int t)
 {
     if (t == transpose) return;
     transpose = t;
+    describe();
     repaint();
 }
 

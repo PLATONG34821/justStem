@@ -72,6 +72,7 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
 
     juststem::ui::Gauge gauge;
+    juststem::ui::ReadoutText tempoText, loudText; // the painted tempo and loudness, for screen readers
     juce::OwnedArray<juststem::ui::StemRow> rows;
     juststem::ui::PillButton revealButton { {}, juststem::ui::icons::folder() };
     juststem::ui::PillButton saveAllButton { {}, juststem::ui::icons::download() };

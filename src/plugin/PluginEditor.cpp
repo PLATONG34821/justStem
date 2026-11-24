@@ -121,6 +121,18 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     updateButton.onClick = [] { juststem::UpdateCheck::releasePage().launchInDefaultBrowser(); };
     addChildComponent (updateButton); // shown by timerCallback once the check finds a newer release
 
+    // Icon-only buttons have no text for screen readers to say: give them short titles (their
+    // tooltips are read as help after them).
+    linkBox.setTitle ("YouTube link");
+    const std::pair<juce::Button*, const char*> titles[] {
+        { &pasteButton, "Paste" }, { &splitButton, "Split" }, { &chooseButton, "Choose file" },
+        { &newSongButton, "New song" }, { &closeInputButton, "Back to song" }, { &cancelButton, "Cancel" },
+        { &revealButton, "Show stems folder" }, { &saveAllButton, "Save all stems" }, { &storageButton, "Storage" },
+        { &transposeDown, "Transpose down" }, { &transposeUp, "Transpose up" }, { &copyButton, "Copy chord chart" },
+    };
+    for (const auto& [button, title] : titles) button->setTitle (title);
+    for (auto* t : { &tempoText, &loudText }) addAndMakeVisible (t);
+
     stemsTab.onClick = [this] { showChords (false); };
     chordsTab.onClick = [this] { showChords (true); };
     // A plug-in can't move the DAW's playhead, so while following the DAW, seeking happens in the DAW.
@@ -212,6 +224,8 @@ void justStemEditor::resized()
     gauge.setBounds (readouts.withSizeKeepingCentre (236, 236));
     tempoArea = readouts.removeFromLeft ((readouts.getWidth() - 236) / 2 - 20);
     loudArea = readouts.removeFromRight (tempoArea.getWidth());
+    tempoText.setBounds (tempoArea);
+    loudText.setBounds (loudArea);
 
     // The player only shows with a song open; otherwise the log / drop hint gets its space.
     const bool busy = proc.isBusy();
@@ -412,6 +426,20 @@ void justStemEditor::refreshAll()
     songTitle.setVisible (song != nullptr && ! input);
     playerBar.setVisible (song != nullptr);
     playerBar.setSong (song);
+
+    // What paint() draws beside the gauge, for screen readers.
+    if (song != nullptr)
+    {
+        const auto& a = song->analysis;
+        tempoText.setTitle (a.tempo.bpm > 0 ? "Tempo: " + text::bpm (a.tempo.bpm) + " BPM" : juce::String ("Tempo: not found"));
+        loudText.setTitle ("Loudness: " + juce::String (a.loudness.integratedLufs, 1) + " LUFS, peak "
+                           + juce::String (a.loudness.samplePeakDb, 1) + " dBFS");
+    }
+    else
+    {
+        tempoText.setTitle ("Tempo: no song");
+        loudText.setTitle ("Loudness: no song");
+    }
 
     if (song != nullptr && song != shownSong)
     {
