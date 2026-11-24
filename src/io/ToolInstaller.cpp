@@ -126,7 +126,11 @@ juce::File ensureYtDlp (const ProgressCallback& progress, const std::atomic<bool
         if (progress) progress ("Updating yt-dlp", -1.0);
         juce::ChildProcess p;
         if (p.start (juce::StringArray { exe.getFullPathName(), "--ignore-config", "-U" }))
-            p.waitForProcessToFinish (120000);
+            for (const auto end = juce::Time::getMillisecondCounter() + 120000; ! p.waitForProcessToFinish (50);)
+            {
+                if (cancel.load()) { p.kill(); throw std::runtime_error ("cancelled"); } // the update is tried again next time
+                if (juce::Time::getMillisecondCounter() > end) break;
+            }
         stamp.touch();
     }
     return exe;
