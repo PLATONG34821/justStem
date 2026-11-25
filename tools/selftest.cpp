@@ -446,6 +446,52 @@ int analysisSelftest()
         check (fitUnderFullScale (quiet) == 0.0f && quiet.at (Stem::Vocals).left == before, "stems that fit are left alone");
     }
 
+    std::printf ("Gapless MP3 with cover art over 64 KB\n");
+    {
+        // Minimal 48 kHz 128 kbps stereo MPEG-1 Layer III frames (384 bytes each).
+        auto makeFrame = [] {
+            std::string f (384, '\0');
+            f[0] = '\xff'; f[1] = '\xfb'; f[2] = '\x94'; f[3] = '\x00';
+            return f;
+        };
+        std::string frames;
+        for (int i = 0; i < 11; ++i) frames += makeFrame();
+
+        auto infoFrame = makeFrame();
+        // After 4-byte header + 32-byte stereo side info: "Info" + flags (frame count) + 11 frames.
+        infoFrame.replace (36, 4, "Info");
+        infoFrame[43] = 0x01;
+        infoFrame[47] = 11;
+        // LAME tag starts at byte 48: 9-byte encoder + 12 bytes + 3-byte (delay=576, padding=1728).
+        infoFrame.replace (48, 9, "LAME3.100");
+        infoFrame[69] = 0x24; infoFrame[70] = 0x06; infoFrame[71] = '\xc0';
+
+        // 200,000-byte ID3v2.3 tag (synchsafe size = 0x00030D40 -> 0x00, 0x0c, 0x1a, 0x40).
+        constexpr std::uint32_t id3Payload = 200000;
+        std::string id3 ("ID3\x03\x00\x00", 6);
+        for (int shift = 21; shift >= 0; shift -= 7) id3.push_back ((char) ((id3Payload >> shift) & 0x7f));
+        id3.append (id3Payload, '\0');
+
+        const auto plainFile = juce::File::createTempFile (".mp3");
+        const auto taggedFile = juce::File::createTempFile (".mp3");
+        const auto artFile = juce::File::createTempFile (".mp3");
+        plainFile.replaceWithData (frames.data(), frames.size());
+        const auto taggedBytes = infoFrame + frames;
+        taggedFile.replaceWithData (taggedBytes.data(), taggedBytes.size());
+        const auto artBytes = id3 + taggedBytes;
+        artFile.replaceWithData (artBytes.data(), artBytes.size());
+
+        const auto plainLen = loadAudioFile (plainFile).size();
+        const auto taggedLen = loadAudioFile (taggedFile).size();
+        const auto artLen = loadAudioFile (artFile).size();
+        plainFile.deleteFile();
+        taggedFile.deleteFile();
+        artFile.deleteFile();
+        check (taggedLen < plainLen && artLen == taggedLen,
+               "encoder delay and padding are read past a 200 KB ID3v2 tag (" + std::to_string (artLen)
+                   + " samples == " + std::to_string (taggedLen) + ", plain " + std::to_string (plainLen) + ")");
+    }
+
     std::printf ("Damaged M4A files\n");
     {
         // Minimal MP4 boxes: big-endian sizes, then the type and payload.
