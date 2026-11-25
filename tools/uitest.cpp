@@ -148,6 +148,10 @@ int main (int argc, char** argv)
         };
         walk (*editor);
         check (handles == 8 && named == 8, juce::String (named) + " of " + juce::String (handles) + " drag handles named for screen readers");
+        auto* title = findChild<juststem::ui::SongTitle> (*editor);
+        check (title != nullptr && title->getAccessibilityHandler() != nullptr
+                   && title->getTitle().contains (proc->getSong()->title),
+               "song title is named for screen readers");
     }
 
     std::printf ("Storage panel\n");
