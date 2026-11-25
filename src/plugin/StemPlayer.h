@@ -42,7 +42,10 @@ public:
     bool followsHost() const { return followHost; }
     void seek (double seconds) { seekRequest = seconds; }
     /** Where the listener is: playback reads ahead of this by the pitch shifter's delay. */
-    double positionSeconds() const { return (double) std::max<juce::int64> (0, position.load() - readAhead.load()) / sampleRate; }
+    double positionSeconds() const
+    {
+        return (double) std::clamp<juce::int64> (position.load() - readAhead.load(), 0, length.load()) / sampleRate;
+    }
     /** Pitch-shift the preview (semitones, 0 = off). The tempo doesn't change. */
     void setTranspose (int semitones) { transpose = semitones; }
     double durationSeconds() const { return (double) length.load() / sampleRate; }
@@ -59,6 +62,10 @@ public:
 
 private:
     float targetGain (int stem) const;
+    /** Audio thread: mixes and resamples `numSamples` (<= preparedBlock) into `out`. */
+    void fillResampled (int numSamples);
+    /** Audio thread: fills the pitch shifter's pipeline from `targetPos` so playback starts there with no gap. */
+    void primeShifter (juce::int64 targetPos);
     /** Audio thread: mixes, resamples and shifts `numSamples` (<= preparedBlock) into `buffer` at
         `start`. False once the song has ended. */
     bool render (juce::AudioBuffer<float>& buffer, int start, int numSamples);
@@ -75,7 +82,7 @@ private:
     std::atomic<int> transpose { 0 };
     PitchShifter shifter;
     int shiftedBy = 0;                        // audio thread: the transpose the shifter is set to
-    bool wasActive = false;
+    bool wasActive = false, primed = false;
     std::array<std::atomic<float>, numStems> volume;
     std::array<std::atomic<bool>, numStems> mute, solo;
     std::array<float, numStems> currentGain {};

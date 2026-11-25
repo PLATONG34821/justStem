@@ -351,6 +351,54 @@ int main (int argc, char** argv)
                "preparing again while transposed keeps the position (moved " + juce::String (juce::roundToInt (moved * 1000)) + " ms in an 11 ms block)");
         pl.setPlaying (false);
 
+        // Edge bursts: [0, 70 ms) and [1.93 s, 2.00 s) in a 2 s song must both play when transposed.
+        {
+            auto edgeSong = std::make_shared<juststem::SongResult>();
+            const std::size_t n2 = (std::size_t) juststem::sampleRate * 2;
+            edgeSong->durationSeconds = 2.0;
+            for (auto stem : juststem::stemOrder)
+            {
+                edgeSong->stems[stem].left.assign (n2, 0.0f);
+                edgeSong->stems[stem].right.assign (n2, 0.0f);
+            }
+            auto& v = edgeSong->stems[juststem::Stem::Vocals];
+            for (std::size_t i = 0; i < (std::size_t) (juststem::sampleRate * 0.07); ++i)
+                v.left[i] = v.right[i] = 0.4f * std::sin (2.0f * juce::MathConstants<float>::pi * 440.0f * (float) i / (float) juststem::sampleRate);
+            for (std::size_t i = (std::size_t) (juststem::sampleRate * 1.93); i < n2; ++i)
+                v.left[i] = v.right[i] = 0.4f * std::sin (2.0f * juce::MathConstants<float>::pi * 440.0f * (float) i / (float) juststem::sampleRate);
+
+            juststem::StemPlayer edgePlayer;
+            edgePlayer.prepare (48000, 512);
+            edgePlayer.setSong (edgeSong);
+            edgePlayer.setTranspose (2);
+            auto renderVec = [&] (int blocks) {
+                juce::AudioBuffer<float> buf (2, 512);
+                std::vector<float> y;
+                for (int b = 0; b < blocks; ++b)
+                {
+                    buf.clear();
+                    edgePlayer.process (buf, -1.0);
+                    y.insert (y.end(), buf.getReadPointer (0), buf.getReadPointer (0) + 512);
+                }
+                return y;
+            };
+            auto rmsSlice = [] (const std::vector<float>& x, std::size_t a, std::size_t b) {
+                double e = 0;
+                for (std::size_t i = a; i < b; ++i) e += (double) x[i] * x[i];
+                return std::sqrt (e / (double) std::max<std::size_t> (1, b - a));
+            };
+            edgePlayer.setPlaying (true);
+            const auto atStart = renderVec (8); // ~85 ms
+            edgePlayer.seek (0.0);
+            const auto afterSeek = renderVec (8);
+            edgePlayer.seek (1.85);
+            const auto atEnd = renderVec (20); // past 2.00 s (~213 ms)
+            check (rmsSlice (atStart, 0, 3360) > 0.05 && rmsSlice (afterSeek, 0, 3360) > 0.05,
+                   "transposed preview plays the first 70 ms at start and after seek");
+            check (rmsSlice (atEnd, 3840, 7200) > 0.05 && ! edgePlayer.isPlaying(),
+                   "transposed preview flushes the final 70 ms before stopping");
+        }
+
         const auto dir = outDir.getChildFile ("transposed stems");
         dir.deleteRecursively();
         const auto t0 = juce::Time::getMillisecondCounterHiRes();
