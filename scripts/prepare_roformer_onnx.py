@@ -33,7 +33,8 @@ Licence: the input is elicwhite's ONNX export (MIT code) of the BS-RoFormer SW w
 rehosted as jarredou/BS-ROFO-SW-Fixed (license: unknown; the repo was deleted in 2026, see the
 Wayback Machine). The rehoster said it was an edited checkpoint shared on Discord, with no
 information on its training. No licence has ever been stated for the weights; justStem treats
-them as CC-BY-NC-SA-4.0 (non-commercial, share-alike) and doesn't bundle them in releases.
+them as CC-BY-NC-SA-4.0 (non-commercial, share-alike). Releases from 0.0.2 bundle them, so those
+builds are for non-commercial use.
 """
 from __future__ import annotations
 
