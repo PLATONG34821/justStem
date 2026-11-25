@@ -267,15 +267,17 @@ void justStemEditor::resized()
     if (storagePanel != nullptr) storagePanel->setBounds (getLocalBounds());
     if (updatePopup != nullptr) updatePopup->setBounds (getLocalBounds());
 
-    // The six stems, then a gap, then the mixes made from them (Full mix, Instrumental).
+    // The six stems, then the mixes made from them (Full mix, Instrumental) in a box of their own,
+    // which reaches out into the margin so the rows inside stay in line with the stems.
     auto list = stemsArea;
-    constexpr int groupGap = 12;
+    constexpr int groupGap = 6;
     const int rowH = (list.getHeight() - groupGap) / rows.size();
     for (int i = 0; i < rows.size(); ++i)
     {
         if (i == numStems) list.removeFromTop (groupGap);
         rows[i]->setBounds (list.removeFromTop (rowH));
     }
+    mixesBox = rows[numStems]->getBounds().getUnion (rows.getLast()->getBounds()).expanded (12, 0);
 }
 
 // ============================================================================ painting
@@ -330,6 +332,14 @@ void justStemEditor::paint (juce::Graphics& g)
     {
         paintReadout (g, tempoArea, lines, "TEMPO", "--", "", juce::Justification::centredLeft, false);
         paintReadout (g, loudArea, lines, "LOUDNESS", "--", "", juce::Justification::centredRight, false);
+    }
+
+    if (rows[numStems]->isVisible())
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.035f));
+        g.fillRoundedRectangle (mixesBox.toFloat(), 10.0f);
+        g.setColour (Palette::panelBorder);
+        g.drawRoundedRectangle (mixesBox.toFloat().reduced (0.5f), 10.0f, 1.0f);
     }
 
     // The lower area shows the stems, or the processing log while working (and after an error).
