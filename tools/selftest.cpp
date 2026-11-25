@@ -514,6 +514,9 @@ int analysisSelftest()
                                                           + box ("stsc", zeros (4) + u32 (1) + u32 (1) + u32 (many) + u32 (1)))) },
             { "fragmented (trun)", ftyp + box ("moov", trak ({}) + box ("mvex", box ("trex", zeros (4) + u32 (1) + zeros (8) + u32 (1) + zeros (4))))
                                        + box ("moof", box ("traf", box ("tfhd", zeros (4) + u32 (1)) + box ("trun", zeros (4) + u32 (many)))) },
+            { "after 2 MB free box", ftyp + box ("free", zeros (2 << 20))
+                                          + box ("moov", trak (box ("stsz", zeros (4) + u32 (1) + u32 (many)) + box ("stco", zeros (4) + u32 (1) + u32 (0))
+                                                               + box ("stsc", zeros (4) + u32 (1) + u32 (1) + u32 (many) + u32 (1)))) },
         };
         const auto file = juce::File::createTempFile (".m4a");
         for (const auto& [name, bytes] : files)

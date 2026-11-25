@@ -4,10 +4,12 @@
 #include <neaacdec.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <optional>
-#include <string_view>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 
 namespace juststem
 {
@@ -15,21 +17,71 @@ namespace
 {
 [[noreturn]] void fail (const std::string& why) { throw std::runtime_error ("Couldn't read this M4A file: " + why); }
 
-/** Big-endian reads over the whole file, with bounds checks. */
+/** Big-endian reads streamed from disk via a 64 KB sliding buffer, with bounds checks. */
 struct Bytes
 {
-    const juce::uint8* data;
-    std::size_t size;
+    mutable juce::FileInputStream in;
+    std::size_t size = 0;
+    mutable std::size_t bufStart = 0;
+    mutable std::vector<juce::uint8> buf;
 
-    juce::uint8 u8 (std::size_t at) const { need (at, 1); return data[at]; }
-    juce::uint16 u16 (std::size_t at) const { need (at, 2); return (juce::uint16) ((data[at] << 8) | data[at + 1]); }
+    explicit Bytes (const juce::File& file) : in (file)
+    {
+        if (! in.openedOk()) fail ("it can't be opened");
+        size = (std::size_t) std::max<juce::int64> (0, in.getTotalLength());
+    }
+
+    void read (std::size_t at, void* dst, std::size_t n) const
+    {
+        need (at, n);
+        if (n == 0) return;
+        if (at >= bufStart && at + n <= bufStart + buf.size())
+        {
+            std::memcpy (dst, buf.data() + (at - bufStart), n);
+            return;
+        }
+        constexpr std::size_t chunk = 64 * 1024;
+        if (n >= chunk)
+        {
+            auto* out = static_cast<juce::uint8*> (dst);
+            if (! in.setPosition ((juce::int64) at)) fail ("it is truncated or damaged");
+            for (std::size_t done = 0; done < n;)
+            {
+                const int step = (int) std::min<std::size_t> (n - done, 1u << 20);
+                if (in.read (out + done, step) != step) fail ("it is truncated or damaged");
+                done += (std::size_t) step;
+            }
+            return;
+        }
+        const std::size_t toRead = std::min (chunk, size - at);
+        buf.resize (toRead);
+        if (! in.setPosition ((juce::int64) at) || in.read (buf.data(), (int) toRead) != (int) toRead)
+            fail ("it is truncated or damaged");
+        bufStart = at;
+        std::memcpy (dst, buf.data(), n);
+    }
+
+    juce::uint8 u8 (std::size_t at) const { juce::uint8 v = 0; read (at, &v, 1); return v; }
+    juce::uint16 u16 (std::size_t at) const
+    {
+        juce::uint8 d[2];
+        read (at, d, 2);
+        return (juce::uint16) ((d[0] << 8) | d[1]);
+    }
     juce::uint32 u32 (std::size_t at) const
     {
-        need (at, 4);
-        return ((juce::uint32) data[at] << 24) | ((juce::uint32) data[at + 1] << 16) | ((juce::uint32) data[at + 2] << 8) | data[at + 3];
+        juce::uint8 d[4];
+        read (at, d, 4);
+        return ((juce::uint32) d[0] << 24) | ((juce::uint32) d[1] << 16) | ((juce::uint32) d[2] << 8) | d[3];
     }
     juce::uint64 u64 (std::size_t at) const { return ((juce::uint64) u32 (at) << 32) | u32 (at + 4); }
-    bool is (std::size_t at, const char* fourcc) const { return at + 4 <= size && std::memcmp (data + at, fourcc, 4) == 0; }
+    bool is (std::size_t at, const char* fourcc) const
+    {
+        if (at > size || 4 > size - at) return false;
+        char d[4];
+        read (at, d, 4);
+        return std::memcmp (d, fourcc, 4) == 0;
+    }
     void need (std::size_t at, std::size_t n) const { if (at > size || n > size - at) fail ("it is truncated or damaged"); }
 };
 
@@ -48,7 +100,7 @@ std::vector<Box> children (const Bytes& b, std::size_t from, std::size_t to)
     {
         Box box;
         juce::uint64 size = b.u32 (pos);
-        std::memcpy (box.type, b.data + pos + 4, 4);
+        b.read (pos + 4, box.type, 4);
         std::size_t header = 8;
         if (size == 1) { size = b.u64 (pos + 8); header = 16; }
         else if (size == 0) size = to - pos;
@@ -101,7 +153,9 @@ std::vector<juce::uint8> audioSpecificConfig (const Bytes& b, const Box& esds)
     if (b.u8 (pos++) != 0x05) fail ("no AAC decoder settings");
     const auto len = descriptorLength (b, pos);
     b.need (pos, len);
-    return { b.data + pos, b.data + pos + len };
+    std::vector<juce::uint8> cfg (len);
+    b.read (pos, cfg.data(), len);
+    return cfg;
 }
 
 struct Frame
@@ -168,7 +222,8 @@ Track findAudioTrack (const Bytes& b, const Box& moov, double maxSeconds)
             {
                 const bool v1 = b.u8 (elst->payload) == 1;
                 const auto count = b.u32 (elst->payload + 4);
-                for (juce::uint32 i = 0, at = (juce::uint32) elst->payload + 8; i < count; ++i, at += v1 ? 20 : 12)
+                std::size_t at = elst->payload + 8;
+                for (juce::uint32 i = 0; i < count; ++i, at += v1 ? 20 : 12)
                 {
                     const juce::int64 mediaTime = v1 ? (juce::int64) b.u64 (at + 8) : (juce::int32) b.u32 (at + 4);
                     if (mediaTime >= 0) { t.editListSkip = mediaTime; break; }
@@ -193,8 +248,12 @@ Track findAudioTrack (const Bytes& b, const Box& moov, double maxSeconds)
             for (juce::uint32 r = 0; r < runs && sample < count; ++r)
             {
                 const auto entry = stsc->payload + 8 + 12 * (std::size_t) r;
-                const auto first = b.u32 (entry) - 1, perChunk = b.u32 (entry + 4);
-                const auto last = r + 1 < runs ? b.u32 (entry + 12) - 1 : chunks;
+                const auto firstRaw = b.u32 (entry);
+                if (firstRaw == 0) fail ("damaged sample table");
+                const auto first = firstRaw - 1, perChunk = b.u32 (entry + 4);
+                if (perChunk == 0) break;
+                const auto nextRaw = r + 1 < runs ? b.u32 (entry + 12) : 0;
+                const auto last = r + 1 < runs ? std::min (chunks, nextRaw > 0 ? nextRaw - 1 : 0) : chunks;
                 for (auto chunk = first; chunk < last && sample < count; ++chunk)
                 {
                     std::size_t offset = chunkOffset (chunk);
@@ -272,19 +331,39 @@ struct GaplessInfo
 GaplessInfo iTunesGapless (const Bytes& b, const Box& moov)
 {
     GaplessInfo g;
-    const std::string_view moovBytes (reinterpret_cast<const char*> (b.data + moov.payload), moov.end - moov.payload);
-    const auto name = moovBytes.find ("iTunSMPB");
-    if (name == std::string_view::npos) return g;
-    const auto data = moovBytes.find ("data", name);
-    if (data == std::string_view::npos || data + 12 > moovBytes.size()) return g;
-    // 'data' box payload: 4 bytes type + 4 bytes locale, then hex fields separated by spaces.
-    const auto text = juce::String (moovBytes.data() + data + 12, std::min<std::size_t> (200, moovBytes.size() - data - 12));
-    auto fields = juce::StringArray::fromTokens (text.retainCharacters ("0123456789abcdefABCDEF "), " ", "");
-    fields.removeEmptyStrings();
-    if (fields.size() >= 4)
+    const auto udta = child (b, moov, "udta");
+    const auto meta = udta ? child (b, *udta, "meta") : std::nullopt;
+    const auto ilst = meta && meta->end - meta->payload >= 4 ? child (b, *meta, "ilst", 4) : std::nullopt;
+    if (! ilst) return g;
+
+    for (const auto& item : children (b, ilst->payload, ilst->end))
     {
-        g.priming = fields[1].getHexValue64();
-        g.originalLength = fields[3].getHexValue64();
+        if (std::strcmp (item.type, "----") != 0) continue; // skip cover art ('covr') etc.
+        const auto nameBox = child (b, item, "name");
+        const auto dataBox = child (b, item, "data");
+        if (! nameBox || ! dataBox || nameBox->end - nameBox->payload < 12 || dataBox->end - dataBox->payload <= 8) continue;
+
+        const std::size_t nLen = nameBox->end - nameBox->payload - 4;
+        if (nLen != 8) continue;
+        char nameBuf[8];
+        b.read (nameBox->payload + 4, nameBuf, 8);
+        if (std::memcmp (nameBuf, "iTunSMPB", 8) != 0) continue;
+
+        // 'data' box payload: 4 bytes type + 4 bytes locale, then hex fields separated by spaces.
+        const std::size_t dLen = std::min<std::size_t> (200, dataBox->end - dataBox->payload - 8);
+        std::string raw (dLen, '\0');
+        b.read (dataBox->payload + 8, raw.data(), dLen);
+        std::string ascii;
+        for (char c : raw)
+            if (std::isxdigit ((unsigned char) c) || c == ' ') ascii.push_back (c);
+        auto fields = juce::StringArray::fromTokens (juce::String (ascii), " ", "");
+        fields.removeEmptyStrings();
+        if (fields.size() >= 4)
+        {
+            g.priming = fields[1].getHexValue64();
+            g.originalLength = fields[3].getHexValue64();
+        }
+        break;
     }
     return g;
 }
@@ -299,9 +378,7 @@ bool isMp4File (const juce::File& file)
 
 DecodedAudio decodeM4a (const juce::File& file, double maxSeconds)
 {
-    juce::MemoryBlock data;
-    if (! file.loadFileAsData (data)) fail ("it can't be opened");
-    const Bytes b { static_cast<const juce::uint8*> (data.getData()), data.getSize() };
+    const Bytes b (file);
 
     const auto top = children (b, 0, b.size);
     const auto moov = std::find_if (top.begin(), top.end(), [] (const Box& x) { return std::strcmp (x.type, "moov") == 0; });
@@ -330,11 +407,13 @@ DecodedAudio decodeM4a (const juce::File& file, double maxSeconds)
     out.right.reserve (track.frames.size() * 1024);
     std::size_t frameLength = 0; // output samples per frame: 1024, or 2048 with SBR (HE-AAC)
     bool sbr = false;
+    std::vector<juce::uint8> packet;
     for (const auto& f : track.frames)
     {
-        b.need (f.offset, f.size);
+        packet.resize (f.size);
+        b.read (f.offset, packet.data(), f.size);
         NeAACDecFrameInfo info {};
-        auto* pcm = static_cast<const float*> (NeAACDecDecode (dec.h, &info, const_cast<juce::uint8*> (b.data + f.offset), (unsigned long) f.size));
+        auto* pcm = static_cast<const float*> (NeAACDecDecode (dec.h, &info, packet.data(), (unsigned long) f.size));
         if (info.error != 0 || pcm == nullptr || info.channels == 0) continue; // FAAD2 outputs nothing for the first frame
         out.sampleRate = (double) info.samplerate; // SBR doubles the rate
         frameLength = info.samples / info.channels;
