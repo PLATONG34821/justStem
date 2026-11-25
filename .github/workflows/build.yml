@@ -33,7 +33,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev libfreetype-dev \
             libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
-            libxinerama-dev libxrandr-dev libxrender-dev libgl1-mesa-dev libcurl4-openssl-dev xvfb
+            libxinerama-dev libxrandr-dev libxrender-dev libgl1-mesa-dev libcurl4-openssl-dev xvfb openbox
 
       - name: Ninja (macOS)
         if: runner.os == 'macOS'
@@ -106,7 +106,9 @@ jobs:
           JUSTSTEM_DATA_DIR: ${{ runner.temp }}/juststem-data
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
-            xvfb-run -a build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx --synth build/uitest
+            # A window manager too: without one, JUCE's desktop windows (the Save all progress window)
+            # set window-manager properties that don't exist yet, and X ends the process (BadAtom).
+            xvfb-run -a sh -c 'openbox & sleep 2; exec build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx --synth build/uitest'
           else
             build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx --synth build/uitest
           fi
