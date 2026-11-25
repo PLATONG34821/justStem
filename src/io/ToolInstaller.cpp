@@ -125,13 +125,14 @@ juce::File ensureYtDlp (const ProgressCallback& progress, const std::atomic<bool
         // YouTube changes often. yt-dlp's own updater verifies its signatures.
         if (progress) progress ("Updating yt-dlp", -1.0);
         juce::ChildProcess p;
+        bool finished = false;
         if (p.start (juce::StringArray { exe.getFullPathName(), "--ignore-config", "-U" }))
-            for (const auto end = juce::Time::getMillisecondCounter() + 120000; ! p.waitForProcessToFinish (50);)
+            for (const auto end = juce::Time::getMillisecondCounter() + 120000; ! (finished = p.waitForProcessToFinish (50));)
             {
                 if (cancel.load()) { p.kill(); throw std::runtime_error ("cancelled"); } // the update is tried again next time
-                if (juce::Time::getMillisecondCounter() > end) break;
+                if (juce::Time::getMillisecondCounter() > end) { p.kill(); break; }
             }
-        stamp.touch();
+        if (finished) stamp.touch();
     }
     return exe;
 }
