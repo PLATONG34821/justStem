@@ -12,7 +12,7 @@ namespace juststem::ui
 class PlayerBar final : public juce::Component
 {
 public:
-    explicit PlayerBar (StemPlayer&);
+    explicit PlayerBar (StemPlayer&, bool canFollowHost = true);
 
     /** The song on screen, or nullptr (everything disabled). */
     void setSong (SongResultPtr);

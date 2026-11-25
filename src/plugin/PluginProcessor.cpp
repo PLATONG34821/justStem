@@ -178,7 +178,7 @@ void justStemProcessor::setStateInformation (const void* data, int size)
         explicit Restoring (std::atomic<int>& c) : count (c) { ++count; }
         ~Restoring() { --count; }
     } restoring (restoringState);
-    stemPlayer.setFollowHost (state["followHost"]);
+    stemPlayer.setFollowHost (wrapperType != wrapperType_Standalone && (bool) state["followHost"]);
     transpose = juce::jlimit (-11, 11, (int) state["transpose"]);
     stemPlayer.setTranspose (transpose);
     hq = (bool) state["hq"];

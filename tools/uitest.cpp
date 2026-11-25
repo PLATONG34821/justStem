@@ -217,6 +217,16 @@ int main (int argc, char** argv)
     check (flacs == 6 && s->instrumentalFile().existsAsFile() && s->fullMixFile().existsAsFile(),
            juce::String (flacs) + " stem FLACs + instrumental + full mix written");
     {
+        auto* pluginBar = findChild<juststem::ui::PlayerBar> (*editor);
+        auto* pluginFollow = pluginBar != nullptr ? findChild<juce::ToggleButton> (*pluginBar) : nullptr;
+        juststem::ui::PlayerBar standaloneBar (proc->player(), false);
+        standaloneBar.setSize (800, 36);
+        standaloneBar.setSong (s);
+        auto* standaloneFollow = findChild<juce::ToggleButton> (standaloneBar);
+        check (pluginFollow != nullptr && pluginFollow->isVisible() && standaloneFollow != nullptr && ! standaloneFollow->isVisible(),
+               "Follow DAW shows in the plug-in and hides in the standalone app");
+    }
+    {
         // The full mix is every stem added together (FLAC is lossless; 24-bit rounding aside).
         const auto mixed = juststem::loadAudioFile (s->fullMixFile());
         float worst = 0;

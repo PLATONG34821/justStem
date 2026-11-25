@@ -8,7 +8,7 @@ namespace
 juce::Font timeFont() { return font (Weight::Regular, 13.0f); }
 } // namespace
 
-PlayerBar::PlayerBar (StemPlayer& p) : player (p)
+PlayerBar::PlayerBar (StemPlayer& p, bool canFollowHost) : player (p)
 {
     playButton.setIcon (icons::play());
     playButton.setTitle ("Play");
@@ -21,7 +21,8 @@ PlayerBar::PlayerBar (StemPlayer& p) : player (p)
     followHost.setTooltip ("Play the stems along with your DAW's transport");
     addAndMakeVisible (playButton);
     addAndMakeVisible (position);
-    addAndMakeVisible (followHost);
+    if (canFollowHost) addAndMakeVisible (followHost);
+    else addChildComponent (followHost);
 }
 
 void PlayerBar::setSong (SongResultPtr s)
@@ -36,7 +37,7 @@ void PlayerBar::setSong (SongResultPtr s)
 void PlayerBar::update()
 {
     const bool hasSong = song != nullptr;
-    const bool follow = player.followsHost();
+    const bool follow = followHost.isVisible() && player.followsHost();
     const bool manual = hasSong && ! follow;
     playButton.setEnabled (manual);
     if (const bool pause = manual && player.isPlaying(); pause != showsPause) // update() runs 30 times a second
@@ -60,8 +61,11 @@ void PlayerBar::resized()
     auto bar = getLocalBounds();
     playButton.setBounds (bar.removeFromLeft (36).withSizeKeepingCentre (36, 36));
     bar.removeFromLeft (16);
-    followHost.setBounds (bar.removeFromRight (DashboardLookAndFeel::toggleWidth (followHost)));
-    bar.removeFromRight (24);
+    if (followHost.isVisible())
+    {
+        followHost.setBounds (bar.removeFromRight (DashboardLookAndFeel::toggleWidth (followHost)));
+        bar.removeFromRight (24);
+    }
     // Sized for the duration's digit count with every digit as a wide "0" (Inter's digits differ in width).
     auto pattern = text::minutesSeconds (song != nullptr ? song->durationSeconds : 0.0);
     for (const char* d = "123456789"; *d != 0; ++d) pattern = pattern.replaceCharacter ((juce::juce_wchar) *d, '0');

@@ -91,7 +91,7 @@ private:
     bool chordsShown = false;
 
     juststem::ui::SongTitle songTitle;
-    juststem::ui::PlayerBar playerBar { proc.player() };
+    juststem::ui::PlayerBar playerBar { proc.player(), proc.wrapperType != juce::AudioProcessor::wrapperType_Standalone };
 
     juststem::SongResultPtr shownSong;
     int shownLogLines = -1; // log lines on screen while working
