@@ -122,8 +122,8 @@ public:
     DragHandle() { setMouseCursor (juce::MouseCursor::DraggingHandCursor); setTooltip ("Drag onto a track in your DAW"); }
     void setFile (juce::File f) { file = std::move (f); repaint(); }
     void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override { dragging = false; }
     void mouseDrag (const juce::MouseEvent&) override;
-    void mouseUp (const juce::MouseEvent&) override { dragging = false; }
 
 private:
     juce::File file;

@@ -1,5 +1,9 @@
 #include "Widgets.h"
 
+#if JUCE_MAC
+ #include <CoreGraphics/CoreGraphics.h>
+#endif
+
 namespace juststem::ui
 {
 namespace
@@ -221,6 +225,19 @@ void SegmentBar::paint (juce::Graphics& g)
 }
 
 // ============================================================================ drag handle
+namespace
+{
+bool mouseButtonReallyDown()
+{
+   #if JUCE_MAC
+    // JUCE's "realtime" modifiers refresh only the keys on macOS, not the mouse buttons.
+    return CGEventSourceButtonState (kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft);
+   #else
+    return juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown();
+   #endif
+}
+} // namespace
+
 void DragHandle::paint (juce::Graphics& g)
 {
     const bool enabled = file.existsAsFile();
@@ -235,9 +252,12 @@ void DragHandle::paint (juce::Graphics& g)
 void DragHandle::mouseDrag (const juce::MouseEvent& e)
 {
     if (dragging || ! file.existsAsFile() || e.getDistanceFromDragStart() < 4) return;
+    // One drag per press, and only while the button is really down: in a plug-in, JUCE gets mouse
+    // ups late (macOS), so a stray drag event after the drop would start a second drag, which
+    // drops straight away and gives the DAW the file twice (seen in Waveform).
+    if (! mouseButtonReallyDown()) return;
     dragging = true;
-    juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() }, false, this,
-                                                                [this] { dragging = false; });
+    juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() }, false, this);
 }
 
 // ============================================================================ stem row
