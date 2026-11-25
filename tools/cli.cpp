@@ -41,10 +41,12 @@ static int separateFile (const std::string& model, const juce::File& in, const j
     Separator sep (model, devCoremlCache());
     std::atomic<bool> cancel { false };
     const auto t0 = juce::Time::getMillisecondCounterHiRes();
-    const auto stems = sep.separate (mix, printProgress, cancel);
+    auto stems = sep.separate (mix, printProgress, cancel);
     const double secs = (juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0;
     const double length = (double) mix.size() / sampleRate;
     std::fprintf (stderr, "\n%.1fs for %.1fs of audio on %s (%.2fx realtime)\n", secs, length, backendName (sep.backend()), length / secs);
+    if (const float db = fitUnderFullScale (stems); db < 0)
+        std::fprintf (stderr, "lowered all stems by %.2f dB so they don't clip\n", -db);
 
     outDir.createDirectory();
     for (const auto& [stem, audio] : stems)

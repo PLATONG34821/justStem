@@ -434,6 +434,34 @@ int main (int argc, char** argv)
                             == juststem::loadAudioFile (s->stemFile (stem)).left ? 1 : 0;
         check (copied && same == 8, "Save all writes the 6 stems, the instrumental and the full mix as WAVs");
         copies.deleteRecursively();
+
+        // Loud transposed export: stems whose shifted sum exceeds 0 dBFS are lowered together.
+        juststem::SongResult loudSong;
+        const std::size_t n1 = (std::size_t) juststem::sampleRate;
+        for (auto stem : juststem::stemOrder)
+        {
+            loudSong.stems[stem].left.assign (n1, 0.0f);
+            loudSong.stems[stem].right.assign (n1, 0.0f);
+        }
+        for (std::size_t i = 0; i < n1; ++i)
+        {
+            const float s = std::sin (2.0f * juce::MathConstants<float>::pi * 441.0f * (float) i / (float) juststem::sampleRate);
+            loudSong.stems[juststem::Stem::Vocals].left[i] = loudSong.stems[juststem::Stem::Vocals].right[i] = 0.55f * s;
+            loudSong.stems[juststem::Stem::Drums].left[i] = loudSong.stems[juststem::Stem::Drums].right[i] = 0.75f * s;
+        }
+        const auto loudDir = outDir.getChildFile ("loud transposed");
+        loudDir.deleteRecursively();
+        const bool loudOk = juststem::saveTransposedStems (loudSong, 2, loudDir, [] (double) { return true; });
+        float loudPeak = 0.0f;
+        for (const auto& name : { juce::String ("full mix.wav"), juce::String ("instrumental.wav"), juce::String ("vocals.wav") })
+        {
+            const auto a = juststem::loadAudioFile (loudDir.getChildFile (name));
+            for (float v : a.left) loudPeak = std::max (loudPeak, std::abs (v));
+            for (float v : a.right) loudPeak = std::max (loudPeak, std::abs (v));
+        }
+        loudDir.deleteRecursively();
+        check (loudOk && loudPeak > 0.5f && loudPeak <= 0.995f,
+               "loud transposed export stays under full scale (peak " + juce::String (loudPeak, 4) + ")");
     }
 
     std::printf ("Save and reload, like reopening a DAW project\n");

@@ -160,24 +160,38 @@ bool saveTransposedStems (const SongResult& song, int semitones, const juce::Fil
     auto report = [&] {
         double sum = 0;
         for (const auto& f : fraction) sum += f.load();
-        if (! progress (sum / (double) numStems)) cancelled = true;
+        if (! progress (0.9 * sum / (double) numStems)) cancelled = true;
     };
     for (std::size_t i = 0; i < std::min (atOnce, stemOrder.size()); ++i) start (i);
 
-    StereoAudio instrumental, fullMix;
+    StemMap shiftedStems;
     for (std::size_t i = 0; i < stemOrder.size(); ++i)
     {
         while (shifting[i].wait_for (std::chrono::milliseconds (100)) != std::future_status::ready) report();
-        const auto shifted = shifting[i].get();
+        auto shifted = shifting[i].get();
         if (cancelled) return false; // the other threads stop at their next progress check
         if (i + atOnce < stemOrder.size()) start (i + atOnce);
-        const auto stem = stemOrder[i];
-        writeWav (dir.getChildFile (juce::String (stemWavName (stem))), shifted);
-        if (stem != Stem::Vocals) addInto (instrumental, shifted);
-        addInto (fullMix, shifted);
+        shiftedStems[stemOrder[i]] = std::move (shifted);
         report();
     }
+
+    // Shifting changes phase relationships and can push stems or mixes past full scale.
+    fitUnderFullScale (shiftedStems);
+
+    StereoAudio instrumental, fullMix;
+    constexpr double writeSteps = numStems + 2;
+    for (std::size_t i = 0; i < stemOrder.size(); ++i)
+    {
+        if (! progress (0.9 + 0.1 * (double) i / writeSteps)) return false;
+        const auto stem = stemOrder[i];
+        auto node = shiftedStems.extract (stem);
+        writeWav (dir.getChildFile (juce::String (stemWavName (stem))), node.mapped());
+        if (stem != Stem::Vocals) addInto (instrumental, node.mapped());
+        addInto (fullMix, node.mapped());
+    }
+    if (! progress (0.9 + 0.1 * (double) numStems / writeSteps)) return false;
     writeWav (dir.getChildFile ("instrumental.wav"), instrumental);
+    if (! progress (0.9 + 0.1 * (double) (numStems + 1) / writeSteps)) return false;
     writeWav (dir.getChildFile ("full mix.wav"), fullMix);
     progress (1.0);
     return true;
