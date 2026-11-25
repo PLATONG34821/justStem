@@ -5,11 +5,13 @@
 #include "../src/core/Fft.h"
 #include "../src/core/PitchShift.h"
 #include "../src/core/Resampler.h"
+#include "../src/core/Separator.h"
 #include "../src/io/AudioFiles.h"
 #include "../src/io/M4aDecoder.h"
 
 #include <juce_core/juce_core.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -410,6 +412,38 @@ int analysisSelftest()
                        + juce::String (offsetMs, 1).toStdString() + " ms off, level " + juce::String (gainDb, 2).toStdString() + " dB, "
                        + std::to_string ((int) (60000.0 / ms)) + "x realtime");
         }
+    }
+
+    std::printf ("Headroom before saving\n");
+    {
+        // A sine per stem; vocals and drums in phase make the full mix peak at 1.2.
+        auto sine = [] (float amp) {
+            StereoAudio a;
+            for (int i = 0; i < sampleRate / 10; ++i) a.left.push_back (amp * (float) std::sin (2 * std::numbers::pi * 441.0 * i / sampleRate));
+            a.right = a.left;
+            return a;
+        };
+        auto peakOf = [] (const std::vector<float>& x) { float p = 0; for (float v : x) p = std::max (p, std::abs (v)); return p; };
+        const float ceiling = std::pow (10.0f, -0.1f / 20.0f);
+
+        StemMap loud { { Stem::Vocals, sine (0.5f) }, { Stem::Drums, sine (0.7f) }, { Stem::Bass, sine (0.0f) } };
+        const float db = fitUnderFullScale (loud);
+        std::vector<float> mix (loud.at (Stem::Vocals).left.size());
+        for (const auto& [stem, a] : loud) for (std::size_t i = 0; i < mix.size(); ++i) mix[i] += a.left[i];
+        const float ratio = peakOf (loud.at (Stem::Drums).left) / peakOf (loud.at (Stem::Vocals).left);
+        check (peakOf (mix) <= ceiling * 1.0001f && peakOf (mix) > ceiling * 0.999f && std::fabs (ratio - 1.4f) < 1e-4f
+                   && std::fabs (db - 20.0f * std::log10 (ceiling / 1.2f)) < 0.01f,
+               "a full mix over full scale: every stem lowered by " + juce::String (-db, 2).toStdString() + " dB, balance kept");
+
+        // Vocals against the drums: the full mix is quiet, but the instrumental (the drums) peaks at 1.1.
+        auto against = sine (-1.1f);
+        StemMap cancel { { Stem::Vocals, against }, { Stem::Drums, sine (1.1f) } };
+        fitUnderFullScale (cancel);
+        check (peakOf (cancel.at (Stem::Drums).left) <= ceiling * 1.0001f, "an instrumental over full scale is caught too");
+
+        StemMap quiet { { Stem::Vocals, sine (0.4f) }, { Stem::Drums, sine (0.4f) } };
+        const auto before = quiet.at (Stem::Vocals).left;
+        check (fitUnderFullScale (quiet) == 0.0f && quiet.at (Stem::Vocals).left == before, "stems that fit are left alone");
     }
 
     std::printf ("Damaged M4A files\n");

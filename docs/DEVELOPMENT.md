@@ -112,7 +112,7 @@ cmake/         ONNX Runtime download (per OS), packaging.
 
 | What | Where |
 |---|---|
-| Stems for each song (7 FLACs + `info.json`; older songs have WAVs) | `<your Music folder>/justStem/<song title>/` |
+| Stems for each song (8 FLACs + `info.json`; older songs have WAVs) | `<your Music folder>/justStem/<song title>/` |
 | yt-dlp and Deno (downloaded on the first YouTube link) | `<app data>/justStem/bin/` |
 | CoreML's compiled model (macOS; makes later loads fast) | `<app data>/justStem/coreml-cache/` |
 | YouTube audio while it's being decoded (a folder per download, deleted after) | `<app data>/justStem/downloads/` |
@@ -131,6 +131,10 @@ sample-exactly with the original file in a DAW.
 
 Songs can be up to 15 minutes (`maxSongSeconds`). Longer files are refused before they're decoded,
 and longer YouTube videos (and live streams) before they're downloaded.
+
+Stems are saved as 24-bit FLAC (and exported as 24-bit WAV), which can't go over full scale. Loud
+songs decoded from AAC or MP3 often do, so when a stem, the instrumental or the full mix would, all
+the stems are lowered together, just enough (`fitUnderFullScale`; the log says by how much).
 
 ## How chords are found
 
