@@ -2,7 +2,9 @@
 
 #include <juce_cryptography/juce_cryptography.h>
 
+#include <filesystem>
 #include <stdexcept>
+#include <string>
 
 namespace juststem
 {
@@ -97,6 +99,19 @@ juce::File scratchFor (const juce::File& exe, const char* suffix)
 {
     return exe.getSiblingFile (exe.getFileNameWithoutExtension() + "-" + juce::Uuid().toString() + suffix);
 }
+
+/** Rename `from` onto `to` without unlinking `to` first (unlike File::moveFileTo), so an existing
+    working tool survives if replacement fails. */
+bool replaceFileAtomically (const juce::File& from, const juce::File& to)
+{
+    auto path = [] (const juce::File& f) {
+        const auto s = f.getFullPathName().toStdString();
+        return std::filesystem::path (std::u8string (s.begin(), s.end()));
+    };
+    std::error_code ec;
+    std::filesystem::rename (path (from), path (to), ec);
+    return ! ec;
+}
 } // namespace
 
 juce::String findSha256InSums (const juce::String& sumsText, const juce::String& fileName)
@@ -133,7 +148,7 @@ juce::File ensureYtDlp (const ProgressCallback& progress, const std::atomic<bool
             verifyChecksum (tmp, juce::URL (release + "SHA2-256SUMS"), binary);
             tmp.setExecutePermission (true);
             // Another plug-in may have installed it meanwhile (and, on Windows, be running it).
-            if (! tmp.moveFileTo (exe) && ! exe.existsAsFile()) throw std::runtime_error ("Can't install yt-dlp");
+            if (! replaceFileAtomically (tmp, exe) && ! exe.existsAsFile()) throw std::runtime_error ("Can't install yt-dlp");
         }
         catch (...)
         {
@@ -183,8 +198,7 @@ juce::File ensureDeno (const ProgressCallback& progress, const std::atomic<bool>
             throw std::runtime_error ("Couldn't unpack Deno");
         const auto unpacked = unpackDir.getChildFile (exeName);
         unpacked.setExecutePermission (true);
-        exe.deleteFile();
-        if (! unpacked.moveFileTo (exe)) throw std::runtime_error ("Can't install Deno");
+        if (! replaceFileAtomically (unpacked, exe)) throw std::runtime_error ("Can't install Deno");
         stamp.touch();
     }
     catch (...)
