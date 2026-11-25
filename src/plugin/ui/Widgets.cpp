@@ -1,5 +1,9 @@
 #include "Widgets.h"
 
+#if JUCE_MAC
+ #include <CoreGraphics/CoreGraphics.h>
+#endif
+
 namespace juststem::ui
 {
 namespace
@@ -221,6 +225,19 @@ void SegmentBar::paint (juce::Graphics& g)
 }
 
 // ============================================================================ drag handle
+namespace
+{
+bool mouseButtonReallyDown()
+{
+   #if JUCE_MAC
+    // JUCE's "realtime" modifiers refresh only the keys on macOS, not the mouse buttons.
+    return CGEventSourceButtonState (kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft);
+   #else
+    return juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown();
+   #endif
+}
+} // namespace
+
 void DragHandle::paint (juce::Graphics& g)
 {
     const bool enabled = file.existsAsFile();
@@ -235,9 +252,12 @@ void DragHandle::paint (juce::Graphics& g)
 void DragHandle::mouseDrag (const juce::MouseEvent& e)
 {
     if (dragging || ! file.existsAsFile() || e.getDistanceFromDragStart() < 4) return;
+    // One drag per press, and only while the button is really down: in a plug-in, JUCE gets mouse
+    // ups late (macOS), so a stray drag event after the drop would start a second drag, which
+    // drops straight away and gives the DAW the file twice (seen in Waveform).
+    if (! mouseButtonReallyDown()) return;
     dragging = true;
-    juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() }, false, this,
-                                                                [this] { dragging = false; });
+    juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() }, false, this);
 }
 
 // ============================================================================ stem row
@@ -264,7 +284,7 @@ StemRow::StemRow (StemPlayer& p, int i, juce::String n) : player (&p), index (i)
     refresh();
 }
 
-StemRow::StemRow (juce::String n) : name (std::move (n)) { addAndMakeVisible (drag); }
+StemRow::StemRow (juce::String n, const juce::Path& i) : name (std::move (n)), icon (&i) { addAndMakeVisible (drag); }
 
 void StemRow::refresh()
 {
@@ -284,8 +304,8 @@ void StemRow::paint (juce::Graphics& g)
         g.setColour (Palette::forStem (index).withAlpha (muted ? 0.3f : 1.0f));
         g.fillEllipse (4.0f, cy - 4.0f, 8.0f, 8.0f);
     }
-    else
-        drawIcon (g, icons::layers(), { 2.0f, cy - 6.0f, 12.0f, 12.0f }, Palette::dim);
+    else if (icon != nullptr)
+        drawIcon (g, *icon, { 2.0f, cy - 6.0f, 12.0f, 12.0f }, Palette::dim);
 
     g.setFont (font (Weight::Regular, 14.0f));
     g.setColour (muted ? Palette::faint : Palette::text);
@@ -294,7 +314,7 @@ void StemRow::paint (juce::Graphics& g)
 
 void StemRow::resized()
 {
-    const int h = std::min (26, getHeight() - 6);
+    const int h = std::min (22, getHeight() - 10); // room between the rows
     auto r = getLocalBounds().withSizeKeepingCentre (getWidth(), h);
     drag.setBounds (r.removeFromRight (40));
     if (player == nullptr) return;

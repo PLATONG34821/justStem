@@ -1,14 +1,15 @@
 # justStem
 
-A VST3 / AU plug-in for people who make covers. Give it a song (an audio file or a YouTube link)
-and it splits it into **vocals, drums, bass, guitar, piano and other**, and finds the **key, tempo,
-loudness and chords**. Everything runs on your computer.
+justStem is an open-source VST3 / AU plug-in (and standalone app) that splits a song into six stems,
+**vocals, drums, bass, guitar, piano and other**, plus an instrumental and the full mix, and finds its
+**key, tempo, loudness and chords**. Give it an audio file or a YouTube link; the AI runs on your
+computer, and nothing is uploaded.
 
 <p align="center"><img src="docs/screenshots/stems.png" width="600" alt="justStem with a song split into stems"></p>
 
 ## Features
 
-- 6 stems plus an instrumental, kept as lossless 24-bit FLAC (half the size of WAV) that you can drag onto DAW tracks; **Save all** exports WAVs
+- 6 stems plus an instrumental and the full mix, kept as lossless 24-bit FLAC (half the size of WAV) that you can drag onto DAW tracks; **Save all** exports WAVs
 - Key (with Camelot code), tempo and loudness (LUFS)
 - Chords bar by bar, with a copyable chart
 - Transpose ±11 semitones: chords, live preview and pitch-shifted stem export
@@ -74,7 +75,8 @@ Intel Macs aren't supported. Tried justStem in another DAW or OS? Please share h
 Bug reports, ideas and pull requests are welcome.
 
 - **Report a bug:** open an [issue](https://github.com/PLATONG34821/justStem/issues) with your OS,
-  DAW and version, what you did, and what happened (the log in the plug-in helps).
+  DAW and justStem version (top right of **Storage**), what you did, and what happened (the log in
+  the plug-in helps).
 - **Change the code:** fork, make a branch, and open a pull request. Build and test it first:
   see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for building, tests and how the code is laid out.
   CI builds and tests every pull request on macOS, Windows and Linux.

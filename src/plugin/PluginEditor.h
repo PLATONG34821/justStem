@@ -59,6 +59,7 @@ private:
 
     // layout regions (set in resized)
     juce::Rectangle<int> topRow, wordmarkArea, tabsArea, tempoArea, loudArea, stemsHeader, stemsArea, transposeArea;
+    juce::Rectangle<int> mixesBox; // behind the Full mix and Instrumental rows
 
     juce::TextEditor linkBox;
     juststem::ui::PillButton chooseButton { {}, juststem::ui::icons::fileImport() };

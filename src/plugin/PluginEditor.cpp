@@ -9,7 +9,7 @@ using namespace juststem::ui;
 
 namespace
 {
-constexpr int windowW = 900, windowH = 620, margin = 28;
+constexpr int windowW = 900, windowH = 690, margin = 28;
 
 // The "justStem" wordmark (light "just", bold "Stem") and the song title share the top bar's baseline.
 juce::Font wordmarkLight() { return font (Weight::Light, 23.0f, 0.01f); }
@@ -100,7 +100,8 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
 
     for (int i = 0; i < numStems; ++i)
         addChildComponent (rows.add (new StemRow (proc.player(), i, text::stemLabel (stemOrder[(size_t) i]))));
-    addChildComponent (rows.add (new StemRow ("Instrumental")));
+    addChildComponent (rows.add (new StemRow ("Full mix", icons::note())));
+    addChildComponent (rows.add (new StemRow ("Instrumental", icons::layers())));
     revealButton.onClick = [this] { if (auto s = proc.getSong()) s->folder.revealToUser(); };
     saveAllButton.onClick = [this] { saveAll(); };
     addChildComponent (revealButton);
@@ -266,9 +267,17 @@ void justStemEditor::resized()
     if (storagePanel != nullptr) storagePanel->setBounds (getLocalBounds());
     if (updatePopup != nullptr) updatePopup->setBounds (getLocalBounds());
 
+    // The six stems, then the mixes made from them (Full mix, Instrumental) in a box of their own,
+    // which reaches out into the margin so the rows inside stay in line with the stems.
     auto list = stemsArea;
-    const int rowH = list.getHeight() / rows.size();
-    for (auto* row : rows) row->setBounds (list.removeFromTop (rowH));
+    constexpr int groupGap = 6;
+    const int rowH = (list.getHeight() - groupGap) / rows.size();
+    for (int i = 0; i < rows.size(); ++i)
+    {
+        if (i == numStems) list.removeFromTop (groupGap);
+        rows[i]->setBounds (list.removeFromTop (rowH));
+    }
+    mixesBox = rows[numStems]->getBounds().getUnion (rows.getLast()->getBounds()).expanded (12, 0);
 }
 
 // ============================================================================ painting
@@ -323,6 +332,14 @@ void justStemEditor::paint (juce::Graphics& g)
     {
         paintReadout (g, tempoArea, lines, "TEMPO", "--", "", juce::Justification::centredLeft, false);
         paintReadout (g, loudArea, lines, "LOUDNESS", "--", "", juce::Justification::centredRight, false);
+    }
+
+    if (rows[numStems]->isVisible())
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.035f));
+        g.fillRoundedRectangle (mixesBox.toFloat(), 10.0f);
+        g.setColour (Palette::panelBorder);
+        g.drawRoundedRectangle (mixesBox.toFloat().reduced (0.5f), 10.0f, 1.0f);
     }
 
     // The lower area shows the stems, or the processing log while working (and after an error).
@@ -446,7 +463,8 @@ void justStemEditor::refreshAll()
         shownSong = song;
         songTitle.setSong (song);
         for (int i = 0; i < numStems; ++i) rows[i]->setFile (song->stemFile (stemOrder[(size_t) i]));
-        rows.getLast()->setFile (song->instrumentalFile());
+        rows[numStems]->setFile (song->fullMixFile());
+        rows[numStems + 1]->setFile (song->instrumentalFile());
         chordView.setSong (song);
     }
     for (auto* row : rows) row->refresh();
@@ -606,6 +624,9 @@ void justStemEditor::showStorage()
     storagePanel = std::make_unique<StoragePanel> (
         [this] { auto s = proc.getSong(); return s != nullptr ? s->folder : juce::File(); },
         [this] { return proc.isBusy(); }, &justStemProcessor::songsInUse, &justStemProcessor::anyBusy);
+    storagePanel->about = juce::String ("justStem ") + JUSTSTEM_VERSION;
+    if (proc.wrapperType != juce::AudioProcessor::wrapperType_Undefined) // tools/uitest: no format
+        storagePanel->about << juce::String::fromUTF8 ("  \xc2\xb7  ") << juce::AudioProcessor::getWrapperTypeDescription (proc.wrapperType);
     storagePanel->onClose = [this] {
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<justStemEditor> (this)] {
             if (safe != nullptr) safe->storagePanel.reset();

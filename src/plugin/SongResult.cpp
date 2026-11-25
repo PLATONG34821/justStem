@@ -19,7 +19,7 @@ namespace juststem
 {
 namespace
 {
-/** Adds `stem` into `sum` (the instrumental), growing it to fit. */
+/** Adds `stem` into `sum` (the instrumental, or the full mix), growing it to fit. */
 void addInto (StereoAudio& sum, const StereoAudio& stem)
 {
     sum.left.resize (std::max (sum.size(), stem.size()), 0.0f);
@@ -95,14 +95,16 @@ juce::File findSavedSong (const juce::String& audioHash, const juce::String& mod
 
 void saveSong (const SongResult& song)
 {
-    StereoAudio instrumental;
+    StereoAudio instrumental, fullMix;
     for (auto stem : stemOrder)
     {
         const auto& s = song.stems.at (stem);
         writeFlac (song.folder.getChildFile (juce::String (stemFileName (stem))), s);
         if (stem != Stem::Vocals) addInto (instrumental, s);
+        addInto (fullMix, s);
     }
     writeFlac (song.folder.getChildFile ("instrumental.flac"), instrumental);
+    writeFlac (song.folder.getChildFile ("full mix.flac"), fullMix);
     saveInfo (song);
 }
 
@@ -110,8 +112,8 @@ bool copyStems (const SongResult& song, const juce::File& dir, const std::functi
 {
     if (! dir.createDirectory()) throw std::runtime_error ("Couldn't create " + dir.getFullPathName().toStdString());
     // From the stems in memory (the saved ones are FLAC; WAV opens in every DAW).
-    constexpr double files = numStems + 1;
-    StereoAudio instrumental;
+    constexpr double files = numStems + 2;
+    StereoAudio instrumental, fullMix;
     for (std::size_t i = 0; i < stemOrder.size(); ++i)
     {
         if (! progress ((double) i / files)) return false;
@@ -119,9 +121,12 @@ bool copyStems (const SongResult& song, const juce::File& dir, const std::functi
         const auto& s = song.stems.at (stem);
         writeWav (dir.getChildFile (juce::String (stemWavName (stem))), s);
         if (stem != Stem::Vocals) addInto (instrumental, s);
+        addInto (fullMix, s);
     }
     if (! progress ((double) numStems / files)) return false;
     writeWav (dir.getChildFile ("instrumental.wav"), instrumental);
+    if (! progress ((double) (numStems + 1) / files)) return false;
+    writeWav (dir.getChildFile ("full mix.wav"), fullMix);
     progress (1.0);
     return true;
 }
@@ -159,7 +164,7 @@ bool saveTransposedStems (const SongResult& song, int semitones, const juce::Fil
     };
     for (std::size_t i = 0; i < std::min (atOnce, stemOrder.size()); ++i) start (i);
 
-    StereoAudio instrumental;
+    StereoAudio instrumental, fullMix;
     for (std::size_t i = 0; i < stemOrder.size(); ++i)
     {
         while (shifting[i].wait_for (std::chrono::milliseconds (100)) != std::future_status::ready) report();
@@ -169,9 +174,11 @@ bool saveTransposedStems (const SongResult& song, int semitones, const juce::Fil
         const auto stem = stemOrder[i];
         writeWav (dir.getChildFile (juce::String (stemWavName (stem))), shifted);
         if (stem != Stem::Vocals) addInto (instrumental, shifted);
+        addInto (fullMix, shifted);
         report();
     }
     writeWav (dir.getChildFile ("instrumental.wav"), instrumental);
+    writeWav (dir.getChildFile ("full mix.wav"), fullMix);
     progress (1.0);
     return true;
 }
@@ -248,6 +255,22 @@ std::shared_ptr<SongResult> loadSong (const juce::File& folder)
         audio.right.resize (longest, 0.0f);
     }
     song->durationSeconds = (double) longest / sampleRate;
+
+    // Songs saved before 0.0.5 have no full mix.flac: make it, to drag the whole song onto a track. Written
+    // aside and moved in, as another justStem may load the song meanwhile. Not being able to write it
+    // (e.g. a read-only folder) only leaves the Full mix row without a file.
+    if (! song->fullMixFile().existsAsFile())
+    {
+        StereoAudio fullMix;
+        for (const auto& [stem, audio] : song->stems) addInto (fullMix, audio);
+        try
+        {
+            juce::TemporaryFile tmp (folder.getChildFile ("full mix.flac"));
+            writeFlac (tmp.getFile(), fullMix);
+            tmp.overwriteTargetFileWithTemporary();
+        }
+        catch (const std::exception&) {}
+    }
     return song;
 }
 } // namespace juststem

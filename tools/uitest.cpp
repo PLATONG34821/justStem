@@ -134,6 +134,7 @@ int main (int argc, char** argv)
     if (panel != nullptr)
     {
         snapshot (*editor, outDir.getChildFile ("4-storage.png"));
+        check (panel->about.contains (JUSTSTEM_VERSION), "Storage shows the version: " + panel->about);
         const auto saved = juststem::storage::savedSongs();
         check (std::any_of (saved.begin(), saved.end(), [&] (const auto& x) { return x.folder == proc->getSong()->folder; }),
                "current song listed in storage");
@@ -176,13 +177,28 @@ int main (int argc, char** argv)
                  a.loudness.integratedLufs, s->folder.getFullPathName().toRawUTF8());
     int flacs = 0;
     for (auto stem : juststem::stemOrder) flacs += s->stemFile (stem).existsAsFile() && s->stemFile (stem).hasFileExtension ("flac") ? 1 : 0;
-    check (flacs == 6 && s->instrumentalFile().existsAsFile(), juce::String (flacs) + " stem FLACs + instrumental written");
+    check (flacs == 6 && s->instrumentalFile().existsAsFile() && s->fullMixFile().existsAsFile(),
+           juce::String (flacs) + " stem FLACs + instrumental + full mix written");
+    {
+        // The full mix is every stem added together (FLAC is lossless; 24-bit rounding aside).
+        const auto mixed = juststem::loadAudioFile (s->fullMixFile());
+        float worst = 0;
+        for (std::size_t i = 0; i < mixed.size(); i += 97)
+        {
+            float sum = 0;
+            for (const auto& [stem, audio] : s->stems) sum += audio.left[i];
+            worst = std::max (worst, std::abs (mixed.left[i] - sum));
+        }
+        check (mixed.size() == s->stems.at (juststem::Stem::Vocals).size() && worst < 1e-4f,
+               "the full mix is the stems added together (largest difference " + juce::String (worst, 7) + ")");
+    }
     check (s->audioHash.isNotEmpty() && juststem::findSavedSong (s->audioHash, s->model) == s->folder
                && juststem::findSavedSong (s->audioHash, "another model") == juce::File(),
            "the same song with the same model is found among the saved songs");
     auto& dropTarget = dynamic_cast<juce::FileDragAndDropTarget&> (*editor);
     check (! dropTarget.isInterestedInFileDrag ({ s->stemFile (juststem::Stem::Vocals).getFullPathName() })
                && ! dropTarget.isInterestedInFileDrag ({ s->instrumentalFile().getFullPathName() })
+               && ! dropTarget.isInterestedInFileDrag ({ s->fullMixFile().getFullPathName() })
                && dropTarget.isInterestedInFileDrag ({ song.getFullPathName() }),
            "a stem dragged out and dropped back on the window isn't split again; other audio files are");
 
@@ -317,7 +333,7 @@ int main (int argc, char** argv)
             ++files;
             sameLength = sameLength && juststem::loadAudioFile (f).size() == s->stems.at (juststem::Stem::Vocals).size();
         }
-        check (ok && files == 7 && sameLength && lastProgress > 0.99,
+        check (ok && files == 8 && sameLength && lastProgress > 0.99,
                juce::String (files) + " transposed WAVs, same length as the originals, in " + juce::String (secs, 1) + " s");
         dir.deleteRecursively();
 
@@ -332,11 +348,12 @@ int main (int argc, char** argv)
         const auto copies = outDir.getChildFile ("copied stems");
         copies.deleteRecursively();
         const bool copied = juststem::copyStems (*s, copies, [] (double) { return true; });
-        int same = copies.getChildFile ("instrumental.wav").existsAsFile() ? 1 : 0;
+        int same = (copies.getChildFile ("instrumental.wav").existsAsFile() ? 1 : 0)
+                 + (copies.getChildFile ("full mix.wav").existsAsFile() ? 1 : 0);
         for (auto stem : juststem::stemOrder)
             same += juststem::loadAudioFile (copies.getChildFile (juce::String (juststem::stemWavName (stem)))).left
                             == juststem::loadAudioFile (s->stemFile (stem)).left ? 1 : 0;
-        check (copied && same == 7, "Save all writes the 6 stems and the instrumental as WAVs");
+        check (copied && same == 8, "Save all writes the 6 stems, the instrumental and the full mix as WAVs");
         copies.deleteRecursively();
     }
 
@@ -378,6 +395,7 @@ int main (int argc, char** argv)
         auto info = juce::JSON::parse (s->infoFile());
         if (auto* obj = info.getDynamicObject()) { obj->removeProperty ("chords"); obj->removeProperty ("beats"); }
         s->infoFile().replaceWithText (juce::JSON::toString (info));
+        s->fullMixFile().deleteFile(); // and before the full mix (0.0.5)
         auto proc3 = std::make_unique<justStemProcessor> (model);
         proc3->setStateInformation (state.getData(), (int) state.getSize());
         pumpUntil ([&] { return proc3->getSong() != nullptr && ! proc3->isBusy(); }, 60000);
@@ -385,6 +403,8 @@ int main (int argc, char** argv)
         check (song3 != nullptr && song3->analysis.chords.segments.size() == a.chords.segments.size(),
                "chords worked out on reload (" + juce::String (song3 ? (int) song3->analysis.chords.segments.size() : 0) + " changes)");
         check (juce::JSON::parse (s->infoFile())["chords"].size() == (int) a.chords.segments.size(), "and saved to info.json");
+        check (s->fullMixFile().existsAsFile() && juststem::loadAudioFile (s->fullMixFile()).size() == song3->stems.at (juststem::Stem::Vocals).size(),
+               "the full mix made on reload");
     }
 
     std::printf ("Closing the plug-in while it works\n");
