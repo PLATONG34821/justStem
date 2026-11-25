@@ -8,7 +8,7 @@ loudness and chords**. Everything runs on your computer.
 
 ## Features
 
-- 6 stems plus an instrumental, kept as lossless 24-bit FLAC (half the size of WAV) that you can drag onto DAW tracks; **Save all** exports WAVs
+- 6 stems plus an instrumental and the full mix, kept as lossless 24-bit FLAC (half the size of WAV) that you can drag onto DAW tracks; **Save all** exports WAVs
 - Key (with Camelot code), tempo and loudness (LUFS)
 - Chords bar by bar, with a copyable chart
 - Transpose ±11 semitones: chords, live preview and pitch-shifted stem export

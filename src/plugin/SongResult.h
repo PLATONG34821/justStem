@@ -28,6 +28,7 @@ struct SongResult
     /** The stem's FLAC, or its WAV in a song saved before stems were FLAC. */
     juce::File stemFile (Stem s) const { return savedFile (juce::String (std::string (stemName (s)))); }
     juce::File instrumentalFile() const { return savedFile ("instrumental"); } // everything except vocals
+    juce::File fullMixFile() const { return savedFile ("full mix"); }          // every stem together: the whole song
     juce::File infoFile() const { return folder.getChildFile ("info.json"); }
 
 private:
@@ -49,14 +50,15 @@ juce::String audioFingerprint (const StereoAudio& audio);
     still there. Empty if there's none. */
 juce::File findSavedSong (const juce::String& audioHash, const juce::String& model);
 
-/** Write the stem FLACs, the instrumental and info.json into song.folder. Throws std::runtime_error. */
+/** Write the stem FLACs, the instrumental, the full mix (every stem together) and info.json into song.folder.
+    Throws std::runtime_error. */
 void saveSong (const SongResult& song);
 
-/** Write the stems and the instrumental into `dir` (created) as 24-bit WAVs. `progress` gets 0..1 and returns false
+/** Write the stems, the instrumental and the full mix into `dir` (created) as 24-bit WAVs. `progress` gets 0..1 and returns false
     to cancel. Returns false if cancelled. Throws std::runtime_error. */
 bool copyStems (const SongResult& song, const juce::File& dir, const std::function<bool (double)>& progress);
 
-/** Write the stems and the instrumental pitch-shifted by `semitones` (same names, same length)
+/** Write the stems, the instrumental and the full mix pitch-shifted by `semitones` (same names, same length)
     into `dir`. `progress` gets 0..1 and returns false to cancel. Returns false if cancelled.
     Throws std::runtime_error. */
 bool saveTransposedStems (const SongResult& song, int semitones, const juce::File& dir, const std::function<bool (double)>& progress);

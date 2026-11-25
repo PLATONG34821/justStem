@@ -4,7 +4,7 @@ namespace juststem::ui
 {
 namespace
 {
-/** Saves the stems and the instrumental into a folder (copies, or pitch-shifted when transposed) on a
+/** Saves the stems, the instrumental and the full mix into a folder (copies, or pitch-shifted when transposed) on a
     background thread, with a progress window and Cancel. Deletes itself. */
 class SaveStems final : public juce::ThreadWithProgressWindow
 {
@@ -15,7 +15,7 @@ public:
                                           true, true),
           song (std::move (s)), semitones (semis), dir (std::move (folder))
     {
-        setStatusMessage (semis == 0 ? "Copying 6 stems and the instrumental..." : "Pitch-shifting 6 stems and the instrumental...");
+        setStatusMessage (semis == 0 ? "Copying 6 stems, the instrumental and the full mix..." : "Pitch-shifting 6 stems, the instrumental and the full mix...");
     }
 
     void run() override

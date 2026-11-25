@@ -284,7 +284,7 @@ StemRow::StemRow (StemPlayer& p, int i, juce::String n) : player (&p), index (i)
     refresh();
 }
 
-StemRow::StemRow (juce::String n) : name (std::move (n)) { addAndMakeVisible (drag); }
+StemRow::StemRow (juce::String n, const juce::Path& i) : name (std::move (n)), icon (&i) { addAndMakeVisible (drag); }
 
 void StemRow::refresh()
 {
@@ -304,8 +304,8 @@ void StemRow::paint (juce::Graphics& g)
         g.setColour (Palette::forStem (index).withAlpha (muted ? 0.3f : 1.0f));
         g.fillEllipse (4.0f, cy - 4.0f, 8.0f, 8.0f);
     }
-    else
-        drawIcon (g, icons::layers(), { 2.0f, cy - 6.0f, 12.0f, 12.0f }, Palette::dim);
+    else if (icon != nullptr)
+        drawIcon (g, *icon, { 2.0f, cy - 6.0f, 12.0f, 12.0f }, Palette::dim);
 
     g.setFont (font (Weight::Regular, 14.0f));
     g.setColour (muted ? Palette::faint : Palette::text);

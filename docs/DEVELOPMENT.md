@@ -154,7 +154,7 @@ the bass instead.
 
 The preview is pitch-shifted live; the shifter delays its output a little, so playback reads that
 far ahead and stays in time with the DAW. With Transpose on, Save all writes a pitch-shifted set of
-stems + instrumental to a new folder, three stems at a time (about 4 s for a 5-minute song on an M4).
+stems + instrumental + full mix to a new folder, three stems at a time (about 4 s for a 5-minute song on an M4).
 
 ## Third-party licences
 

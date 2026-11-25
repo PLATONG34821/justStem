@@ -100,7 +100,8 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
 
     for (int i = 0; i < numStems; ++i)
         addChildComponent (rows.add (new StemRow (proc.player(), i, text::stemLabel (stemOrder[(size_t) i]))));
-    addChildComponent (rows.add (new StemRow ("Instrumental")));
+    addChildComponent (rows.add (new StemRow ("Full mix", icons::note())));
+    addChildComponent (rows.add (new StemRow ("Instrumental", icons::layers())));
     revealButton.onClick = [this] { if (auto s = proc.getSong()) s->folder.revealToUser(); };
     saveAllButton.onClick = [this] { saveAll(); };
     addChildComponent (revealButton);
@@ -446,7 +447,8 @@ void justStemEditor::refreshAll()
         shownSong = song;
         songTitle.setSong (song);
         for (int i = 0; i < numStems; ++i) rows[i]->setFile (song->stemFile (stemOrder[(size_t) i]));
-        rows.getLast()->setFile (song->instrumentalFile());
+        rows[numStems]->setFile (song->fullMixFile());
+        rows[numStems + 1]->setFile (song->instrumentalFile());
         chordView.setSong (song);
     }
     for (auto* row : rows) row->refresh();

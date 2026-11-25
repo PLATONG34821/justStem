@@ -135,8 +135,8 @@ class StemRow final : public juce::Component
 {
 public:
     StemRow (StemPlayer&, int index, juce::String name);
-    /** Instrumental row: no player controls, just drag. */
-    explicit StemRow (juce::String name);
+    /** Full mix / Instrumental row: no player controls, just drag. */
+    StemRow (juce::String name, const juce::Path& icon);
 
     void setFile (const juce::File& f) { drag.setFile (f); }
     void refresh();
@@ -147,6 +147,7 @@ private:
     StemPlayer* player = nullptr;
     int index = -1;
     juce::String name;
+    const juce::Path* icon = nullptr; // rows without a player
     juce::TextButton muteButton { "M" }, soloButton { "S" };
     SegmentBar volume;
     DragHandle drag;
