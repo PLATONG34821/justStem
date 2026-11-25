@@ -1,8 +1,9 @@
 # justStem
 
-A VST3 / AU plug-in for people who make covers. Give it a song (an audio file or a YouTube link)
-and it splits it into **vocals, drums, bass, guitar, piano and other**, and finds the **key, tempo,
-loudness and chords**. Everything runs on your computer.
+justStem is an open-source VST3 / AU plug-in (and standalone app) that splits a song into six stems,
+**vocals, drums, bass, guitar, piano and other**, plus an instrumental and the full mix, and finds its
+**key, tempo, loudness and chords**. Give it an audio file or a YouTube link; the AI runs on your
+computer, and nothing is uploaded.
 
 <p align="center"><img src="docs/screenshots/stems.png" width="600" alt="justStem with a song split into stems"></p>
 
