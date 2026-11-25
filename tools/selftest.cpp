@@ -8,6 +8,7 @@
 #include "../src/core/Separator.h"
 #include "../src/io/AudioFiles.h"
 #include "../src/io/M4aDecoder.h"
+#include "../src/io/ToolInstaller.h"
 
 #include <juce_core/juce_core.h>
 
@@ -524,6 +525,17 @@ int analysisSelftest()
             check (error == songTooLong().what(), std::string (name) + ", claiming 4 billion frames, is refused before they're read: \"" + error + "\"");
         }
         file.deleteFile();
+    }
+
+    std::printf ("Tool checksum parsing\n");
+    {
+        const juce::String hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        check (findSha256InSums ("deadbeef  other.exe\n" + hash + "  yt-dlp_macos\n", "yt-dlp_macos") == hash,
+               "multi-line SHA2-256SUMS extracts matching 64-hex digest");
+        check (findSha256InSums (hash + "  deno.zip\n", "deno.zip") == hash,
+               "single-line sha256sum extracts 64-hex digest");
+        check (findSha256InSums ("503 Service Unavailable\n", "deno.zip").isEmpty(),
+               "single-line HTTP error page is rejected");
     }
 
     std::printf ("%s\n", failures == 0 ? "ALL PASSED" : (std::to_string (failures) + " FAILED").c_str());

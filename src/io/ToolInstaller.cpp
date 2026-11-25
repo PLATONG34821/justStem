@@ -38,13 +38,18 @@ void download (const juce::URL& url, const juce::File& dest, const juce::String&
 /** Throws (and deletes `file`) unless its SHA-256 matches the entry for `name` in the checksum file at `sumsUrl`. */
 void verifyChecksum (const juce::File& file, const juce::URL& sumsUrl, const juce::String& name)
 {
-    // Checksum files are "<hash>  <name>" per line, or just one line for a single file.
-    const auto lines = juce::StringArray::fromLines (sumsUrl.readEntireTextStream().trim());
-    juce::String expected;
-    for (const auto& line : lines)
-        if (lines.size() == 1 || line.trim().endsWith (" " + name) || line.trim().endsWith ("*" + name))
-            expected = line.trim().upToFirstOccurrenceOf (" ", false, false);
-    if (expected.isEmpty()) throw std::runtime_error ("Couldn't fetch checksums for " + name.toStdString());
+    int status = 0;
+    auto stream = sumsUrl.createInputStream (juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+                                                 .withConnectionTimeoutMs (20000)
+                                                 .withNumRedirectsToFollow (10)
+                                                 .withStatusCode (&status));
+    const auto text = stream != nullptr && status < 400 ? stream->readEntireStreamAsString() : juce::String();
+    const auto expected = findSha256InSums (text, name);
+    if (expected.isEmpty())
+    {
+        file.deleteFile();
+        throw std::runtime_error ("Couldn't fetch checksums for " + name.toStdString());
+    }
 
     juce::FileInputStream in (file);
     if (! juce::SHA256 (in).toHexString().equalsIgnoreCase (expected))
@@ -93,6 +98,24 @@ juce::File scratchFor (const juce::File& exe, const char* suffix)
     return exe.getSiblingFile (exe.getFileNameWithoutExtension() + "-" + juce::Uuid().toString() + suffix);
 }
 } // namespace
+
+juce::String findSha256InSums (const juce::String& sumsText, const juce::String& fileName)
+{
+    // Checksum files are "<hash>  <name>" per line, or just one line for a single file.
+    const auto lines = juce::StringArray::fromLines (sumsText.trim());
+    juce::String expected;
+    for (const auto& raw : lines)
+    {
+        const auto line = raw.trim();
+        if (lines.size() == 1 || line.endsWith (" " + fileName) || line.endsWith ("*" + fileName))
+        {
+            const auto token = line.upToFirstOccurrenceOf (" ", false, false).upToFirstOccurrenceOf ("\t", false, false);
+            if (token.length() == 64 && token.containsOnly ("0123456789abcdefABCDEF"))
+                expected = token;
+        }
+    }
+    return expected;
+}
 
 juce::File ensureYtDlp (const ProgressCallback& progress, const std::atomic<bool>& cancel)
 {
