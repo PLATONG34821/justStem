@@ -144,6 +144,7 @@ public:
     StemRow (juce::String name, const juce::Path& icon);
 
     void setFile (const juce::File& f) { drag.setFile (f); }
+    void setTransposed (bool transposed);
     void refresh();
     void paint (juce::Graphics&) override;
     void resized() override;

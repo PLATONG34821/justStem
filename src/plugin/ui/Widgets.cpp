@@ -291,6 +291,14 @@ StemRow::StemRow (juce::String n, const juce::Path& i) : name (std::move (n)), i
     addAndMakeVisible (drag);
 }
 
+void StemRow::setTransposed (bool transposed)
+{
+    drag.setTooltip (transposed ? "Drag onto a track in your DAW (original key; use Save all for transposed stems)"
+                                : "Drag onto a track in your DAW");
+    drag.setTitle ("Drag " + name + " onto a track"
+                   + (transposed ? " (original key; use Save all for transposed stems)" : ""));
+}
+
 void StemRow::refresh()
 {
     if (player == nullptr) return;

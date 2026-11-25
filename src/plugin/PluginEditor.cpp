@@ -469,7 +469,7 @@ void justStemEditor::refreshAll()
         rows[numStems + 1]->setFile (song->instrumentalFile());
         chordView.setSong (song);
     }
-    for (auto* row : rows) row->refresh();
+    for (auto* row : rows) { row->setTransposed (t != 0); row->refresh(); }
     updateGauge();
     updatePlayerBar();
     repaint();

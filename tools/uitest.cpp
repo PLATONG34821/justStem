@@ -139,15 +139,23 @@ int main (int argc, char** argv)
     {
         // Screen readers name each drag handle by its row.
         int handles = 0, named = 0;
+        juststem::ui::DragHandle* firstHandle = nullptr;
         std::function<void (juce::Component&)> walk = [&] (juce::Component& c) {
             for (auto* child : c.getChildren())
             {
-                if (auto* d = dynamic_cast<juststem::ui::DragHandle*> (child)) { ++handles; named += d->getTitle().startsWith ("Drag ") ? 1 : 0; }
+                if (auto* d = dynamic_cast<juststem::ui::DragHandle*> (child))
+                {
+                    if (firstHandle == nullptr) firstHandle = d;
+                    ++handles;
+                    named += d->getTitle().startsWith ("Drag ") ? 1 : 0;
+                }
                 walk (*child);
             }
         };
         walk (*editor);
         check (handles == 8 && named == 8, juce::String (named) + " of " + juce::String (handles) + " drag handles named for screen readers");
+        check (firstHandle != nullptr && ! firstHandle->getTooltip().contains ("Save all"),
+               "drag handle tooltip is plain when not transposed");
         auto* title = findChild<juststem::ui::SongTitle> (*editor);
         check (title != nullptr && title->getAccessibilityHandler() != nullptr
                    && title->getTitle().contains (proc->getSong()->title),
@@ -321,6 +329,21 @@ int main (int argc, char** argv)
     pumpUntil ([] { return false; }, 300);
     check (proc->getTranspose() == 2, "transpose +2");
     check (hostListener.nonParamChanges > afterPlayerChanges + 2, "transpose notifies the host");
+    {
+        juststem::ui::DragHandle* firstHandle = nullptr;
+        std::function<void (juce::Component&)> findDrag = [&] (juce::Component& c) {
+            for (auto* child : c.getChildren())
+            {
+                if (firstHandle == nullptr)
+                    if (auto* d = dynamic_cast<juststem::ui::DragHandle*> (child)) firstHandle = d;
+                findDrag (*child);
+            }
+        };
+        findDrag (*editor);
+        check (firstHandle != nullptr && firstHandle->getTooltip().contains ("original key")
+                   && firstHandle->getTooltip().contains ("Save all"),
+               "drag handle notes original key and Save all when transposed");
+    }
     const auto chart = juststem::ui::ChordView::chartText (*s, 2);
     check (chart.contains ("transposed +2") && chart.contains ("| "), "chord chart text for the clipboard");
     std::printf ("%s", chart.upToFirstOccurrenceOf ("\n\n", false, false).toRawUTF8());
