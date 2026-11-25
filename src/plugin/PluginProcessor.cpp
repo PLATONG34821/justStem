@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "ui/SaveStems.h"
 #include "../core/Separator.h"
 #include "Text.h"
 
@@ -46,6 +47,7 @@ justStemProcessor::justStemProcessor (juce::File fastModel)
 
 justStemProcessor::~justStemProcessor()
 {
+    stemExport.reset();
     {
         const juce::ScopedLock sl (instancesLock);
         instances.removeFirstMatchingValue (this);
@@ -107,6 +109,20 @@ void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source
     });
     job->start();
     sendChangeMessage();
+}
+
+void justStemProcessor::exportStems (const juce::File& dest, juce::Component* editor)
+{
+    SongResultPtr s;
+    {
+        const juce::ScopedLock sl (songLock);
+        s = song;
+    }
+    if (s == nullptr || stemExport != nullptr) return;
+    std::weak_ptr<bool> token = alive;
+    stemExport = ui::startSaveStems (std::move (s), getTranspose(), dest, editor, [this, token] {
+        if (! token.expired()) stemExport.reset();
+    });
 }
 
 void justStemProcessor::reloadRestored (const juce::File& folder)

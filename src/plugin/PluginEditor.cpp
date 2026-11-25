@@ -1,5 +1,4 @@
 #include "PluginEditor.h"
-#include "ui/SaveStems.h"
 #include "../io/AudioFiles.h"
 #include "../io/YouTube.h"
 #include "Text.h"
@@ -576,12 +575,13 @@ void justStemEditor::chooseFile()
 
 void justStemEditor::saveAll()
 {
-    auto song = proc.getSong();
-    if (song == nullptr) return;
+    if (proc.getSong() == nullptr || proc.isExporting()) return;
     chooser = std::make_unique<juce::FileChooser> ("Save all stems to...", juce::File::getSpecialLocation (juce::File::userDesktopDirectory));
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
-                          [song, semitones = proc.getTranspose()] (const juce::FileChooser& fc) {
-                              if (const auto dest = fc.getResult(); dest.isDirectory()) ui::saveStems (song, semitones, dest);
+                          [safe = juce::Component::SafePointer<justStemEditor> (this)] (const juce::FileChooser& fc) {
+                              if (safe == nullptr) return;
+                              if (const auto dest = fc.getResult(); dest.isDirectory())
+                                  safe->proc.exportStems (dest, safe.getComponent());
                           });
 }
 

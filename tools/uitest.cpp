@@ -553,6 +553,25 @@ int main (int argc, char** argv)
         check (juststem::SongJob::numAbandoned() == 0, "the abandoned job ends and deletes itself");
     }
 
+    std::printf ("Closing the plug-in during Save all\n");
+    {
+        auto expProc = std::make_unique<justStemProcessor> (model);
+        expProc->setStateInformation (state.getData(), (int) state.getSize());
+        pumpUntil ([&] { return expProc->getSong() != nullptr && ! expProc->isBusy(); }, 60000);
+        const auto expDest = outDir.getChildFile ("export-close-test");
+        expDest.createDirectory();
+        expProc->setTranspose (2);
+        expProc->exportStems (expDest);
+        check (expProc->isExporting(), "export started and is owned by the processor");
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        expProc.reset();
+        const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+        const int left = expDest.getNumberOfChildFiles (juce::File::findFilesAndDirectories);
+        expDest.deleteRecursively();
+        check (ms < 1500 && left == 0,
+               "closing the plug-in mid-export stops cleanly (" + juce::String (juce::roundToInt (ms)) + " ms) and cleans up");
+    }
+
     std::printf ("A stem edited outside justStem\n");
     {
         // Trimmed to 10 s, e.g. in an audio editor: on reload every stem must still have one length.

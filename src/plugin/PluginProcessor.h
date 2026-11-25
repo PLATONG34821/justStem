@@ -8,6 +8,8 @@
 
 #include <atomic>
 
+namespace juststem::ui { class StemExport; }
+
 /** The plug-in: passes its input through, adds the stem preview, and runs song jobs.
     Broadcasts a change message whenever a job starts or finishes. */
 class justStemProcessor final : public juce::AudioProcessor, public juce::ChangeBroadcaster
@@ -34,6 +36,8 @@ public:
     void showError (const juce::String& message) { error = message; sendChangeMessage(); }
     juststem::SongResultPtr getSong() const { return song; }
     juststem::StemPlayer& player() { return stemPlayer; }
+    void exportStems (const juce::File& dest, juce::Component* editor = nullptr);
+    bool isExporting() const { return stemExport != nullptr; }
     /** HQ mode splits with BS-RoFormer instead of HT-Demucs (saved with the DAW project). */
     bool hqAvailable() const { return hqModelFile.existsAsFile(); }
     bool getHQ() const { return hq && hqAvailable(); }
@@ -97,6 +101,7 @@ private:
     const juce::File fastModelFile, hqModelFile;
     juststem::StemPlayer stemPlayer;
     std::unique_ptr<juststem::SongJob> job;
+    std::unique_ptr<juststem::ui::StemExport> stemExport;
     juststem::SongResultPtr song; // set on the message thread, under songLock
     // Hosts may save or restore the state on any thread, which reads `song` while a job replaces it.
     juce::CriticalSection songLock;
