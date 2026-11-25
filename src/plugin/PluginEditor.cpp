@@ -9,7 +9,7 @@ using namespace juststem::ui;
 
 namespace
 {
-constexpr int windowW = 900, windowH = 690, margin = 28;
+constexpr int windowW = 900, windowH = 620, margin = 28, gaugeSize = 204;
 
 // The "justStem" wordmark (light "just", bold "Stem") and the song title share the top bar's baseline.
 juce::Font wordmarkLight() { return font (Weight::Light, 23.0f, 0.01f); }
@@ -31,7 +31,7 @@ void paintReadout (juce::Graphics& g, juce::Rectangle<int> r, Gauge::Lines lines
     g.setFont (capsFont());
     g.drawText (caption, line (lines.caption, 22), just, false);
     g.setColour (hasValue ? Palette::text : Palette::faint);
-    g.setFont (font (Weight::Light, 38.0f));
+    g.setFont (font (Weight::Light, 34.0f));
     g.drawText (value, line (lines.value, 50), just, false);
     g.setColour (Palette::dim);
     g.setFont (font (Weight::Regular, 13.0f));
@@ -166,7 +166,7 @@ justStemEditor::~justStemEditor()
 // ============================================================================ layout
 void justStemEditor::resized()
 {
-    auto r = getLocalBounds().reduced (margin, 0).withTrimmedTop (12).withTrimmedBottom (22); // less air at the top
+    auto r = getLocalBounds().reduced (margin, 0).withTrimmedTop (12).withTrimmedBottom (16); // fits 720p screens with window chrome
 
     // Top bar: song title (or the link box) on the left, "justStem" centred over the gauge, buttons on the right.
     auto top = r.removeFromTop (40);
@@ -200,7 +200,7 @@ void justStemEditor::resized()
     // The name needs room on both sides; when the buttons reach it (e.g. a narrow layout) it's left out.
     if (top.getRight() < wordmarkArea.getRight() + 16) wordmarkArea = {};
     // The link box and the song title end in line with the left edge of the gauge below.
-    const int gaugeLeft = getWidth() / 2 - 236 / 2;
+    const int gaugeLeft = getWidth() / 2 - gaugeSize / 2;
     const auto left = top.withRight (juce::jmin (top.getRight(), gaugeLeft, wordmarkArea.isEmpty() ? top.getRight() : wordmarkArea.getX() - 16));
     if (inputShown())
     {
@@ -221,9 +221,9 @@ void justStemEditor::resized()
     // The gauge tucks up under the top bar: its ring only comes near the bar in the middle, below "justStem".
     r.setTop (r.getY() - 6);
 
-    auto readouts = r.removeFromTop (236);
-    gauge.setBounds (readouts.withSizeKeepingCentre (236, 236));
-    tempoArea = readouts.removeFromLeft ((readouts.getWidth() - 236) / 2 - 20);
+    auto readouts = r.removeFromTop (gaugeSize);
+    gauge.setBounds (readouts.withSizeKeepingCentre (gaugeSize, gaugeSize));
+    tempoArea = readouts.removeFromLeft ((readouts.getWidth() - gaugeSize) / 2 - 20);
     loudArea = readouts.removeFromRight (tempoArea.getWidth());
     tempoText.setBounds (tempoArea);
     loudText.setBounds (loudArea);
@@ -231,10 +231,10 @@ void justStemEditor::resized()
     // The player only shows with a song open; otherwise the log / drop hint gets its space.
     const bool busy = proc.isBusy();
     const bool player = visibleSong() != nullptr;
-    playerBar.setBounds (player ? r.removeFromBottom (40) : juce::Rectangle<int>());
-    if (player) r.removeFromBottom (10);
-    r.removeFromTop (14);
-    stemsHeader = r.removeFromTop (34);
+    playerBar.setBounds (player ? r.removeFromBottom (36) : juce::Rectangle<int>());
+    if (player) r.removeFromBottom (8);
+    r.removeFromTop (10);
+    stemsHeader = r.removeFromTop (30);
     stemsArea = r;
 
     auto header = stemsHeader;

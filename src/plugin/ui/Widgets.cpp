@@ -319,7 +319,7 @@ void StemRow::paint (juce::Graphics& g)
 
 void StemRow::resized()
 {
-    const int h = std::min (22, getHeight() - 10); // room between the rows
+    const int h = std::min (22, getHeight() - 8); // room between the rows
     auto r = getLocalBounds().withSizeKeepingCentre (getWidth(), h);
     drag.setBounds (r.removeFromRight (40));
     if (player == nullptr) return;

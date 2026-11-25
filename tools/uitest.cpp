@@ -94,6 +94,7 @@ int main (int argc, char** argv)
     std::unique_ptr<juce::AudioProcessorEditor> editor (proc->createEditor());
 
     std::printf ("UI\n");
+    check (editor->getWidth() == 900 && editor->getHeight() == 620, "window is 900 x 620 (fits 720p screens)");
     snapshot (*editor, outDir.getChildFile ("1-idle.png"));
 
     std::printf ("Error messages\n");
