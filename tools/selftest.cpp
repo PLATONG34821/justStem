@@ -9,6 +9,8 @@
 #include "../src/io/AudioFiles.h"
 #include "../src/io/M4aDecoder.h"
 #include "../src/io/ToolInstaller.h"
+#include "../src/io/UpdateCheck.h"
+#include "../src/io/YouTube.h"
 
 #include <juce_core/juce_core.h>
 
@@ -17,6 +19,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <initializer_list>
 #include <numbers>
 #include <string>
 
@@ -539,6 +543,135 @@ int analysisSelftest()
                "single-line sha256sum extracts 64-hex digest");
         check (findSha256InSums ("503 Service Unavailable\n", "deno.zip").isEmpty(),
                "single-line HTTP error page is rejected");
+    }
+
+    std::printf ("Update check and YouTube URL helpers\n");
+    {
+        check (UpdateCheck::isNewer ("v0.0.6", "0.0.5") && UpdateCheck::isNewer ("0.1.0", "0.0.5")
+                   && ! UpdateCheck::isNewer ("v0.0.5", "0.0.5") && ! UpdateCheck::isNewer ("0.0.4", "0.0.5")
+                   && ! UpdateCheck::isNewer ("v0.0.5-test", "0.0.5") && ! UpdateCheck::isNewer ("invalid", "0.0.5"),
+               "UpdateCheck::isNewer compares semantic versions");
+        check (isYouTubeLink ("https://www.youtube.com/watch?v=abc") && isYouTubeLink ("youtu.be/abc")
+                   && isYouTubeLink ("music.youtube.com/watch?v=abc")
+                   && ! isYouTubeLink ("https://notyoutube.com/watch?v=abc") && ! isYouTubeLink ("/tmp/song.mp3"),
+               "isYouTubeLink matches YouTube hosts only");
+    }
+
+    std::printf ("Spectrogram model path (Stft + ONNX)\n");
+    {
+        // Minimal opset-17 ONNX model matching model::hq's spectrogram I/O: splits both
+        // spec_real and spec_imag equally across 6 stems (sum of stems == mix).
+        auto varint = [] (std::string& out, std::uint64_t v) {
+            for (; v >= 0x80; v >>= 7) out.push_back ((char) ((v & 0x7f) | 0x80));
+            out.push_back ((char) v);
+        };
+        auto fieldBytes = [&] (std::string& out, int id, const std::string& data) {
+            varint (out, (std::uint64_t) ((id << 3) | 2));
+            varint (out, data.size());
+            out += data;
+        };
+        auto fieldInt = [&] (std::string& out, int id, std::int64_t v) {
+            varint (out, (std::uint64_t) ((id << 3) | 0));
+            varint (out, (std::uint64_t) v);
+        };
+        auto valueInfo = [&] (const std::string& name, std::initializer_list<std::int64_t> dims) {
+            std::string shape;
+            for (auto d : dims)
+            {
+                std::string dim;
+                fieldInt (dim, 1, d);
+                fieldBytes (shape, 1, dim);
+            }
+            std::string tensor, type, vi;
+            fieldInt (tensor, 1, 1); // FLOAT
+            fieldBytes (tensor, 2, shape);
+            fieldBytes (type, 1, tensor);
+            fieldBytes (vi, 1, name);
+            fieldBytes (vi, 2, type);
+            return vi;
+        };
+        auto tensorInit = [&] (const std::string& name, int dtype, std::initializer_list<std::int64_t> dims, const std::string& raw) {
+            std::string t;
+            for (auto d : dims) fieldInt (t, 1, d);
+            fieldInt (t, 2, dtype);
+            fieldBytes (t, 8, name);
+            fieldBytes (t, 9, raw);
+            return t;
+        };
+        auto node = [&] (std::initializer_list<std::string> ins, std::initializer_list<std::string> outs,
+                         const std::string& name, const std::string& op, int axisAttr = -1) {
+            std::string n;
+            for (const auto& s : ins) fieldBytes (n, 1, s);
+            for (const auto& s : outs) fieldBytes (n, 2, s);
+            fieldBytes (n, 3, name);
+            fieldBytes (n, 4, op);
+            if (axisAttr >= 0)
+            {
+                std::string attr;
+                fieldBytes (attr, 1, "axis");
+                fieldInt (attr, 3, axisAttr);
+                fieldInt (attr, 20, 2); // AttributeType::INT
+                fieldBytes (n, 5, attr);
+            }
+            return n;
+        };
+        const float oneSixth = 1.0f / 6.0f;
+        std::string scaleRaw (sizeof (float), '\0');
+        std::memcpy (scaleRaw.data(), &oneSixth, sizeof (float));
+        std::string shapeRaw;
+        for (std::int64_t d : { 1, 1, 2, 1025, 345 })
+            for (int b = 0; b < 8; ++b) shapeRaw.push_back ((char) ((d >> (8 * b)) & 0xff));
+
+        std::string graph;
+        fieldBytes (graph, 1, node ({ "spec_real", "scale" }, { "r_scaled" }, "mul_r", "Mul"));
+        fieldBytes (graph, 1, node ({ "r_scaled", "shape5d" }, { "r_5d" }, "res_r", "Reshape"));
+        fieldBytes (graph, 1, node ({ "r_5d", "r_5d", "r_5d", "r_5d", "r_5d", "r_5d" }, { "out_spec_real" }, "cat_r", "Concat", 1));
+        fieldBytes (graph, 1, node ({ "spec_imag", "scale" }, { "i_scaled" }, "mul_i", "Mul"));
+        fieldBytes (graph, 1, node ({ "i_scaled", "shape5d" }, { "i_5d" }, "res_i", "Reshape"));
+        fieldBytes (graph, 1, node ({ "i_5d", "i_5d", "i_5d", "i_5d", "i_5d", "i_5d" }, { "out_spec_imag" }, "cat_i", "Concat", 1));
+        fieldBytes (graph, 2, "hq_test");
+        fieldBytes (graph, 5, tensorInit ("scale", 1, {}, scaleRaw));
+        fieldBytes (graph, 5, tensorInit ("shape5d", 7, { 5 }, shapeRaw));
+        fieldBytes (graph, 11, valueInfo ("spec_real", { 1, 2, 1025, 345 }));
+        fieldBytes (graph, 11, valueInfo ("spec_imag", { 1, 2, 1025, 345 }));
+        fieldBytes (graph, 12, valueInfo ("out_spec_real", { 1, 6, 2, 1025, 345 }));
+        fieldBytes (graph, 12, valueInfo ("out_spec_imag", { 1, 6, 2, 1025, 345 }));
+
+        std::string opset, onnxModel;
+        fieldInt (opset, 2, 17);
+        fieldInt (onnxModel, 1, 8);
+        fieldBytes (onnxModel, 7, graph);
+        fieldBytes (onnxModel, 8, opset);
+
+        const auto tmpDir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                .getChildFile ("juststem-hq-selftest-" + juce::Uuid().toString());
+        tmpDir.createDirectory();
+        const auto hqFile = tmpDir.getChildFile (juce::String (std::string (model::hq.fileName)));
+        hqFile.replaceWithData (onnxModel.data(), onnxModel.size());
+
+        const int n = sampleRate * 6; // > 176,400 samples so crossfaded chunks run
+        StereoAudio mix;
+        mix.left.resize ((size_t) n);
+        mix.right.resize ((size_t) n);
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = (double) i / sampleRate;
+            mix.left[(size_t) i] = (float) (0.3 * std::sin (2 * std::numbers::pi * 220.0 * t));
+            mix.right[(size_t) i] = (float) (0.3 * std::sin (2 * std::numbers::pi * 330.0 * t));
+        }
+
+        Separator sep (hqFile.getFullPathName().toStdString(), {});
+        std::atomic<bool> cancel { false };
+        const auto stems = sep.separate (mix, {}, cancel);
+        tmpDir.deleteRecursively();
+
+        std::vector<float> sumL ((size_t) n, 0.0f), sumR ((size_t) n, 0.0f);
+        for (const auto& [_, s] : stems)
+            for (int i = 0; i < n; ++i) { sumL[(size_t) i] += s.left[(size_t) i]; sumR[(size_t) i] += s.right[(size_t) i]; }
+        const double sdrL = siSdr (sumL, mix.left), sdrR = siSdr (sumR, mix.right);
+        check (stems.size() == numStems && sdrL > 50.0 && sdrR > 50.0,
+               "STFT forward/inverse roundtrip across chunks (SI-SDR L " + juce::String (sdrL, 1).toStdString()
+                   + " dB, R " + juce::String (sdrR, 1).toStdString() + " dB)");
     }
 
     std::printf ("%s\n", failures == 0 ? "ALL PASSED" : (std::to_string (failures) + " FAILED").c_str());

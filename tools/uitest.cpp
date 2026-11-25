@@ -1,11 +1,14 @@
-// juststem_uitest <model.onnx> <song> <output folder> [--hq]: drives the real plug-in code without a DAW.
+// juststem_uitest <model.onnx> <--synth | song> <output folder> [--hq]: drives the real plug-in code without a DAW.
 // Renders the editor to PNGs, runs a full split, checks the preview audio and state save/reload.
 #include "../src/io/AudioFiles.h"
 #include "../src/plugin/PluginEditor.h"
 #include "../src/plugin/PluginProcessor.h"
 
+#include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <numbers>
 
 static int failures = 0;
 static void check (bool ok, const juce::String& what)
@@ -76,13 +79,66 @@ static std::vector<float> render (justStemProcessor& p, int blocks)
 
 int main (int argc, char** argv)
 {
-    if (argc < 4) { std::fprintf (stderr, "usage: juststem_uitest <model.onnx> <song> <output folder> [--hq]\n"); return 2; }
+    if (argc < 4) { std::fprintf (stderr, "usage: juststem_uitest <model.onnx> <--synth | song> <output folder> [--hq]\n"); return 2; }
     const bool hq = argc > 4 && std::string (argv[4]) == "--hq";
     juce::ScopedJuceInitialiser_GUI gui;
     // UTF-8 paths, relative to the current folder unless absolute.
     auto fileArg = [] (const char* arg) { return juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (arg)); };
-    const juce::File model = fileArg (argv[1]), song = fileArg (argv[2]), outDir = fileArg (argv[3]);
+    const juce::File model = fileArg (argv[1]), outDir = fileArg (argv[3]);
     outDir.createDirectory();
+    const bool useSynth = std::string (argv[2]) == "--synth";
+    const juce::File song = useSynth ? outDir.getChildFile ("synth-song.wav") : fileArg (argv[2]);
+    if (useSynth)
+    {
+        // 68 s at 128 BPM (36 bars of Am - F - C - G): drums, bass and chord keys, like `juststem_cli selftest`.
+        constexpr double bpm = 128.0, beatSec = 60.0 / bpm, seconds = 68.0;
+        constexpr int sr = juststem::sampleRate, n = (int) (seconds * sr);
+        juststem::StereoAudio synth;
+        synth.left.assign ((size_t) n, 0.0f);
+        synth.right.assign ((size_t) n, 0.0f);
+
+        std::uint32_t seed = 17;
+        auto rnd = [&] { seed = (seed * 1103515245u + 12345u) & 0x7fffffffu; return (double) seed / 0x7fffffff * 2.0 - 1.0; };
+        const int prog[4][4] { { 57, 60, 64, 69 }, { 53, 57, 60, 65 }, { 48, 55, 60, 64 }, { 55, 59, 62, 67 } };
+
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = (double) i / sr;
+            const double beatPos = t / beatSec;
+            const int beatIdx = (int) std::floor (beatPos);
+            const double b = (beatPos - beatIdx) * beatSec;
+            const double barT = std::fmod (t, 4.0 * beatSec);
+            const double e8 = std::fmod (t, beatSec * 0.5);
+            const int bar = (beatIdx / 4) % 4;
+            const int inBar = beatIdx % 4;
+
+            double drum = 0.0;
+            if ((inBar == 0 || inBar == 2) && b < 0.25)
+                drum += std::sin (2.0 * std::numbers::pi * (52.0 + 75.0 * std::exp (-b * 30.0)) * b) * std::exp (-b * 12.0) * 0.50;
+            if ((inBar == 1 || inBar == 3) && b < 0.16)
+                drum += rnd() * std::exp (-b * 26.0) * 0.32;
+            if (e8 < 0.04)
+                drum += rnd() * std::exp (-e8 * 110.0) * 0.07;
+
+            const int* ch = prog[bar];
+            const double fBass = 440.0 * std::pow (2.0, (ch[0] - 24 - 69) / 12.0);
+            double bass = 0.0;
+            for (int h = 1; h <= 5; ++h) bass += std::sin (2.0 * std::numbers::pi * fBass * h * barT) / h;
+            bass *= 0.16 * (0.6 + 0.4 * std::exp (-b * 4.0));
+
+            double keys = 0.0;
+            for (int m = 1; m < 4; ++m)
+            {
+                const double fk = 440.0 * std::pow (2.0, (ch[m] - 69) / 12.0);
+                for (int h = 1; h <= 4; ++h) keys += std::sin (2.0 * std::numbers::pi * fk * h * barT) * std::exp (-h * 0.6);
+            }
+            keys *= 0.06 * std::exp (-b * 2.2);
+
+            synth.left[(size_t) i] = (float) (drum + bass + keys * 1.15);
+            synth.right[(size_t) i] = (float) (drum + bass + keys * 0.85);
+        }
+        juststem::writeWav (song, synth, 24);
+    }
 
     auto proc = std::make_unique<justStemProcessor> (model);
     struct HostListener final : juce::AudioProcessorListener
@@ -157,7 +213,9 @@ int main (int argc, char** argv)
         check (firstHandle != nullptr && ! firstHandle->getTooltip().contains ("Save all"),
                "drag handle tooltip is plain when not transposed");
         auto* title = findChild<juststem::ui::SongTitle> (*editor);
-        check (title != nullptr && title->getAccessibilityHandler() != nullptr
+        auto titleHandler = title != nullptr ? title->createAccessibilityHandler() : nullptr;
+        check (title != nullptr && title->isAccessible() && titleHandler != nullptr
+                   && titleHandler->getRole() == juce::AccessibilityRole::staticText
                    && title->getTitle().contains (proc->getSong()->title),
                "song title is named for screen readers");
     }
@@ -270,12 +328,14 @@ int main (int argc, char** argv)
     renderRms (*proc, 2); // let the gain ramp finish
     check (renderRms (*proc, 50) < 1e-6, "all muted -> silent");
     for (int i = 0; i < juststem::numStems; ++i) pl.setMute (i, false);
-    pl.setSolo (0, true); // vocals only
+    const int soloStem = useSynth ? 2 : 0; // bass in --synth (an instrumental band), vocals in a song
+    const juce::String soloName = useSynth ? "bass" : "vocals";
+    pl.setSolo (soloStem, true);
     renderRms (*proc, 2);
-    const double vox = renderRms (*proc, 200);
-    check (vox > 0.001 && vox < all, "solo vocals is quieter than the full mix (" + juce::String (vox, 4) + " < " + juce::String (all, 4) + ")");
+    const double solo = renderRms (*proc, 200);
+    check (solo > 0.001 && solo < all, "solo " + soloName + " is quieter than the full mix (" + juce::String (solo, 4) + " < " + juce::String (all, 4) + ")");
     check (pl.positionSeconds() > testPosition, "position advances (" + juce::String (pl.positionSeconds(), 2) + " s)");
-    pl.setSolo (0, false);
+    pl.setSolo (soloStem, false);
     {
         // Some hosts send more samples than prepareToPlay announced (512 here).
         juce::AudioBuffer<float> big (2, 4096);
@@ -626,6 +686,7 @@ int main (int argc, char** argv)
     editor.reset();
     proc2.reset();
     s->folder.deleteRecursively(); // the test's own stems
+    if (useSynth) song.deleteFile();
     std::printf ("%s\n", failures == 0 ? "ALL PASSED" : (juce::String (failures) + " FAILED").toRawUTF8());
     return failures == 0 ? 0 : 1;
 }

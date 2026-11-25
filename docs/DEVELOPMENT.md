@@ -43,7 +43,7 @@ Every push is built and tested on macOS, Windows and Linux by GitHub Actions
 ```sh
 build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
 build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx
-build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx <song> <screenshot folder>   # add --hq to split with the HQ model
+build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx --synth /tmp/uitest   # or pass a song path; add --hq for the HQ model
 ```
 
 - `analyze-selftest`: the resampler against exact sine waves and an aliasing test, loudness

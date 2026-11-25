@@ -33,7 +33,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev libfreetype-dev \
             libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
-            libxinerama-dev libxrandr-dev libxrender-dev libgl1-mesa-dev libcurl4-openssl-dev
+            libxinerama-dev libxrandr-dev libxrender-dev libgl1-mesa-dev libcurl4-openssl-dev xvfb
 
       - name: Ninja (macOS)
         if: runner.os == 'macOS'
@@ -97,6 +97,19 @@ jobs:
         run: build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
       - name: Test separation
         run: build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx 12
+      - name: Test HQ separation
+        if: env.RELEASE == 'true'
+        run: build/juststem_cli_artefacts/Release/juststem_cli selftest models/bs_roformer_sw_6stem_opt.onnx 8
+      - name: Test plug-in UI and audio
+        shell: bash
+        env:
+          JUSTSTEM_DATA_DIR: ${{ runner.temp }}/juststem-data
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx --synth build/uitest
+          else
+            build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx --synth build/uitest
+          fi
 
       - uses: actions/upload-artifact@v7
         with:
