@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "ui/SaveStems.h"
 #include "../core/Separator.h"
 #include "Text.h"
 
@@ -41,10 +42,12 @@ justStemProcessor::justStemProcessor (juce::File fastModel)
 {
     const juce::ScopedLock sl (instancesLock);
     instances.add (this);
+    stemPlayer.onSettingChanged = [this] { notifyHostStateChanged(); };
 }
 
 justStemProcessor::~justStemProcessor()
 {
+    stemExport.reset();
     {
         const juce::ScopedLock sl (instancesLock);
         instances.removeFirstMatchingValue (this);
@@ -75,12 +78,18 @@ void justStemProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     stemPlayer.process (buffer, hostSeconds);
 }
 
-void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source)
+void justStemProcessor::notifyHostStateChanged()
+{
+    if (restoringState.load() == 0)
+        updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
+}
+
+void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source, bool fromRestore)
 {
     if (job != nullptr) return;
     error.clear();
     std::weak_ptr<bool> token = alive;
-    job = std::make_unique<SongJob> (kind, source, getHQ() ? hqModelFile : fastModelFile, [this, token] (SongResultPtr result, juce::String err) {
+    job = std::make_unique<SongJob> (kind, source, getHQ() ? hqModelFile : fastModelFile, [this, token, fromRestore] (SongResultPtr result, juce::String err) {
         if (token.expired()) return;
         lastLog = job->log();
         job.reset();
@@ -91,6 +100,7 @@ void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source
                 song = result;
             }
             stemPlayer.setSong (song);
+            if (! fromRestore) notifyHostStateChanged();
         }
         else if (err != "cancelled")
             error = err;
@@ -101,11 +111,25 @@ void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source
     sendChangeMessage();
 }
 
+void justStemProcessor::exportStems (const juce::File& dest, juce::Component* editor)
+{
+    SongResultPtr s;
+    {
+        const juce::ScopedLock sl (songLock);
+        s = song;
+    }
+    if (s == nullptr || stemExport != nullptr) return;
+    std::weak_ptr<bool> token = alive;
+    stemExport = ui::startSaveStems (std::move (s), getTranspose(), dest, editor, [this, token] {
+        if (! token.expired()) stemExport.reset();
+    });
+}
+
 void justStemProcessor::reloadRestored (const juce::File& folder)
 {
     // The project's song wins, as when nothing is running; a song split meanwhile is saved, in Storage.
     if (job != nullptr) restoredFolder = folder;
-    else if (folder.isDirectory() && (song == nullptr || song->folder != folder)) startJob (SongJob::Kind::Reload, folder.getFullPathName());
+    else if (folder.isDirectory() && (song == nullptr || song->folder != folder)) startJob (SongJob::Kind::Reload, folder.getFullPathName(), true);
 }
 
 juce::Array<juce::File> justStemProcessor::songsInUse()
@@ -164,7 +188,13 @@ void justStemProcessor::setStateInformation (const void* data, int size)
 {
     const auto state = juce::ValueTree::readFromData (data, (size_t) size);
     if (! state.hasType ("justStem")) return;
-    stemPlayer.setFollowHost (state["followHost"]);
+    struct Restoring
+    {
+        std::atomic<int>& count;
+        explicit Restoring (std::atomic<int>& c) : count (c) { ++count; }
+        ~Restoring() { --count; }
+    } restoring (restoringState);
+    stemPlayer.setFollowHost (wrapperType != wrapperType_Standalone && (bool) state["followHost"]);
     transpose = juce::jlimit (-11, 11, (int) state["transpose"]);
     stemPlayer.setTranspose (transpose);
     hq = (bool) state["hq"];

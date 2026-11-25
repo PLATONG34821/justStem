@@ -98,4 +98,10 @@ private:
     std::unique_ptr<Impl> impl;
     Backend currentBackend = Backend::CPU;
 };
+
+/** Lowers every stem by the same gain when a stem, the instrumental (all but vocals) or the full mix
+    (all) would go over -0.1 dBFS: saved as 24-bit files they'd be clipped there. Loud songs decoded
+    from AAC or MP3 often peak above full scale. The stems keep their balance. Returns the change in dB
+    (0 when nothing would clip). */
+float fitUnderFullScale (StemMap& stems);
 } // namespace juststem

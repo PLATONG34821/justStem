@@ -31,18 +31,33 @@ juce::AudioFormatManager& formats()
 std::pair<int, int> mp3EncoderDelay (const juce::File& file)
 {
     juce::FileInputStream in (file);
+    if (! in.openedOk()) return { -1, -1 };
+
+    // Skip any leading ID3v2 tags first (album art often exceeds 64 KB).
+    for (;;)
+    {
+        const auto pos = in.getPosition();
+        unsigned char hdr[10] {};
+        if (in.read (hdr, 10) != 10 || std::memcmp (hdr, "ID3", 3) != 0
+            || ((hdr[6] | hdr[7] | hdr[8] | hdr[9]) & 0x80) != 0)
+        {
+            in.setPosition (pos);
+            break;
+        }
+        const juce::int64 tagSize = ((juce::int64) hdr[6] << 21) | ((juce::int64) hdr[7] << 14)
+                                  | ((juce::int64) hdr[8] << 7) | (juce::int64) hdr[9];
+        const juce::int64 footer = (hdr[5] & 0x10) != 0 ? 10 : 0;
+        if (! in.setPosition (pos + 10 + tagSize + footer)) return { -1, -1 };
+    }
+
     juce::MemoryBlock head;
-    in.readIntoMemoryBlock (head, 1 << 16);
+    in.readIntoMemoryBlock (head, 4096);
     const auto* d = static_cast<const unsigned char*> (head.getData());
     const std::size_t size = head.getSize();
     auto u32 = [&] (std::size_t at) { return (juce::uint32) d[at] << 24 | (juce::uint32) d[at + 1] << 16 | (juce::uint32) d[at + 2] << 8 | d[at + 3]; };
 
-    std::size_t start = 0;
-    if (size > 10 && std::memcmp (d, "ID3", 3) == 0) // skip an ID3v2 tag (its size is 7 bits per byte)
-        start = 10 + ((std::size_t) (d[6] & 0x7f) << 21 | (std::size_t) (d[7] & 0x7f) << 14 | (std::size_t) (d[8] & 0x7f) << 7 | (d[9] & 0x7f));
-
     // The Xing / Info header sits inside the first frame, right after the side information.
-    for (std::size_t at = start; at + 8 <= size && at < start + 512; ++at)
+    for (std::size_t at = 0; at + 8 <= size && at < 512; ++at)
     {
         if (std::memcmp (d + at, "Xing", 4) != 0 && std::memcmp (d + at, "Info", 4) != 0) continue;
         const auto flags = u32 (at + 4);

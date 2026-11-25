@@ -20,6 +20,10 @@ public:
     /** A new song starts its slide from the beginning. */
     void setSong (SongResultPtr);
 
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::staticText);
+    }
     void paint (juce::Graphics&) override;
     void resized() override { updateTimer(); }
     void visibilityChanged() override { updateTimer(); }

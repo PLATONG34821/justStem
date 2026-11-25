@@ -276,6 +276,7 @@ StemRow::StemRow (StemPlayer& p, int i, juce::String n) : player (&p), index (i)
     muteButton.setTitle ("Mute " + name);
     soloButton.setTitle ("Solo " + name);
     volume.setTitle (name + " volume");
+    drag.setTitle ("Drag " + name + " onto a track");
     muteButton.onClick = [this] { player->setMute (index, muteButton.getToggleState()); repaint(); };
     soloButton.onClick = [this] { player->setSolo (index, soloButton.getToggleState()); };
     volume.onChange = [this] (float v) { player->setVolume (index, v); };
@@ -284,7 +285,19 @@ StemRow::StemRow (StemPlayer& p, int i, juce::String n) : player (&p), index (i)
     refresh();
 }
 
-StemRow::StemRow (juce::String n, const juce::Path& i) : name (std::move (n)), icon (&i) { addAndMakeVisible (drag); }
+StemRow::StemRow (juce::String n, const juce::Path& i) : name (std::move (n)), icon (&i)
+{
+    drag.setTitle ("Drag " + name + " onto a track");
+    addAndMakeVisible (drag);
+}
+
+void StemRow::setTransposed (bool transposed)
+{
+    drag.setTooltip (transposed ? "Drag onto a track in your DAW (original key; use Save all for transposed stems)"
+                                : "Drag onto a track in your DAW");
+    drag.setTitle ("Drag " + name + " onto a track"
+                   + (transposed ? " (original key; use Save all for transposed stems)" : ""));
+}
 
 void StemRow::refresh()
 {
@@ -314,7 +327,7 @@ void StemRow::paint (juce::Graphics& g)
 
 void StemRow::resized()
 {
-    const int h = std::min (22, getHeight() - 10); // room between the rows
+    const int h = std::min (22, getHeight() - 8); // room between the rows
     auto r = getLocalBounds().withSizeKeepingCentre (getWidth(), h);
     drag.setBounds (r.removeFromRight (40));
     if (player == nullptr) return;

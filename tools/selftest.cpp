@@ -5,15 +5,22 @@
 #include "../src/core/Fft.h"
 #include "../src/core/PitchShift.h"
 #include "../src/core/Resampler.h"
+#include "../src/core/Separator.h"
 #include "../src/io/AudioFiles.h"
 #include "../src/io/M4aDecoder.h"
+#include "../src/io/ToolInstaller.h"
+#include "../src/io/UpdateCheck.h"
+#include "../src/io/YouTube.h"
 
 #include <juce_core/juce_core.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <initializer_list>
 #include <numbers>
 #include <string>
 
@@ -412,6 +419,84 @@ int analysisSelftest()
         }
     }
 
+    std::printf ("Headroom before saving\n");
+    {
+        // A sine per stem; vocals and drums in phase make the full mix peak at 1.2.
+        auto sine = [] (float amp) {
+            StereoAudio a;
+            for (int i = 0; i < sampleRate / 10; ++i) a.left.push_back (amp * (float) std::sin (2 * std::numbers::pi * 441.0 * i / sampleRate));
+            a.right = a.left;
+            return a;
+        };
+        auto peakOf = [] (const std::vector<float>& x) { float p = 0; for (float v : x) p = std::max (p, std::abs (v)); return p; };
+        const float ceiling = std::pow (10.0f, -0.1f / 20.0f);
+
+        StemMap loud { { Stem::Vocals, sine (0.5f) }, { Stem::Drums, sine (0.7f) }, { Stem::Bass, sine (0.0f) } };
+        const float db = fitUnderFullScale (loud);
+        std::vector<float> mix (loud.at (Stem::Vocals).left.size());
+        for (const auto& [stem, a] : loud) for (std::size_t i = 0; i < mix.size(); ++i) mix[i] += a.left[i];
+        const float ratio = peakOf (loud.at (Stem::Drums).left) / peakOf (loud.at (Stem::Vocals).left);
+        check (peakOf (mix) <= ceiling * 1.0001f && peakOf (mix) > ceiling * 0.999f && std::fabs (ratio - 1.4f) < 1e-4f
+                   && std::fabs (db - 20.0f * std::log10 (ceiling / 1.2f)) < 0.01f,
+               "a full mix over full scale: every stem lowered by " + juce::String (-db, 2).toStdString() + " dB, balance kept");
+
+        // Vocals against the drums: the full mix is quiet, but the instrumental (the drums) peaks at 1.1.
+        auto against = sine (-1.1f);
+        StemMap cancel { { Stem::Vocals, against }, { Stem::Drums, sine (1.1f) } };
+        fitUnderFullScale (cancel);
+        check (peakOf (cancel.at (Stem::Drums).left) <= ceiling * 1.0001f, "an instrumental over full scale is caught too");
+
+        StemMap quiet { { Stem::Vocals, sine (0.4f) }, { Stem::Drums, sine (0.4f) } };
+        const auto before = quiet.at (Stem::Vocals).left;
+        check (fitUnderFullScale (quiet) == 0.0f && quiet.at (Stem::Vocals).left == before, "stems that fit are left alone");
+    }
+
+    std::printf ("Gapless MP3 with cover art over 64 KB\n");
+    {
+        // Minimal 48 kHz 128 kbps stereo MPEG-1 Layer III frames (384 bytes each).
+        auto makeFrame = [] {
+            std::string f (384, '\0');
+            f[0] = '\xff'; f[1] = '\xfb'; f[2] = '\x94'; f[3] = '\x00';
+            return f;
+        };
+        std::string frames;
+        for (int i = 0; i < 11; ++i) frames += makeFrame();
+
+        auto infoFrame = makeFrame();
+        // After 4-byte header + 32-byte stereo side info: "Info" + flags (frame count) + 11 frames.
+        infoFrame.replace (36, 4, "Info");
+        infoFrame[43] = 0x01;
+        infoFrame[47] = 11;
+        // LAME tag starts at byte 48: 9-byte encoder + 12 bytes + 3-byte (delay=576, padding=1728).
+        infoFrame.replace (48, 9, "LAME3.100");
+        infoFrame[69] = 0x24; infoFrame[70] = 0x06; infoFrame[71] = '\xc0';
+
+        // 200,000-byte ID3v2.3 tag (synchsafe size = 0x00030D40 -> 0x00, 0x0c, 0x1a, 0x40).
+        constexpr std::uint32_t id3Payload = 200000;
+        std::string id3 ("ID3\x03\x00\x00", 6);
+        for (int shift = 21; shift >= 0; shift -= 7) id3.push_back ((char) ((id3Payload >> shift) & 0x7f));
+        id3.append (id3Payload, '\0');
+
+        const auto plainFile = juce::File::createTempFile (".mp3");
+        const auto taggedFile = juce::File::createTempFile (".mp3");
+        const auto artFile = juce::File::createTempFile (".mp3");
+        plainFile.replaceWithData (frames.data(), frames.size());
+        const auto taggedBytes = infoFrame + frames;
+        taggedFile.replaceWithData (taggedBytes.data(), taggedBytes.size());
+        const auto artBytes = id3 + taggedBytes;
+        artFile.replaceWithData (artBytes.data(), artBytes.size());
+
+        const auto plainLen = loadAudioFile (plainFile).size();
+        const auto taggedLen = loadAudioFile (taggedFile).size();
+        const auto artLen = loadAudioFile (artFile).size();
+        plainFile.deleteFile();
+        taggedFile.deleteFile();
+        artFile.deleteFile();
+        check (taggedLen < plainLen && artLen == taggedLen,
+               "encoder delay and padding are read past a 200 KB ID3v2 tag (" + std::to_string (artLen)
+                   + " samples == " + std::to_string (taggedLen) + ", plain " + std::to_string (plainLen) + ")");
+    }
+
     std::printf ("Damaged M4A files\n");
     {
         // Minimal MP4 boxes: big-endian sizes, then the type and payload.
@@ -433,6 +518,9 @@ int analysisSelftest()
                                                           + box ("stsc", zeros (4) + u32 (1) + u32 (1) + u32 (many) + u32 (1)))) },
             { "fragmented (trun)", ftyp + box ("moov", trak ({}) + box ("mvex", box ("trex", zeros (4) + u32 (1) + zeros (8) + u32 (1) + zeros (4))))
                                        + box ("moof", box ("traf", box ("tfhd", zeros (4) + u32 (1)) + box ("trun", zeros (4) + u32 (many)))) },
+            { "after 2 MB free box", ftyp + box ("free", zeros (2 << 20))
+                                          + box ("moov", trak (box ("stsz", zeros (4) + u32 (1) + u32 (many)) + box ("stco", zeros (4) + u32 (1) + u32 (0))
+                                                               + box ("stsc", zeros (4) + u32 (1) + u32 (1) + u32 (many) + u32 (1)))) },
         };
         const auto file = juce::File::createTempFile (".m4a");
         for (const auto& [name, bytes] : files)
@@ -444,6 +532,146 @@ int analysisSelftest()
             check (error == songTooLong().what(), std::string (name) + ", claiming 4 billion frames, is refused before they're read: \"" + error + "\"");
         }
         file.deleteFile();
+    }
+
+    std::printf ("Tool checksum parsing\n");
+    {
+        const juce::String hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        check (findSha256InSums ("deadbeef  other.exe\n" + hash + "  yt-dlp_macos\n", "yt-dlp_macos") == hash,
+               "multi-line SHA2-256SUMS extracts matching 64-hex digest");
+        check (findSha256InSums (hash + "  deno.zip\n", "deno.zip") == hash,
+               "single-line sha256sum extracts 64-hex digest");
+        check (findSha256InSums ("503 Service Unavailable\n", "deno.zip").isEmpty(),
+               "single-line HTTP error page is rejected");
+    }
+
+    std::printf ("Update check and YouTube URL helpers\n");
+    {
+        check (UpdateCheck::isNewer ("v0.0.6", "0.0.5") && UpdateCheck::isNewer ("0.1.0", "0.0.5")
+                   && ! UpdateCheck::isNewer ("v0.0.5", "0.0.5") && ! UpdateCheck::isNewer ("0.0.4", "0.0.5")
+                   && ! UpdateCheck::isNewer ("v0.0.5-test", "0.0.5") && ! UpdateCheck::isNewer ("invalid", "0.0.5"),
+               "UpdateCheck::isNewer compares semantic versions");
+        check (isYouTubeLink ("https://www.youtube.com/watch?v=abc") && isYouTubeLink ("youtu.be/abc")
+                   && isYouTubeLink ("music.youtube.com/watch?v=abc")
+                   && ! isYouTubeLink ("https://notyoutube.com/watch?v=abc") && ! isYouTubeLink ("/tmp/song.mp3"),
+               "isYouTubeLink matches YouTube hosts only");
+    }
+
+    std::printf ("Spectrogram model path (Stft + ONNX)\n");
+    {
+        // Minimal opset-17 ONNX model matching model::hq's spectrogram I/O: splits both
+        // spec_real and spec_imag equally across 6 stems (sum of stems == mix).
+        auto varint = [] (std::string& out, std::uint64_t v) {
+            for (; v >= 0x80; v >>= 7) out.push_back ((char) ((v & 0x7f) | 0x80));
+            out.push_back ((char) v);
+        };
+        auto fieldBytes = [&] (std::string& out, int id, const std::string& data) {
+            varint (out, (std::uint64_t) ((id << 3) | 2));
+            varint (out, data.size());
+            out += data;
+        };
+        auto fieldInt = [&] (std::string& out, int id, std::int64_t v) {
+            varint (out, (std::uint64_t) ((id << 3) | 0));
+            varint (out, (std::uint64_t) v);
+        };
+        auto valueInfo = [&] (const std::string& name, std::initializer_list<std::int64_t> dims) {
+            std::string shape;
+            for (auto d : dims)
+            {
+                std::string dim;
+                fieldInt (dim, 1, d);
+                fieldBytes (shape, 1, dim);
+            }
+            std::string tensor, type, vi;
+            fieldInt (tensor, 1, 1); // FLOAT
+            fieldBytes (tensor, 2, shape);
+            fieldBytes (type, 1, tensor);
+            fieldBytes (vi, 1, name);
+            fieldBytes (vi, 2, type);
+            return vi;
+        };
+        auto tensorInit = [&] (const std::string& name, int dtype, std::initializer_list<std::int64_t> dims, const std::string& raw) {
+            std::string t;
+            for (auto d : dims) fieldInt (t, 1, d);
+            fieldInt (t, 2, dtype);
+            fieldBytes (t, 8, name);
+            fieldBytes (t, 9, raw);
+            return t;
+        };
+        auto node = [&] (std::initializer_list<std::string> ins, std::initializer_list<std::string> outs,
+                         const std::string& name, const std::string& op, int axisAttr = -1) {
+            std::string n;
+            for (const auto& s : ins) fieldBytes (n, 1, s);
+            for (const auto& s : outs) fieldBytes (n, 2, s);
+            fieldBytes (n, 3, name);
+            fieldBytes (n, 4, op);
+            if (axisAttr >= 0)
+            {
+                std::string attr;
+                fieldBytes (attr, 1, "axis");
+                fieldInt (attr, 3, axisAttr);
+                fieldInt (attr, 20, 2); // AttributeType::INT
+                fieldBytes (n, 5, attr);
+            }
+            return n;
+        };
+        const float oneSixth = 1.0f / 6.0f;
+        std::string scaleRaw (sizeof (float), '\0');
+        std::memcpy (scaleRaw.data(), &oneSixth, sizeof (float));
+        std::string shapeRaw;
+        for (std::int64_t d : { 1, 1, 2, 1025, 345 })
+            for (int b = 0; b < 8; ++b) shapeRaw.push_back ((char) ((d >> (8 * b)) & 0xff));
+
+        std::string graph;
+        fieldBytes (graph, 1, node ({ "spec_real", "scale" }, { "r_scaled" }, "mul_r", "Mul"));
+        fieldBytes (graph, 1, node ({ "r_scaled", "shape5d" }, { "r_5d" }, "res_r", "Reshape"));
+        fieldBytes (graph, 1, node ({ "r_5d", "r_5d", "r_5d", "r_5d", "r_5d", "r_5d" }, { "out_spec_real" }, "cat_r", "Concat", 1));
+        fieldBytes (graph, 1, node ({ "spec_imag", "scale" }, { "i_scaled" }, "mul_i", "Mul"));
+        fieldBytes (graph, 1, node ({ "i_scaled", "shape5d" }, { "i_5d" }, "res_i", "Reshape"));
+        fieldBytes (graph, 1, node ({ "i_5d", "i_5d", "i_5d", "i_5d", "i_5d", "i_5d" }, { "out_spec_imag" }, "cat_i", "Concat", 1));
+        fieldBytes (graph, 2, "hq_test");
+        fieldBytes (graph, 5, tensorInit ("scale", 1, {}, scaleRaw));
+        fieldBytes (graph, 5, tensorInit ("shape5d", 7, { 5 }, shapeRaw));
+        fieldBytes (graph, 11, valueInfo ("spec_real", { 1, 2, 1025, 345 }));
+        fieldBytes (graph, 11, valueInfo ("spec_imag", { 1, 2, 1025, 345 }));
+        fieldBytes (graph, 12, valueInfo ("out_spec_real", { 1, 6, 2, 1025, 345 }));
+        fieldBytes (graph, 12, valueInfo ("out_spec_imag", { 1, 6, 2, 1025, 345 }));
+
+        std::string opset, onnxModel;
+        fieldInt (opset, 2, 17);
+        fieldInt (onnxModel, 1, 8);
+        fieldBytes (onnxModel, 7, graph);
+        fieldBytes (onnxModel, 8, opset);
+
+        const auto tmpDir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                .getChildFile ("juststem-hq-selftest-" + juce::Uuid().toString());
+        tmpDir.createDirectory();
+        const auto hqFile = tmpDir.getChildFile (juce::String (std::string (model::hq.fileName)));
+        hqFile.replaceWithData (onnxModel.data(), onnxModel.size());
+
+        const int n = sampleRate * 6; // > 176,400 samples so crossfaded chunks run
+        StereoAudio mix;
+        mix.left.resize ((size_t) n);
+        mix.right.resize ((size_t) n);
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = (double) i / sampleRate;
+            mix.left[(size_t) i] = (float) (0.3 * std::sin (2 * std::numbers::pi * 220.0 * t));
+            mix.right[(size_t) i] = (float) (0.3 * std::sin (2 * std::numbers::pi * 330.0 * t));
+        }
+
+        Separator sep (hqFile.getFullPathName().toStdString(), {});
+        std::atomic<bool> cancel { false };
+        const auto stems = sep.separate (mix, {}, cancel);
+        tmpDir.deleteRecursively();
+
+        std::vector<float> sumL ((size_t) n, 0.0f), sumR ((size_t) n, 0.0f);
+        for (const auto& [_, s] : stems)
+            for (int i = 0; i < n; ++i) { sumL[(size_t) i] += s.left[(size_t) i]; sumR[(size_t) i] += s.right[(size_t) i]; }
+        const double sdrL = siSdr (sumL, mix.left), sdrR = siSdr (sumR, mix.right);
+        check (stems.size() == numStems && sdrL > 50.0 && sdrR > 50.0,
+               "STFT forward/inverse roundtrip across chunks (SI-SDR L " + juce::String (sdrL, 1).toStdString()
+                   + " dB, R " + juce::String (sdrR, 1).toStdString() + " dB)");
     }
 
     std::printf ("%s\n", failures == 0 ? "ALL PASSED" : (std::to_string (failures) + " FAILED").c_str());

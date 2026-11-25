@@ -2,7 +2,9 @@
 
 #include <juce_cryptography/juce_cryptography.h>
 
+#include <filesystem>
 #include <stdexcept>
+#include <string>
 
 namespace juststem
 {
@@ -38,13 +40,18 @@ void download (const juce::URL& url, const juce::File& dest, const juce::String&
 /** Throws (and deletes `file`) unless its SHA-256 matches the entry for `name` in the checksum file at `sumsUrl`. */
 void verifyChecksum (const juce::File& file, const juce::URL& sumsUrl, const juce::String& name)
 {
-    // Checksum files are "<hash>  <name>" per line, or just one line for a single file.
-    const auto lines = juce::StringArray::fromLines (sumsUrl.readEntireTextStream().trim());
-    juce::String expected;
-    for (const auto& line : lines)
-        if (lines.size() == 1 || line.trim().endsWith (" " + name) || line.trim().endsWith ("*" + name))
-            expected = line.trim().upToFirstOccurrenceOf (" ", false, false);
-    if (expected.isEmpty()) throw std::runtime_error ("Couldn't fetch checksums for " + name.toStdString());
+    int status = 0;
+    auto stream = sumsUrl.createInputStream (juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+                                                 .withConnectionTimeoutMs (20000)
+                                                 .withNumRedirectsToFollow (10)
+                                                 .withStatusCode (&status));
+    const auto text = stream != nullptr && status < 400 ? stream->readEntireStreamAsString() : juce::String();
+    const auto expected = findSha256InSums (text, name);
+    if (expected.isEmpty())
+    {
+        file.deleteFile();
+        throw std::runtime_error ("Couldn't fetch checksums for " + name.toStdString());
+    }
 
     juce::FileInputStream in (file);
     if (! juce::SHA256 (in).toHexString().equalsIgnoreCase (expected))
@@ -92,7 +99,38 @@ juce::File scratchFor (const juce::File& exe, const char* suffix)
 {
     return exe.getSiblingFile (exe.getFileNameWithoutExtension() + "-" + juce::Uuid().toString() + suffix);
 }
+
+/** Rename `from` onto `to` without unlinking `to` first (unlike File::moveFileTo), so an existing
+    working tool survives if replacement fails. */
+bool replaceFileAtomically (const juce::File& from, const juce::File& to)
+{
+    auto path = [] (const juce::File& f) {
+        const auto s = f.getFullPathName().toStdString();
+        return std::filesystem::path (std::u8string (s.begin(), s.end()));
+    };
+    std::error_code ec;
+    std::filesystem::rename (path (from), path (to), ec);
+    return ! ec;
+}
 } // namespace
+
+juce::String findSha256InSums (const juce::String& sumsText, const juce::String& fileName)
+{
+    // Checksum files are "<hash>  <name>" per line, or just one line for a single file.
+    const auto lines = juce::StringArray::fromLines (sumsText.trim());
+    juce::String expected;
+    for (const auto& raw : lines)
+    {
+        const auto line = raw.trim();
+        if (lines.size() == 1 || line.endsWith (" " + fileName) || line.endsWith ("*" + fileName))
+        {
+            const auto token = line.upToFirstOccurrenceOf (" ", false, false).upToFirstOccurrenceOf ("\t", false, false);
+            if (token.length() == 64 && token.containsOnly ("0123456789abcdefABCDEF"))
+                expected = token;
+        }
+    }
+    return expected;
+}
 
 juce::File ensureYtDlp (const ProgressCallback& progress, const std::atomic<bool>& cancel)
 {
@@ -110,7 +148,7 @@ juce::File ensureYtDlp (const ProgressCallback& progress, const std::atomic<bool
             verifyChecksum (tmp, juce::URL (release + "SHA2-256SUMS"), binary);
             tmp.setExecutePermission (true);
             // Another plug-in may have installed it meanwhile (and, on Windows, be running it).
-            if (! tmp.moveFileTo (exe) && ! exe.existsAsFile()) throw std::runtime_error ("Can't install yt-dlp");
+            if (! replaceFileAtomically (tmp, exe) && ! exe.existsAsFile()) throw std::runtime_error ("Can't install yt-dlp");
         }
         catch (...)
         {
@@ -125,13 +163,14 @@ juce::File ensureYtDlp (const ProgressCallback& progress, const std::atomic<bool
         // YouTube changes often. yt-dlp's own updater verifies its signatures.
         if (progress) progress ("Updating yt-dlp", -1.0);
         juce::ChildProcess p;
+        bool finished = false;
         if (p.start (juce::StringArray { exe.getFullPathName(), "--ignore-config", "-U" }))
-            for (const auto end = juce::Time::getMillisecondCounter() + 120000; ! p.waitForProcessToFinish (50);)
+            for (const auto end = juce::Time::getMillisecondCounter() + 120000; ! (finished = p.waitForProcessToFinish (50));)
             {
                 if (cancel.load()) { p.kill(); throw std::runtime_error ("cancelled"); } // the update is tried again next time
-                if (juce::Time::getMillisecondCounter() > end) break;
+                if (juce::Time::getMillisecondCounter() > end) { p.kill(); break; }
             }
-        stamp.touch();
+        if (finished) stamp.touch();
     }
     return exe;
 }
@@ -159,8 +198,7 @@ juce::File ensureDeno (const ProgressCallback& progress, const std::atomic<bool>
             throw std::runtime_error ("Couldn't unpack Deno");
         const auto unpacked = unpackDir.getChildFile (exeName);
         unpacked.setExecutePermission (true);
-        exe.deleteFile();
-        if (! unpacked.moveFileTo (exe)) throw std::runtime_error ("Can't install Deno");
+        if (! replaceFileAtomically (unpacked, exe)) throw std::runtime_error ("Can't install Deno");
         stamp.touch();
     }
     catch (...)

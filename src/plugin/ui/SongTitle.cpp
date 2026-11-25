@@ -12,6 +12,7 @@ void SongTitle::setSong (SongResultPtr s)
 {
     if (s == song) return;
     song = std::move (s);
+    setTitle (song != nullptr ? "Song: " + song->title + (song->isHQ() ? " (HQ)" : "") : juce::String());
     shownMs = juce::Time::getMillisecondCounterHiRes();
     updateTimer();
     repaint();

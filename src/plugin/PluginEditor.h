@@ -29,6 +29,7 @@ public:
     void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
+    bool keyPressed (const juce::KeyPress&) override;
 
     bool isInterestedInFileDrag (const juce::StringArray&) override;
     void fileDragEnter (const juce::StringArray&, int, int) override { dropHover = true; repaint(); }
@@ -90,7 +91,7 @@ private:
     bool chordsShown = false;
 
     juststem::ui::SongTitle songTitle;
-    juststem::ui::PlayerBar playerBar { proc.player() };
+    juststem::ui::PlayerBar playerBar { proc.player(), proc.wrapperType != juce::AudioProcessor::wrapperType_Standalone };
 
     juststem::SongResultPtr shownSong;
     int shownLogLines = -1; // log lines on screen while working

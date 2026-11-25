@@ -1,5 +1,4 @@
 #include "PluginEditor.h"
-#include "ui/SaveStems.h"
 #include "../io/AudioFiles.h"
 #include "../io/YouTube.h"
 #include "Text.h"
@@ -9,7 +8,7 @@ using namespace juststem::ui;
 
 namespace
 {
-constexpr int windowW = 900, windowH = 690, margin = 28;
+constexpr int windowW = 900, windowH = 620, margin = 28, gaugeSize = 204;
 
 // The "justStem" wordmark (light "just", bold "Stem") and the song title share the top bar's baseline.
 juce::Font wordmarkLight() { return font (Weight::Light, 23.0f, 0.01f); }
@@ -31,7 +30,7 @@ void paintReadout (juce::Graphics& g, juce::Rectangle<int> r, Gauge::Lines lines
     g.setFont (capsFont());
     g.drawText (caption, line (lines.caption, 22), just, false);
     g.setColour (hasValue ? Palette::text : Palette::faint);
-    g.setFont (font (Weight::Light, 38.0f));
+    g.setFont (font (Weight::Light, 34.0f));
     g.drawText (value, line (lines.value, 50), just, false);
     g.setColour (Palette::dim);
     g.setFont (font (Weight::Regular, 13.0f));
@@ -49,7 +48,10 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     linkBox.setIndents (0, 0); // the border (see resized) keeps scrolled text off the box's edges
     linkBox.setJustification (juce::Justification::centredLeft);
     linkBox.onReturnKey = [this] { startFromInput(); };
-    linkBox.onEscapeKey = [this] { if (wantInput) showInput (false); };
+    linkBox.onEscapeKey = [this] {
+        if (keyPressed (juce::KeyPress (juce::KeyPress::escapeKey))) return;
+        if (wantInput) showInput (false);
+    };
     linkBox.onTextChange = [this] { refreshPasteButton(); }; // Paste only while the box is empty, so it never covers a link
     addAndMakeVisible (linkBox);
     // Many hosts take Cmd/Ctrl+V before the plug-in sees it, so pasting needs a button.
@@ -166,7 +168,7 @@ justStemEditor::~justStemEditor()
 // ============================================================================ layout
 void justStemEditor::resized()
 {
-    auto r = getLocalBounds().reduced (margin, 0).withTrimmedTop (12).withTrimmedBottom (22); // less air at the top
+    auto r = getLocalBounds().reduced (margin, 0).withTrimmedTop (12).withTrimmedBottom (16); // fits 720p screens with window chrome
 
     // Top bar: song title (or the link box) on the left, "justStem" centred over the gauge, buttons on the right.
     auto top = r.removeFromTop (40);
@@ -200,7 +202,7 @@ void justStemEditor::resized()
     // The name needs room on both sides; when the buttons reach it (e.g. a narrow layout) it's left out.
     if (top.getRight() < wordmarkArea.getRight() + 16) wordmarkArea = {};
     // The link box and the song title end in line with the left edge of the gauge below.
-    const int gaugeLeft = getWidth() / 2 - 236 / 2;
+    const int gaugeLeft = getWidth() / 2 - gaugeSize / 2;
     const auto left = top.withRight (juce::jmin (top.getRight(), gaugeLeft, wordmarkArea.isEmpty() ? top.getRight() : wordmarkArea.getX() - 16));
     if (inputShown())
     {
@@ -221,9 +223,9 @@ void justStemEditor::resized()
     // The gauge tucks up under the top bar: its ring only comes near the bar in the middle, below "justStem".
     r.setTop (r.getY() - 6);
 
-    auto readouts = r.removeFromTop (236);
-    gauge.setBounds (readouts.withSizeKeepingCentre (236, 236));
-    tempoArea = readouts.removeFromLeft ((readouts.getWidth() - 236) / 2 - 20);
+    auto readouts = r.removeFromTop (gaugeSize);
+    gauge.setBounds (readouts.withSizeKeepingCentre (gaugeSize, gaugeSize));
+    tempoArea = readouts.removeFromLeft ((readouts.getWidth() - gaugeSize) / 2 - 20);
     loudArea = readouts.removeFromRight (tempoArea.getWidth());
     tempoText.setBounds (tempoArea);
     loudText.setBounds (loudArea);
@@ -231,10 +233,10 @@ void justStemEditor::resized()
     // The player only shows with a song open; otherwise the log / drop hint gets its space.
     const bool busy = proc.isBusy();
     const bool player = visibleSong() != nullptr;
-    playerBar.setBounds (player ? r.removeFromBottom (40) : juce::Rectangle<int>());
-    if (player) r.removeFromBottom (10);
-    r.removeFromTop (14);
-    stemsHeader = r.removeFromTop (34);
+    playerBar.setBounds (player ? r.removeFromBottom (36) : juce::Rectangle<int>());
+    if (player) r.removeFromBottom (8);
+    r.removeFromTop (10);
+    stemsHeader = r.removeFromTop (30);
     stemsArea = r;
 
     auto header = stemsHeader;
@@ -467,7 +469,7 @@ void justStemEditor::refreshAll()
         rows[numStems + 1]->setFile (song->instrumentalFile());
         chordView.setSong (song);
     }
-    for (auto* row : rows) row->refresh();
+    for (auto* row : rows) { row->setTransposed (t != 0); row->refresh(); }
     updateGauge();
     updatePlayerBar();
     repaint();
@@ -573,12 +575,13 @@ void justStemEditor::chooseFile()
 
 void justStemEditor::saveAll()
 {
-    auto song = proc.getSong();
-    if (song == nullptr) return;
+    if (proc.getSong() == nullptr || proc.isExporting()) return;
     chooser = std::make_unique<juce::FileChooser> ("Save all stems to...", juce::File::getSpecialLocation (juce::File::userDesktopDirectory));
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
-                          [song, semitones = proc.getTranspose()] (const juce::FileChooser& fc) {
-                              if (const auto dest = fc.getResult(); dest.isDirectory()) ui::saveStems (song, semitones, dest);
+                          [safe = juce::Component::SafePointer<justStemEditor> (this)] (const juce::FileChooser& fc) {
+                              if (safe == nullptr) return;
+                              if (const auto dest = fc.getResult(); dest.isDirectory())
+                                  safe->proc.exportStems (dest, safe.getComponent());
                           });
 }
 
@@ -638,6 +641,17 @@ void justStemEditor::showStorage()
     };
     addAndMakeVisible (*storagePanel);
     storagePanel->setBounds (getLocalBounds());
+    storagePanel->grabKeyboardFocus();
+}
+
+bool justStemEditor::keyPressed (const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::escapeKey)
+    {
+        if (updatePopup != nullptr && updatePopup->onLater) { updatePopup->onLater(); return true; }
+        if (storagePanel != nullptr && storagePanel->onClose) { storagePanel->onClose(); return true; }
+    }
+    return false;
 }
 
 // ============================================================================ chords
@@ -674,4 +688,5 @@ void justStemEditor::showUpdatePopup (const juce::String& version)
     };
     addAndMakeVisible (*updatePopup);
     updatePopup->setBounds (getLocalBounds());
+    updatePopup->grabKeyboardFocus();
 }

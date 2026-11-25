@@ -1,10 +1,14 @@
-// juststem_uitest <model.onnx> <song> <output folder> [--hq]: drives the real plug-in code without a DAW.
+// juststem_uitest <model.onnx> <--synth | song> <output folder> [--hq]: drives the real plug-in code without a DAW.
 // Renders the editor to PNGs, runs a full split, checks the preview audio and state save/reload.
 #include "../src/io/AudioFiles.h"
 #include "../src/plugin/PluginEditor.h"
 #include "../src/plugin/PluginProcessor.h"
 
+#include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <functional>
+#include <numbers>
 
 static int failures = 0;
 static void check (bool ok, const juce::String& what)
@@ -75,15 +79,78 @@ static std::vector<float> render (justStemProcessor& p, int blocks)
 
 int main (int argc, char** argv)
 {
-    if (argc < 4) { std::fprintf (stderr, "usage: juststem_uitest <model.onnx> <song> <output folder> [--hq]\n"); return 2; }
+    if (argc < 4) { std::fprintf (stderr, "usage: juststem_uitest <model.onnx> <--synth | song> <output folder> [--hq]\n"); return 2; }
     const bool hq = argc > 4 && std::string (argv[4]) == "--hq";
     juce::ScopedJuceInitialiser_GUI gui;
     // UTF-8 paths, relative to the current folder unless absolute.
     auto fileArg = [] (const char* arg) { return juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (arg)); };
-    const juce::File model = fileArg (argv[1]), song = fileArg (argv[2]), outDir = fileArg (argv[3]);
+    const juce::File model = fileArg (argv[1]), outDir = fileArg (argv[3]);
     outDir.createDirectory();
+    const bool useSynth = std::string (argv[2]) == "--synth";
+    const juce::File song = useSynth ? outDir.getChildFile ("synth-song.wav") : fileArg (argv[2]);
+    if (useSynth)
+    {
+        // 68 s at 128 BPM (36 bars of Am - F - C - G): drums, bass and chord keys, like `juststem_cli selftest`.
+        constexpr double bpm = 128.0, beatSec = 60.0 / bpm, seconds = 68.0;
+        constexpr int sr = juststem::sampleRate, n = (int) (seconds * sr);
+        juststem::StereoAudio synth;
+        synth.left.assign ((size_t) n, 0.0f);
+        synth.right.assign ((size_t) n, 0.0f);
+
+        std::uint32_t seed = 17;
+        auto rnd = [&] { seed = (seed * 1103515245u + 12345u) & 0x7fffffffu; return (double) seed / 0x7fffffff * 2.0 - 1.0; };
+        const int prog[4][4] { { 57, 60, 64, 69 }, { 53, 57, 60, 65 }, { 48, 55, 60, 64 }, { 55, 59, 62, 67 } };
+
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = (double) i / sr;
+            const double beatPos = t / beatSec;
+            const int beatIdx = (int) std::floor (beatPos);
+            const double b = (beatPos - beatIdx) * beatSec;
+            const double barT = std::fmod (t, 4.0 * beatSec);
+            const double e8 = std::fmod (t, beatSec * 0.5);
+            const int bar = (beatIdx / 4) % 4;
+            const int inBar = beatIdx % 4;
+
+            double drum = 0.0;
+            if ((inBar == 0 || inBar == 2) && b < 0.25)
+                drum += std::sin (2.0 * std::numbers::pi * (52.0 + 75.0 * std::exp (-b * 30.0)) * b) * std::exp (-b * 12.0) * 0.50;
+            if ((inBar == 1 || inBar == 3) && b < 0.16)
+                drum += rnd() * std::exp (-b * 26.0) * 0.32;
+            if (e8 < 0.04)
+                drum += rnd() * std::exp (-e8 * 110.0) * 0.07;
+
+            const int* ch = prog[bar];
+            const double fBass = 440.0 * std::pow (2.0, (ch[0] - 24 - 69) / 12.0);
+            double bass = 0.0;
+            for (int h = 1; h <= 5; ++h) bass += std::sin (2.0 * std::numbers::pi * fBass * h * barT) / h;
+            bass *= 0.16 * (0.6 + 0.4 * std::exp (-b * 4.0));
+
+            double keys = 0.0;
+            for (int m = 1; m < 4; ++m)
+            {
+                const double fk = 440.0 * std::pow (2.0, (ch[m] - 69) / 12.0);
+                for (int h = 1; h <= 4; ++h) keys += std::sin (2.0 * std::numbers::pi * fk * h * barT) * std::exp (-h * 0.6);
+            }
+            keys *= 0.06 * std::exp (-b * 2.2);
+
+            synth.left[(size_t) i] = (float) (drum + bass + keys * 1.15);
+            synth.right[(size_t) i] = (float) (drum + bass + keys * 0.85);
+        }
+        juststem::writeWav (song, synth, 24);
+    }
 
     auto proc = std::make_unique<justStemProcessor> (model);
+    struct HostListener final : juce::AudioProcessorListener
+    {
+        int nonParamChanges = 0;
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& d) override
+        {
+            if (d.nonParameterStateChanged) ++nonParamChanges;
+        }
+    } hostListener;
+    proc->addListener (&hostListener);
     proc->prepareToPlay (48000, 512);
     if (hq)
     {
@@ -93,6 +160,7 @@ int main (int argc, char** argv)
     std::unique_ptr<juce::AudioProcessorEditor> editor (proc->createEditor());
 
     std::printf ("UI\n");
+    check (editor->getWidth() == 900 && editor->getHeight() == 620, "window is 900 x 620 (fits 720p screens)");
     snapshot (*editor, outDir.getChildFile ("1-idle.png"));
 
     std::printf ("Error messages\n");
@@ -119,10 +187,38 @@ int main (int argc, char** argv)
             std::printf ("  log: %s\n", line.toRawUTF8());
     std::printf ("  job finished %.1f s after the progress snapshot\n", (juce::Time::getMillisecondCounterHiRes() - t0) / 1000);
     check (proc->getSong() != nullptr, "song processed" + (proc->lastError().isEmpty() ? juce::String() : ": " + proc->lastError()));
+    check (hostListener.nonParamChanges > 0, "splitting a song notifies the host");
     for (const auto& line : proc->jobLog()) std::printf ("    | %s\n", line.toRawUTF8());
     if (proc->getSong() == nullptr) return 1;
     pumpUntil ([] { return false; }, 300); // let the editor refresh
     snapshot (*editor, outDir.getChildFile ("3-results.png"));
+    {
+        // Screen readers name each drag handle by its row.
+        int handles = 0, named = 0;
+        juststem::ui::DragHandle* firstHandle = nullptr;
+        std::function<void (juce::Component&)> walk = [&] (juce::Component& c) {
+            for (auto* child : c.getChildren())
+            {
+                if (auto* d = dynamic_cast<juststem::ui::DragHandle*> (child))
+                {
+                    if (firstHandle == nullptr) firstHandle = d;
+                    ++handles;
+                    named += d->getTitle().startsWith ("Drag ") ? 1 : 0;
+                }
+                walk (*child);
+            }
+        };
+        walk (*editor);
+        check (handles == 8 && named == 8, juce::String (named) + " of " + juce::String (handles) + " drag handles named for screen readers");
+        check (firstHandle != nullptr && ! firstHandle->getTooltip().contains ("Save all"),
+               "drag handle tooltip is plain when not transposed");
+        auto* title = findChild<juststem::ui::SongTitle> (*editor);
+        auto titleHandler = title != nullptr ? title->createAccessibilityHandler() : nullptr;
+        check (title != nullptr && title->isAccessible() && titleHandler != nullptr
+                   && titleHandler->getRole() == juce::AccessibilityRole::staticText
+                   && title->getTitle().contains (proc->getSong()->title),
+               "song title is named for screen readers");
+    }
 
     std::printf ("Storage panel\n");
     auto* storageButton = findButton (*editor, "Storage");
@@ -138,10 +234,17 @@ int main (int argc, char** argv)
         const auto saved = juststem::storage::savedSongs();
         check (std::any_of (saved.begin(), saved.end(), [&] (const auto& x) { return x.folder == proc->getSong()->folder; }),
                "current song listed in storage");
-        panel->onClose();
+        check (editor->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)), "Escape handled while Storage is open");
         pumpUntil ([] { return false; }, 200);
         check (findChild<juststem::ui::StoragePanel> (*editor) == nullptr,
-               "Storage panel closes");
+               "Storage panel closes on Escape");
+    }
+    {
+        bool dismissed = false;
+        juststem::ui::UpdatePopup popup ("9.9.9");
+        popup.onLater = [&] { dismissed = true; };
+        check (popup.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)) && dismissed,
+               "Update popup closes on Escape");
     }
 
     std::printf ("New song\n");
@@ -180,6 +283,16 @@ int main (int argc, char** argv)
     check (flacs == 6 && s->instrumentalFile().existsAsFile() && s->fullMixFile().existsAsFile(),
            juce::String (flacs) + " stem FLACs + instrumental + full mix written");
     {
+        auto* pluginBar = findChild<juststem::ui::PlayerBar> (*editor);
+        auto* pluginFollow = pluginBar != nullptr ? findChild<juce::ToggleButton> (*pluginBar) : nullptr;
+        juststem::ui::PlayerBar standaloneBar (proc->player(), false);
+        standaloneBar.setSize (800, 36);
+        standaloneBar.setSong (s);
+        auto* standaloneFollow = findChild<juce::ToggleButton> (standaloneBar);
+        check (pluginFollow != nullptr && pluginFollow->isVisible() && standaloneFollow != nullptr && ! standaloneFollow->isVisible(),
+               "Follow DAW shows in the plug-in and hides in the standalone app");
+    }
+    {
         // The full mix is every stem added together (FLAC is lossless; 24-bit rounding aside).
         const auto mixed = juststem::loadAudioFile (s->fullMixFile());
         float worst = 0;
@@ -215,12 +328,14 @@ int main (int argc, char** argv)
     renderRms (*proc, 2); // let the gain ramp finish
     check (renderRms (*proc, 50) < 1e-6, "all muted -> silent");
     for (int i = 0; i < juststem::numStems; ++i) pl.setMute (i, false);
-    pl.setSolo (0, true); // vocals only
+    const int soloStem = useSynth ? 2 : 0; // bass in --synth (an instrumental band), vocals in a song
+    const juce::String soloName = useSynth ? "bass" : "vocals";
+    pl.setSolo (soloStem, true);
     renderRms (*proc, 2);
-    const double vox = renderRms (*proc, 200);
-    check (vox > 0.001 && vox < all, "solo vocals is quieter than the full mix (" + juce::String (vox, 4) + " < " + juce::String (all, 4) + ")");
+    const double solo = renderRms (*proc, 200);
+    check (solo > 0.001 && solo < all, "solo " + soloName + " is quieter than the full mix (" + juce::String (solo, 4) + " < " + juce::String (all, 4) + ")");
     check (pl.positionSeconds() > testPosition, "position advances (" + juce::String (pl.positionSeconds(), 2) + " s)");
-    pl.setSolo (0, false);
+    pl.setSolo (soloStem, false);
     {
         // Some hosts send more samples than prepareToPlay announced (512 here).
         juce::AudioBuffer<float> big (2, 4096);
@@ -234,6 +349,10 @@ int main (int argc, char** argv)
     }
     pl.setVolume (1, 0.5f);
     pl.setPlaying (false);
+    const int afterPlayerChanges = hostListener.nonParamChanges;
+    pl.setMute (0, true);
+    pl.setMute (0, false);
+    check (hostListener.nonParamChanges == afterPlayerChanges + 2, "mute, solo and volume notify the host");
 
     std::printf ("Chords\n");
     check (a.chords.segments.size() > 4 && a.chords.beats.size() > 100,
@@ -269,6 +388,22 @@ int main (int argc, char** argv)
             up->triggerClick();
     pumpUntil ([] { return false; }, 300);
     check (proc->getTranspose() == 2, "transpose +2");
+    check (hostListener.nonParamChanges > afterPlayerChanges + 2, "transpose notifies the host");
+    {
+        juststem::ui::DragHandle* firstHandle = nullptr;
+        std::function<void (juce::Component&)> findDrag = [&] (juce::Component& c) {
+            for (auto* child : c.getChildren())
+            {
+                if (firstHandle == nullptr)
+                    if (auto* d = dynamic_cast<juststem::ui::DragHandle*> (child)) firstHandle = d;
+                findDrag (*child);
+            }
+        };
+        findDrag (*editor);
+        check (firstHandle != nullptr && firstHandle->getTooltip().contains ("original key")
+                   && firstHandle->getTooltip().contains ("Save all"),
+               "drag handle notes original key and Save all when transposed");
+    }
     const auto chart = juststem::ui::ChordView::chartText (*s, 2);
     check (chart.contains ("transposed +2") && chart.contains ("| "), "chord chart text for the clipboard");
     std::printf ("%s", chart.upToFirstOccurrenceOf ("\n\n", false, false).toRawUTF8());
@@ -320,6 +455,54 @@ int main (int argc, char** argv)
                "preparing again while transposed keeps the position (moved " + juce::String (juce::roundToInt (moved * 1000)) + " ms in an 11 ms block)");
         pl.setPlaying (false);
 
+        // Edge bursts: [0, 70 ms) and [1.93 s, 2.00 s) in a 2 s song must both play when transposed.
+        {
+            auto edgeSong = std::make_shared<juststem::SongResult>();
+            const std::size_t n2 = (std::size_t) juststem::sampleRate * 2;
+            edgeSong->durationSeconds = 2.0;
+            for (auto stem : juststem::stemOrder)
+            {
+                edgeSong->stems[stem].left.assign (n2, 0.0f);
+                edgeSong->stems[stem].right.assign (n2, 0.0f);
+            }
+            auto& v = edgeSong->stems[juststem::Stem::Vocals];
+            for (std::size_t i = 0; i < (std::size_t) (juststem::sampleRate * 0.07); ++i)
+                v.left[i] = v.right[i] = 0.4f * std::sin (2.0f * juce::MathConstants<float>::pi * 440.0f * (float) i / (float) juststem::sampleRate);
+            for (std::size_t i = (std::size_t) (juststem::sampleRate * 1.93); i < n2; ++i)
+                v.left[i] = v.right[i] = 0.4f * std::sin (2.0f * juce::MathConstants<float>::pi * 440.0f * (float) i / (float) juststem::sampleRate);
+
+            juststem::StemPlayer edgePlayer;
+            edgePlayer.prepare (48000, 512);
+            edgePlayer.setSong (edgeSong);
+            edgePlayer.setTranspose (2);
+            auto renderVec = [&] (int blocks) {
+                juce::AudioBuffer<float> buf (2, 512);
+                std::vector<float> y;
+                for (int b = 0; b < blocks; ++b)
+                {
+                    buf.clear();
+                    edgePlayer.process (buf, -1.0);
+                    y.insert (y.end(), buf.getReadPointer (0), buf.getReadPointer (0) + 512);
+                }
+                return y;
+            };
+            auto rmsSlice = [] (const std::vector<float>& x, std::size_t a, std::size_t b) {
+                double e = 0;
+                for (std::size_t i = a; i < b; ++i) e += (double) x[i] * x[i];
+                return std::sqrt (e / (double) std::max<std::size_t> (1, b - a));
+            };
+            edgePlayer.setPlaying (true);
+            const auto atStart = renderVec (8); // ~85 ms
+            edgePlayer.seek (0.0);
+            const auto afterSeek = renderVec (8);
+            edgePlayer.seek (1.85);
+            const auto atEnd = renderVec (20); // past 2.00 s (~213 ms)
+            check (rmsSlice (atStart, 0, 3360) > 0.05 && rmsSlice (afterSeek, 0, 3360) > 0.05,
+                   "transposed preview plays the first 70 ms at start and after seek");
+            check (rmsSlice (atEnd, 3840, 7200) > 0.05 && ! edgePlayer.isPlaying(),
+                   "transposed preview flushes the final 70 ms before stopping");
+        }
+
         const auto dir = outDir.getChildFile ("transposed stems");
         dir.deleteRecursively();
         const auto t0 = juce::Time::getMillisecondCounterHiRes();
@@ -355,6 +538,34 @@ int main (int argc, char** argv)
                             == juststem::loadAudioFile (s->stemFile (stem)).left ? 1 : 0;
         check (copied && same == 8, "Save all writes the 6 stems, the instrumental and the full mix as WAVs");
         copies.deleteRecursively();
+
+        // Loud transposed export: stems whose shifted sum exceeds 0 dBFS are lowered together.
+        juststem::SongResult loudSong;
+        const std::size_t n1 = (std::size_t) juststem::sampleRate;
+        for (auto stem : juststem::stemOrder)
+        {
+            loudSong.stems[stem].left.assign (n1, 0.0f);
+            loudSong.stems[stem].right.assign (n1, 0.0f);
+        }
+        for (std::size_t i = 0; i < n1; ++i)
+        {
+            const float s = std::sin (2.0f * juce::MathConstants<float>::pi * 441.0f * (float) i / (float) juststem::sampleRate);
+            loudSong.stems[juststem::Stem::Vocals].left[i] = loudSong.stems[juststem::Stem::Vocals].right[i] = 0.55f * s;
+            loudSong.stems[juststem::Stem::Drums].left[i] = loudSong.stems[juststem::Stem::Drums].right[i] = 0.75f * s;
+        }
+        const auto loudDir = outDir.getChildFile ("loud transposed");
+        loudDir.deleteRecursively();
+        const bool loudOk = juststem::saveTransposedStems (loudSong, 2, loudDir, [] (double) { return true; });
+        float loudPeak = 0.0f;
+        for (const auto& name : { juce::String ("full mix.wav"), juce::String ("instrumental.wav"), juce::String ("vocals.wav") })
+        {
+            const auto a = juststem::loadAudioFile (loudDir.getChildFile (name));
+            for (float v : a.left) loudPeak = std::max (loudPeak, std::abs (v));
+            for (float v : a.right) loudPeak = std::max (loudPeak, std::abs (v));
+        }
+        loudDir.deleteRecursively();
+        check (loudOk && loudPeak > 0.5f && loudPeak <= 0.995f,
+               "loud transposed export stays under full scale (peak " + juce::String (loudPeak, 4) + ")");
     }
 
     std::printf ("Save and reload, like reopening a DAW project\n");
@@ -368,11 +579,14 @@ int main (int argc, char** argv)
             void changeListenerCallback (juce::ChangeBroadcaster*) override { ++calls; }
         } listener;
         proc->addChangeListener (&listener);
+        const int beforeRestore = hostListener.nonParamChanges;
         proc->setStateInformation (state.getData(), (int) state.getSize());
         pumpUntil ([&] { return listener.calls > 0; }, 1000);
         proc->removeChangeListener (&listener);
         check (listener.calls > 0, "restoring the state refreshes the open window");
+        check (hostListener.nonParamChanges == beforeRestore, "restoring the state does not mark the host dirty");
     }
+    proc->removeListener (&hostListener);
     auto proc2 = std::make_unique<justStemProcessor> (model);
     proc2->prepareToPlay (44100, 256);
     proc2->setStateInformation (state.getData(), (int) state.getSize());
@@ -422,6 +636,25 @@ int main (int argc, char** argv)
         check (juststem::SongJob::numAbandoned() == 0, "the abandoned job ends and deletes itself");
     }
 
+    std::printf ("Closing the plug-in during Save all\n");
+    {
+        auto expProc = std::make_unique<justStemProcessor> (model);
+        expProc->setStateInformation (state.getData(), (int) state.getSize());
+        pumpUntil ([&] { return expProc->getSong() != nullptr && ! expProc->isBusy(); }, 60000);
+        const auto expDest = outDir.getChildFile ("export-close-test");
+        expDest.createDirectory();
+        expProc->setTranspose (2);
+        expProc->exportStems (expDest);
+        check (expProc->isExporting(), "export started and is owned by the processor");
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        expProc.reset();
+        const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+        const int left = expDest.getNumberOfChildFiles (juce::File::findFilesAndDirectories);
+        expDest.deleteRecursively();
+        check (ms < 1500 && left == 0,
+               "closing the plug-in mid-export stops cleanly (" + juce::String (juce::roundToInt (ms)) + " ms) and cleans up");
+    }
+
     std::printf ("A stem edited outside justStem\n");
     {
         // Trimmed to 10 s, e.g. in an audio editor: on reload every stem must still have one length.
@@ -453,6 +686,7 @@ int main (int argc, char** argv)
     editor.reset();
     proc2.reset();
     s->folder.deleteRecursively(); // the test's own stems
+    if (useSynth) song.deleteFile();
     std::printf ("%s\n", failures == 0 ? "ALL PASSED" : (juce::String (failures) + " FAILED").toRawUTF8());
     return failures == 0 ? 0 : 1;
 }

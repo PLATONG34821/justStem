@@ -79,6 +79,7 @@ StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool
                             std::function<juce::Array<juce::File>()> inUse, std::function<bool()> busy)
     : songOpenHere (std::move (here)), busyHere (std::move (workingHere)), songsInUse (std::move (inUse)), isBusy (std::move (busy))
 {
+    setWantsKeyboardFocus (true);
     closeButton.onClick = [this] { if (onClose) onClose(); };
     closeButton.setTooltip ("Close");
     showFolderButton.setTooltip ("Show the songs folder");
@@ -296,6 +297,13 @@ void StoragePanel::paint (juce::Graphics& g)
 void StoragePanel::mouseDown (const juce::MouseEvent& e)
 {
     if (! card().contains (e.getPosition()) && onClose) onClose(); // click outside closes
+}
+
+bool StoragePanel::keyPressed (const juce::KeyPress& key)
+{
+    if (key != juce::KeyPress::escapeKey) return false;
+    if (onClose) onClose();
+    return true;
 }
 
 void StoragePanel::confirm (const juce::String& title, const juce::String& message, const juce::String& action, std::function<void()> then)

@@ -7,6 +7,7 @@
 
 #include <signalsmith-linear/fft.h>
 
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <cstdio>
@@ -403,5 +404,40 @@ StemMap Separator::separate (const StereoAudio& mix,
         }
     }
     throw std::runtime_error ("no backend available");
+}
+
+float fitUnderFullScale (StemMap& stems)
+{
+    const float ceiling = std::pow (10.0f, -0.1f / 20.0f);
+    std::vector<StereoAudio*> all;
+    const StereoAudio* vocals = nullptr;
+    std::size_t n = 0;
+    for (auto& [stem, audio] : stems)
+    {
+        all.push_back (&audio);
+        if (stem == Stem::Vocals) vocals = &audio;
+        n = std::max (n, audio.size());
+    }
+    float peak = 0;
+    for (int ch = 0; ch < 2; ++ch)
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            float sum = 0, voice = 0;
+            for (const auto* a : all)
+            {
+                const auto& x = ch == 0 ? a->left : a->right;
+                if (i >= x.size()) continue;
+                sum += x[i];
+                peak = std::max (peak, std::abs (x[i]));
+                if (a == vocals) voice = x[i];
+            }
+            peak = std::max ({ peak, std::abs (sum), std::abs (sum - voice) });
+        }
+    if (peak <= ceiling) return 0.0f;
+    const float gain = ceiling / peak;
+    for (auto* a : all)
+        for (auto* x : { &a->left, &a->right })
+            for (auto& v : *x) v *= gain;
+    return 20.0f * std::log10 (gain);
 }
 } // namespace juststem

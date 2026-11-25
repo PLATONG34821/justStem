@@ -293,6 +293,10 @@ SongResultPtr SongJob::process()
     addLog ("Split 6 stems in " + seconds (splitMs) + " ("
             + juce::String (song->durationSeconds / std::max (0.01, splitMs / 1000.0), 1) + "x realtime)");
 
+    // Saved as 24-bit files, anything over full scale would be clipped: lower all the stems together.
+    if (const float db = fitUnderFullScale (song->stems); db < 0)
+        addLog ("Lowered all stems by " + juce::String (-db, 2) + " dB, so the stems and mixes saved don't clip");
+
     // How much of the song ended up in each stem; a near-silent one usually means the instrument isn't there.
     juce::StringArray levels, quiet;
     for (auto stem : stemOrder)
