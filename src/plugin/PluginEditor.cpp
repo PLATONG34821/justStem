@@ -9,7 +9,7 @@ using namespace juststem::ui;
 
 namespace
 {
-constexpr int windowW = 900, windowH = 620, margin = 28;
+constexpr int windowW = 900, windowH = 690, margin = 28;
 
 // The "justStem" wordmark (light "just", bold "Stem") and the song title share the top bar's baseline.
 juce::Font wordmarkLight() { return font (Weight::Light, 23.0f, 0.01f); }
@@ -267,9 +267,15 @@ void justStemEditor::resized()
     if (storagePanel != nullptr) storagePanel->setBounds (getLocalBounds());
     if (updatePopup != nullptr) updatePopup->setBounds (getLocalBounds());
 
+    // The six stems, then a gap, then the mixes made from them (Full mix, Instrumental).
     auto list = stemsArea;
-    const int rowH = list.getHeight() / rows.size();
-    for (auto* row : rows) row->setBounds (list.removeFromTop (rowH));
+    constexpr int groupGap = 12;
+    const int rowH = (list.getHeight() - groupGap) / rows.size();
+    for (int i = 0; i < rows.size(); ++i)
+    {
+        if (i == numStems) list.removeFromTop (groupGap);
+        rows[i]->setBounds (list.removeFromTop (rowH));
+    }
 }
 
 // ============================================================================ painting
