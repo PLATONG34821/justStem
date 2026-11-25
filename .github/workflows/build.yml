@@ -52,7 +52,8 @@ jobs:
 
       # The model is built from the public export (see scripts/prepare_demucs_onnx.py), downloaded
       # at a pinned commit and checked (scripts/fetch_model.sh), with pinned packages; cached until
-      # any of those change.
+      # any of those change. One cache per OS: the same recipe gives slightly different bytes on
+      # Linux and macOS, and each zip should carry a model built on its own OS.
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -61,7 +62,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: models/htdemucs_6s_opt.onnx
-          key: model-${{ hashFiles('scripts/prepare_demucs_onnx.py', 'scripts/fetch_model.sh', 'scripts/requirements.txt') }}
+          key: model-${{ runner.os }}-${{ hashFiles('scripts/prepare_demucs_onnx.py', 'scripts/fetch_model.sh', 'scripts/requirements.txt') }}
       - name: Build the model
         if: steps.model.outputs.cache-hit != 'true'
         shell: bash
@@ -78,7 +79,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: models/bs_roformer_sw_6stem_opt.onnx
-          key: hqmodel-${{ hashFiles('scripts/prepare_roformer_onnx.py', 'scripts/fetch_model.sh', 'scripts/requirements.txt') }}
+          key: hqmodel-${{ runner.os }}-${{ hashFiles('scripts/prepare_roformer_onnx.py', 'scripts/fetch_model.sh', 'scripts/requirements.txt') }}
       - name: Build the HQ model
         if: env.RELEASE == 'true' && steps.hqmodel.outputs.cache-hit != 'true'
         shell: bash
