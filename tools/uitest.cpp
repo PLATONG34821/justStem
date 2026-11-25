@@ -164,10 +164,17 @@ int main (int argc, char** argv)
         const auto saved = juststem::storage::savedSongs();
         check (std::any_of (saved.begin(), saved.end(), [&] (const auto& x) { return x.folder == proc->getSong()->folder; }),
                "current song listed in storage");
-        panel->onClose();
+        check (editor->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)), "Escape handled while Storage is open");
         pumpUntil ([] { return false; }, 200);
         check (findChild<juststem::ui::StoragePanel> (*editor) == nullptr,
-               "Storage panel closes");
+               "Storage panel closes on Escape");
+    }
+    {
+        bool dismissed = false;
+        juststem::ui::UpdatePopup popup ("9.9.9");
+        popup.onLater = [&] { dismissed = true; };
+        check (popup.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)) && dismissed,
+               "Update popup closes on Escape");
     }
 
     std::printf ("New song\n");

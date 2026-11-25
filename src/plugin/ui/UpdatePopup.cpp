@@ -10,6 +10,8 @@ constexpr float radius = 18.0f;
 
 UpdatePopup::UpdatePopup (const juce::String& v) : version (v)
 {
+    setWantsKeyboardFocus (true);
+    setTitle ("justStem " + version + " is out");
     // Download is filled in the gauge's light blue, like the Update pill in the top bar.
     downloadButton.setColour (juce::TextButton::buttonColourId, Palette::accentTo);
     downloadButton.setColour (juce::TextButton::textColourOffId, Palette::bgBottom);
@@ -55,5 +57,12 @@ void UpdatePopup::resized()
 void UpdatePopup::mouseDown (const juce::MouseEvent& e)
 {
     if (! card().contains (e.getPosition()) && onLater) onLater(); // click outside: Later
+}
+
+bool UpdatePopup::keyPressed (const juce::KeyPress& key)
+{
+    if (key != juce::KeyPress::escapeKey) return false;
+    if (onLater) onLater();
+    return true;
 }
 } // namespace juststem::ui

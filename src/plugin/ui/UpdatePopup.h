@@ -18,6 +18,11 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    bool keyPressed (const juce::KeyPress&) override;
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::staticText);
+    }
 
 private:
     juce::Rectangle<int> card() const;

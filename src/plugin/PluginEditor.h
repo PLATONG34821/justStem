@@ -29,6 +29,7 @@ public:
     void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
+    bool keyPressed (const juce::KeyPress&) override;
 
     bool isInterestedInFileDrag (const juce::StringArray&) override;
     void fileDragEnter (const juce::StringArray&, int, int) override { dropHover = true; repaint(); }

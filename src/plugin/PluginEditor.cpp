@@ -49,7 +49,10 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     linkBox.setIndents (0, 0); // the border (see resized) keeps scrolled text off the box's edges
     linkBox.setJustification (juce::Justification::centredLeft);
     linkBox.onReturnKey = [this] { startFromInput(); };
-    linkBox.onEscapeKey = [this] { if (wantInput) showInput (false); };
+    linkBox.onEscapeKey = [this] {
+        if (keyPressed (juce::KeyPress (juce::KeyPress::escapeKey))) return;
+        if (wantInput) showInput (false);
+    };
     linkBox.onTextChange = [this] { refreshPasteButton(); }; // Paste only while the box is empty, so it never covers a link
     addAndMakeVisible (linkBox);
     // Many hosts take Cmd/Ctrl+V before the plug-in sees it, so pasting needs a button.
@@ -638,6 +641,17 @@ void justStemEditor::showStorage()
     };
     addAndMakeVisible (*storagePanel);
     storagePanel->setBounds (getLocalBounds());
+    storagePanel->grabKeyboardFocus();
+}
+
+bool justStemEditor::keyPressed (const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::escapeKey)
+    {
+        if (updatePopup != nullptr && updatePopup->onLater) { updatePopup->onLater(); return true; }
+        if (storagePanel != nullptr && storagePanel->onClose) { storagePanel->onClose(); return true; }
+    }
+    return false;
 }
 
 // ============================================================================ chords
@@ -674,4 +688,5 @@ void justStemEditor::showUpdatePopup (const juce::String& version)
     };
     addAndMakeVisible (*updatePopup);
     updatePopup->setBounds (getLocalBounds());
+    updatePopup->grabKeyboardFocus();
 }
