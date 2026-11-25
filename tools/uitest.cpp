@@ -5,6 +5,7 @@
 #include "../src/plugin/PluginProcessor.h"
 
 #include <cstdio>
+#include <functional>
 
 static int failures = 0;
 static void check (bool ok, const juce::String& what)
@@ -123,6 +124,19 @@ int main (int argc, char** argv)
     if (proc->getSong() == nullptr) return 1;
     pumpUntil ([] { return false; }, 300); // let the editor refresh
     snapshot (*editor, outDir.getChildFile ("3-results.png"));
+    {
+        // Screen readers name each drag handle by its row.
+        int handles = 0, named = 0;
+        std::function<void (juce::Component&)> walk = [&] (juce::Component& c) {
+            for (auto* child : c.getChildren())
+            {
+                if (auto* d = dynamic_cast<juststem::ui::DragHandle*> (child)) { ++handles; named += d->getTitle().startsWith ("Drag ") ? 1 : 0; }
+                walk (*child);
+            }
+        };
+        walk (*editor);
+        check (handles == 8 && named == 8, juce::String (named) + " of " + juce::String (handles) + " drag handles named for screen readers");
+    }
 
     std::printf ("Storage panel\n");
     auto* storageButton = findButton (*editor, "Storage");

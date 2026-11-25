@@ -124,6 +124,11 @@ public:
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override { dragging = false; }
     void mouseDrag (const juce::MouseEvent&) override;
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        // Named by its row (see StemRow); dragging needs a mouse, and Save all is the keyboard way.
+        return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::staticText);
+    }
 
 private:
     juce::File file;
