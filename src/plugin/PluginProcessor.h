@@ -39,15 +39,19 @@ public:
     bool getHQ() const { return hq && hqAvailable(); }
     void setHQ (bool on)
     {
-        hq = on;
+        if (hq.exchange (on) != on) notifyHostStateChanged();
         sendChangeMessage();
     }
     /** Semitones to transpose the chords and the preview by (saved with the DAW project). */
     int getTranspose() const { return transpose; }
     void setTranspose (int semitones)
     {
-        transpose = juce::jlimit (-11, 11, semitones);
-        stemPlayer.setTranspose (transpose);
+        const int clamped = juce::jlimit (-11, 11, semitones);
+        if (transpose.exchange (clamped) != clamped)
+        {
+            stemPlayer.setTranspose (clamped);
+            notifyHostStateChanged();
+        }
         sendChangeMessage();
     }
 
@@ -85,9 +89,10 @@ public:
     juststem::UpdateCheck& updates() { return *updateCheck; }
 
 private:
-    void startJob (juststem::SongJob::Kind, const juce::String& source);
+    void startJob (juststem::SongJob::Kind, const juce::String& source, bool fromRestore = false);
     /** Loads the song saved with a restored project, once any running job has ended. */
     void reloadRestored (const juce::File& folder);
+    void notifyHostStateChanged();
 
     const juce::File fastModelFile, hqModelFile;
     juststem::StemPlayer stemPlayer;
@@ -100,6 +105,7 @@ private:
     juce::File restoredFolder; // a restored project's song, waiting for the running job (message thread)
     std::atomic<int> transpose { 0 };
     std::atomic<bool> hq { false };
+    std::atomic<int> restoringState { 0 };
     juce::SharedResourcePointer<juststem::UpdateCheck> updateCheck;
     std::shared_ptr<bool> alive = std::make_shared<bool> (true); // guards async job callbacks
 

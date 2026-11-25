@@ -85,6 +85,16 @@ int main (int argc, char** argv)
     outDir.createDirectory();
 
     auto proc = std::make_unique<justStemProcessor> (model);
+    struct HostListener final : juce::AudioProcessorListener
+    {
+        int nonParamChanges = 0;
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& d) override
+        {
+            if (d.nonParameterStateChanged) ++nonParamChanges;
+        }
+    } hostListener;
+    proc->addListener (&hostListener);
     proc->prepareToPlay (48000, 512);
     if (hq)
     {
@@ -121,6 +131,7 @@ int main (int argc, char** argv)
             std::printf ("  log: %s\n", line.toRawUTF8());
     std::printf ("  job finished %.1f s after the progress snapshot\n", (juce::Time::getMillisecondCounterHiRes() - t0) / 1000);
     check (proc->getSong() != nullptr, "song processed" + (proc->lastError().isEmpty() ? juce::String() : ": " + proc->lastError()));
+    check (hostListener.nonParamChanges > 0, "splitting a song notifies the host");
     for (const auto& line : proc->jobLog()) std::printf ("    | %s\n", line.toRawUTF8());
     if (proc->getSong() == nullptr) return 1;
     pumpUntil ([] { return false; }, 300); // let the editor refresh
@@ -249,6 +260,10 @@ int main (int argc, char** argv)
     }
     pl.setVolume (1, 0.5f);
     pl.setPlaying (false);
+    const int afterPlayerChanges = hostListener.nonParamChanges;
+    pl.setMute (0, true);
+    pl.setMute (0, false);
+    check (hostListener.nonParamChanges == afterPlayerChanges + 2, "mute, solo and volume notify the host");
 
     std::printf ("Chords\n");
     check (a.chords.segments.size() > 4 && a.chords.beats.size() > 100,
@@ -284,6 +299,7 @@ int main (int argc, char** argv)
             up->triggerClick();
     pumpUntil ([] { return false; }, 300);
     check (proc->getTranspose() == 2, "transpose +2");
+    check (hostListener.nonParamChanges > afterPlayerChanges + 2, "transpose notifies the host");
     const auto chart = juststem::ui::ChordView::chartText (*s, 2);
     check (chart.contains ("transposed +2") && chart.contains ("| "), "chord chart text for the clipboard");
     std::printf ("%s", chart.upToFirstOccurrenceOf ("\n\n", false, false).toRawUTF8());
@@ -383,11 +399,14 @@ int main (int argc, char** argv)
             void changeListenerCallback (juce::ChangeBroadcaster*) override { ++calls; }
         } listener;
         proc->addChangeListener (&listener);
+        const int beforeRestore = hostListener.nonParamChanges;
         proc->setStateInformation (state.getData(), (int) state.getSize());
         pumpUntil ([&] { return listener.calls > 0; }, 1000);
         proc->removeChangeListener (&listener);
         check (listener.calls > 0, "restoring the state refreshes the open window");
+        check (hostListener.nonParamChanges == beforeRestore, "restoring the state does not mark the host dirty");
     }
+    proc->removeListener (&hostListener);
     auto proc2 = std::make_unique<justStemProcessor> (model);
     proc2->prepareToPlay (44100, 256);
     proc2->setStateInformation (state.getData(), (int) state.getSize());
