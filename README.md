@@ -1,6 +1,6 @@
 # justStem
 
-justStem is an open-source VST3 / AU plug-in (and standalone app) that splits a song into six stems,
+justStem is an open-source VST3 / AU plug-in that splits a song into six stems,
 **vocals, drums, bass, guitar, piano and other**, plus an instrumental and the full mix, and finds its
 **key, tempo, loudness and chords**. Give it an audio file or a YouTube link; the AI runs on your
 computer, and nothing is uploaded.
