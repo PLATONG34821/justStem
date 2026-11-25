@@ -74,7 +74,8 @@ Intel Macs aren't supported. Tried justStem in another DAW or OS? Please share h
 Bug reports, ideas and pull requests are welcome.
 
 - **Report a bug:** open an [issue](https://github.com/PLATONG34821/justStem/issues) with your OS,
-  DAW and version, what you did, and what happened (the log in the plug-in helps).
+  DAW and justStem version (top right of **Storage**), what you did, and what happened (the log in
+  the plug-in helps).
 - **Change the code:** fork, make a branch, and open a pull request. Build and test it first:
   see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for building, tests and how the code is laid out.
   CI builds and tests every pull request on macOS, Windows and Linux.

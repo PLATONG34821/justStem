@@ -22,6 +22,8 @@ public:
                   std::function<juce::Array<juce::File>()> songsInUse, std::function<bool()> anyBusy);
     ~StoragePanel() override;
 
+    /** Which justStem this is, shown in the header (e.g. "justStem 0.0.5  ·  VST3"), for bug reports. */
+    juce::String about;
     std::function<void()> onClose;
     /** Open a saved song (its folder) in the plug-in. */
     std::function<void (const juce::File&)> onOpen;

@@ -251,6 +251,9 @@ void StoragePanel::paint (juce::Graphics& g)
     g.setColour (Palette::dim);
     g.setFont (font (Weight::Regular, 13.0f));
     g.drawSingleLineText (size (songsBytes + cacheBytes + toolsBytes + downloadsBytes) + " used", top.getX() + 130, baseline);
+    g.setColour (Palette::faint);
+    g.setFont (font (Weight::Regular, 12.0f));
+    g.drawSingleLineText (about, top.getRight() - btn - 16, baseline, juce::Justification::right);
 
     g.setColour (Palette::dim);
     g.setFont (capsFont());

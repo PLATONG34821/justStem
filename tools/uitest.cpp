@@ -134,6 +134,7 @@ int main (int argc, char** argv)
     if (panel != nullptr)
     {
         snapshot (*editor, outDir.getChildFile ("4-storage.png"));
+        check (panel->about.contains (JUSTSTEM_VERSION), "Storage shows the version: " + panel->about);
         const auto saved = juststem::storage::savedSongs();
         check (std::any_of (saved.begin(), saved.end(), [&] (const auto& x) { return x.folder == proc->getSong()->folder; }),
                "current song listed in storage");
