@@ -160,6 +160,16 @@ struct Separator::Impl
     const ModelSpec& spec;
     std::unique_ptr<Ort::Session> session;
     std::unique_ptr<Stft> stft;
+    std::vector<float> re, im, specAudio;
+    Ort::Value waveOut { nullptr };
+
+    void clearScratch()
+    {
+        waveOut = Ort::Value { nullptr };
+        re = {};
+        im = {};
+        specAudio = {};
+    }
 
     void createSession (Backend b)
     {
@@ -190,13 +200,13 @@ struct Separator::Impl
         session = std::make_unique<Ort::Session> (env, modelPath.c_str(), so);
     }
 
-    /** planar [2][chunk] -> audio [stem][channel][chunk] */
-    std::vector<float> run (std::vector<float>& planar)
+    /** planar [2][chunk] -> audio [stem][channel][chunk], valid until the next run() or clearScratch() */
+    const float* run (std::vector<float>& planar)
     {
         return spec.input == ModelInput::Spectrogram ? runSpectrogram (planar) : runWaveform (planar);
     }
 
-    std::vector<float> runWaveform (std::vector<float>& planar)
+    const float* runWaveform (std::vector<float>& planar)
     {
         const int chunk = spec.chunkSamples;
         auto mem = Ort::MemoryInfo::CreateCpu (OrtArenaAllocator, OrtMemTypeDefault);
@@ -205,16 +215,17 @@ struct Separator::Impl
         const char* in[] { "mix" };
         const char* out[] { "stems" };
         auto res = session->Run (Ort::RunOptions { nullptr }, in, &input, 1, out, 1);
-        const float* p = res[0].GetTensorData<float>();
-        return { p, p + (std::size_t) numStems * 2 * (std::size_t) chunk };
+        waveOut = std::move (res[0]);
+        return waveOut.GetTensorData<float>();
     }
 
-    std::vector<float> runSpectrogram (std::vector<float>& planar)
+    const float* runSpectrogram (std::vector<float>& planar)
     {
         const int chunk = spec.chunkSamples;
         if (stft == nullptr) stft = std::make_unique<Stft> (chunk);
         const auto per = stft->size(); // one channel's bins x frames
-        std::vector<float> re (2 * per), im (2 * per);
+        re.resize (2 * per);
+        im.resize (2 * per);
         for (int c = 0; c < 2; ++c)
             stft->forward (planar.data() + (size_t) c * (size_t) chunk, re.data() + (size_t) c * per, im.data() + (size_t) c * per);
 
@@ -228,10 +239,10 @@ struct Separator::Impl
         const float* outRe = res[0].GetTensorData<float>();
         const float* outIm = res[1].GetTensorData<float>();
 
-        std::vector<float> audio ((size_t) numStems * 2 * (size_t) chunk);
+        specAudio.resize ((size_t) numStems * 2 * (size_t) chunk);
         for (std::size_t sc = 0; sc < (size_t) numStems * 2; ++sc) // stem x channel, in tensor order
-            stft->inverse (outRe + sc * per, outIm + sc * per, audio.data() + sc * (size_t) chunk);
-        return audio;
+            stft->inverse (outRe + sc * per, outIm + sc * per, specAudio.data() + sc * (size_t) chunk);
+        return specAudio.data();
     }
 };
 
@@ -345,30 +356,36 @@ StemMap Separator::separate (const StereoAudio& mix,
             for (auto& s : out) { s.left.assign ((size_t) N, 0.0f); s.right.assign ((size_t) N, 0.0f); }
 
             bool checked = false;
+            std::vector<float> planar ((size_t) chunk * 2, 0.0f);
+            const std::size_t outCount = (std::size_t) numStems * 2 * (std::size_t) chunk;
             const auto t0 = std::chrono::steady_clock::now();
             for (int seg = 0; seg < total; ++seg)
             {
                 if (cancel.load()) throw std::runtime_error ("cancelled");
                 const int start = seg * step;
                 const int len = std::min (chunk, N - start);
-                std::vector<float> planar ((size_t) chunk * 2, 0.0f);
                 for (int i = 0; i < len; ++i)
                 {
                     planar[(size_t) i] = mix.left[(size_t) (start + i)] * inputScale;
                     planar[(size_t) (chunk + i)] = mix.right[(size_t) (start + i)] * inputScale;
                 }
+                if (len < chunk)
+                {
+                    std::fill (planar.begin() + len, planar.begin() + chunk, 0.0f);
+                    std::fill (planar.begin() + chunk + len, planar.end(), 0.0f);
+                }
                 const bool validate = ! checked && hasSignal (planar);
-                auto audio = impl->run (planar);
+                const float* audio = impl->run (planar);
                 if (validate)
                 {
-                    if (! looksValid (audio.data(), audio.size())) throw BadOutput();
+                    if (! looksValid (audio, outCount)) throw BadOutput();
                     checked = true;
                 }
 
                 for (int s = 0; s < numStems; ++s)
                 {
                     auto& dst = out[(size_t) s];
-                    const float* l = audio.data() + (size_t) s * 2 * (size_t) chunk;
+                    const float* l = audio + (size_t) s * 2 * (size_t) chunk;
                     const float* r = l + chunk;
                     for (int i = 0; i < len; ++i)
                     {
@@ -388,17 +405,20 @@ StemMap Separator::separate (const StereoAudio& mix,
             StemMap result;
             for (int s = 0; s < numStems; ++s)
                 result[spec.outputStems[(size_t) s]] = std::move (out[(size_t) s]);
+            impl->clearScratch();
             impl->session.reset();
             impl->stft.reset();
             return result;
         }
         catch (const Ort::Exception& e)
         {
+            impl->clearScratch();
             impl->session.reset();
             if (last) throw std::runtime_error (std::string ("ONNX Runtime: ") + e.what());
         }
         catch (const BadOutput&)
         {
+            impl->clearScratch();
             impl->session.reset();
             if (last) throw;
         }
