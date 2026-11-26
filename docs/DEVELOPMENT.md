@@ -177,7 +177,7 @@ stems + instrumental + full mix to a new folder, three stems at a time (about 4 
   how you distribute justStem.
 - [HT-Demucs](https://github.com/facebookresearch/demucs) (Meta): MIT. ONNX export by
   [StemSplitio](https://huggingface.co/StemSplitio/htdemucs-6s-onnx) (MIT)
-- BS-RoFormer SW 6-stem (HQ mode; bundled only when you build it): ONNX export by
+- BS-RoFormer SW 6-stem (HQ mode; downloaded on demand, or bundled with `JUSTSTEM_BUNDLE_MODELS=ALL`): ONNX export by
   [elicwhite](https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx) (MIT code) of weights
   that were rehosted as `jarredou/BS-ROFO-SW-Fixed`. **No licence has ever been stated for the
   weights.** That repo (created 16 Aug 2025, marked `license: unknown`) was deleted between
@@ -187,7 +187,7 @@ stems + instrumental + full mix to a new folder, three stems at a time (about 4 
   say it was an edited checkpoint first shared on Discord, with no information on who trained it
   or on what. Mirrors such as `enerjazzer/BS-ROFO-SW-Fixed` are also `license: unknown`.
   justStem treats the weights as CC-BY-NC-SA-4.0 (non-commercial, share-alike) as its own
-  cautious choice, not an inherited licence. Releases from 0.0.2 bundle them, so those builds
-  are for non-commercial use.
+  cautious choice, not an inherited licence. Releases from 0.0.2 to 0.0.6 bundled them; newer
+  releases download the HQ model on demand when HQ mode is used, so HQ mode is for non-commercial use.
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) and [Deno](https://deno.com) (MIT),
   downloaded at runtime, not bundled

@@ -33,12 +33,12 @@ struct ModelSpec
 
 namespace model
 {
-    /** Fast: HT-Demucs 6-stem, built by scripts/prepare_demucs_onnx.py. Always bundled. */
+    /** Fast: HT-Demucs 6-stem, built by scripts/prepare_demucs_onnx.py. Bundled in releases. */
     inline constexpr ModelSpec fast { "htdemucs_6s_opt.onnx", "HT-Demucs", ModelInput::Waveform, 343'980,
                                       { Stem::Drums, Stem::Bass, Stem::Other, Stem::Vocals, Stem::Guitar, Stem::Piano },
                                       true, 35.0 };
-    /** HQ: BS-RoFormer SW 6-stem, built by scripts/prepare_roformer_onnx.py. Bundled when present at
-        build time. fp16 maths (fast on GPUs, ~1.7x slower on the CPU fallback).
+    /** HQ: BS-RoFormer SW 6-stem, built by scripts/prepare_roformer_onnx.py. Downloaded on first HQ use
+        (or bundled when JUSTSTEM_BUNDLE_MODELS=ALL). fp16 maths (fast on GPUs, ~1.7x slower on the CPU fallback).
         STFT: 2048-point, hop 512, periodic Hann window, centred (reflect padding). */
     inline constexpr ModelSpec hq { "bs_roformer_sw_6stem_opt.onnx", "BS-RoFormer", ModelInput::Spectrogram, 176'400,
                                     { Stem::Bass, Stem::Drums, Stem::Other, Stem::Vocals, Stem::Guitar, Stem::Piano },

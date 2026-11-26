@@ -73,23 +73,6 @@ jobs:
           bash scripts/fetch_model.sh fast
           python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
 
-      # Releases also bundle the HQ model (see scripts/prepare_roformer_onnx.py; non-commercial,
-      # see docs/DEVELOPMENT.md). Packaging.cmake bundles it when the file exists.
-      - name: HQ model cache
-        if: env.RELEASE == 'true'
-        id: hqmodel
-        uses: actions/cache@v6
-        with:
-          path: models/bs_roformer_sw_6stem_opt.onnx
-          key: hqmodel-${{ runner.os }}-${{ hashFiles('scripts/prepare_roformer_onnx.py', 'scripts/fetch_model.sh', 'scripts/requirements.txt') }}
-      - name: Build the HQ model
-        if: env.RELEASE == 'true' && steps.hqmodel.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          python -m pip install -r scripts/requirements.txt
-          bash scripts/fetch_model.sh hq
-          python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
-
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DJUSTSTEM_BUNDLE_MODELS=FAST
       - name: Build
@@ -99,9 +82,6 @@ jobs:
         run: build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
       - name: Test separation
         run: build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx 12
-      - name: Test HQ separation
-        if: env.RELEASE == 'true'
-        run: build/juststem_cli_artefacts/Release/juststem_cli selftest models/bs_roformer_sw_6stem_opt.onnx 8
       - name: Test plug-in UI and audio
         shell: bash
         env:
@@ -135,7 +115,6 @@ jobs:
           if [ "${ver%%-*}" != "$cmake_ver" ]; then
             echo "::error::Tag $GITHUB_REF_NAME doesn't match the CMake version $cmake_ver"; exit 1
           fi
-          test -f models/bs_roformer_sw_6stem_opt.onnx || { echo "::error::HQ model missing"; exit 1; }
           out="$PWD/release"; mkdir -p "$out"
           cd build/justStem_artefacts/Release
           pack() { # <folder> <bundle> <format>
