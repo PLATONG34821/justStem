@@ -27,14 +27,17 @@ computer, and nothing is uploaded.
 Download from [Releases](https://github.com/PLATONG34821/justStem/releases), then rescan plug-ins in your DAW:
 
 - **macOS (installer, recommended):** open `justStem-<version>-macOS.pkg` to install the VST3 and AU plug-ins (and optionally the Standalone app), either for all users or for your account only. Because the installer isn't notarized yet, macOS will block it on first open—go to **System Settings → Privacy & Security** and click **Open Anyway**.
-- **Manual install (zips):** unzip and copy the plug-in into this folder:
+- **Manual install / Standalone (zips):** unzip and copy the plug-in (or run the standalone app) from the zip:
 
-| | File | Copy to |
+| | File | Copy to / run |
 |---|---|---|
 | **macOS** | `justStem.vst3` | `~/Library/Audio/Plug-Ins/VST3/` |
 | | `justStem.component` (AU: Logic, GarageBand) | `~/Library/Audio/Plug-Ins/Components/` |
+| | `justStem.app` (Standalone) | `/Applications/` |
 | **Windows** | `justStem.vst3` | `C:\Program Files\Common Files\VST3\` |
+| | `justStem/justStem.exe` (Standalone) | Unzip anywhere and run |
 | **Linux** | `justStem.vst3` | `~/.vst3/` |
+| | `justStem/justStem` (Standalone) | Unzip anywhere and run |
 
 The standard AI model is built in so splitting works offline right away; the first time you turn on
 **HQ** mode, `justStem` downloads the HQ model from GitHub Releases and verifies its SHA-256 checksum.
@@ -47,7 +50,7 @@ installer or zip, then run `shasum -a 256 -c --ignore-missing SHA256SUMS` (macOS
 **macOS (manual zip install only):** the builds aren't notarized yet, so run this once after copying:
 
 ```sh
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/justStem.vst3 ~/Library/Audio/Plug-Ins/Components/justStem.component
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/justStem.vst3 ~/Library/Audio/Plug-Ins/Components/justStem.component /Applications/justStem.app
 ```
 
 **Updates:** from 0.0.3, justStem checks GitHub once a day for a newer release and tells you when

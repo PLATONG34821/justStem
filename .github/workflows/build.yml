@@ -143,7 +143,16 @@ jobs:
             else (cd "$1" && zip -qry "$zip" "$2"); fi
           }
           pack VST3 justStem.vst3 VST3
-          if [ "$RUNNER_OS" = macOS ]; then pack AU justStem.component AU; fi
+          if [ "$RUNNER_OS" = macOS ]; then
+            pack AU justStem.component AU
+            pack Standalone justStem.app Standalone
+          else
+            # Windows and Linux Standalone builds place loose files in Standalone/; wrap them in justStem/.
+            wrap="$PWD/.pack-standalone"; rm -rf "$wrap"; mkdir -p "$wrap"
+            cp -R Standalone "$wrap/justStem"
+            (cd "$wrap" && if [ "$RUNNER_OS" = Windows ]; then 7z a -tzip -bd "$out/justStem-$ver-${{ matrix.name }}-Standalone.zip" justStem >/dev/null; else zip -qry "$out/justStem-$ver-${{ matrix.name }}-Standalone.zip" justStem; fi)
+            rm -rf "$wrap"
+          fi
           ls -l "$out"
       - name: Build macOS installer (.pkg)
         if: env.RELEASE == 'true' && runner.os == 'macOS'
