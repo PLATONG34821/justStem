@@ -539,8 +539,12 @@ int analysisSelftest()
         const juce::String hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
         check (findSha256InSums ("deadbeef  other.exe\n" + hash + "  yt-dlp_macos\n", "yt-dlp_macos") == hash,
                "multi-line SHA2-256SUMS extracts matching 64-hex digest");
-        check (findSha256InSums (hash + "  deno.zip\n", "deno.zip") == hash,
-               "single-line sha256sum extracts 64-hex digest");
+        check (findSha256InSums (hash + "  deno.zip\n", "deno.zip") == hash
+                   && findSha256InSums (hash + "\tdeno.zip\n", "deno.zip") == hash
+                   && findSha256InSums (hash + "\n", "deno.zip") == hash,
+               "single-line sha256sum (spaces, tab, or bare digest) extracts 64-hex digest");
+        check (findSha256InSums (hash + "  wrong.zip\n", "deno.zip").isEmpty(),
+               "single-line sha256sum for another filename is rejected");
         check (findSha256InSums ("503 Service Unavailable\n", "deno.zip").isEmpty(),
                "single-line HTTP error page is rejected");
     }
@@ -552,9 +556,25 @@ int analysisSelftest()
                    && ! UpdateCheck::isNewer ("v0.0.5-test", "0.0.5") && ! UpdateCheck::isNewer ("invalid", "0.0.5"),
                "UpdateCheck::isNewer compares semantic versions");
         check (isYouTubeLink ("https://www.youtube.com/watch?v=abc") && isYouTubeLink ("youtu.be/abc")
-                   && isYouTubeLink ("music.youtube.com/watch?v=abc")
-                   && ! isYouTubeLink ("https://notyoutube.com/watch?v=abc") && ! isYouTubeLink ("/tmp/song.mp3"),
-               "isYouTubeLink matches YouTube hosts only");
+                   && isYouTubeLink ("music.youtube.com/watch?v=abc") && isYouTubeLink ("https://youtube.com/@artist")
+                   && ! isYouTubeLink ("https://notyoutube.com/watch?v=abc") && ! isYouTubeLink ("/tmp/song.mp3")
+                   && ! isYouTubeLink ("https://evilwww.youtu.be/abc")
+                   && ! isYouTubeLink ("https://www.youtube.com:x@evil.com/watch?v=abc")
+                   && ! isYouTubeLink ("ftp://www.youtube.com/watch?v=abc")
+                   && ! isYouTubeLink ("httpfoo://youtube.com/watch?v=abc"),
+               "isYouTubeLink matches YouTube hosts only and rejects URL spoofing");
+        // Multi-byte UTF-8 ("เพลงไทย") split at every 2-byte boundary, plus a trailing line with no newline.
+        const std::string raw = "juststem-title \xe0\xb9\x80\xe0\xb8\x9e\xe0\xb8\xa5\xe0\xb8\x87\xe0\xb9\x84\xe0\xb8\x97\xe0\xb8\xa2\nERROR: trailing";
+        std::string pending;
+        juce::StringArray lines;
+        for (std::size_t i = 0; i < raw.size(); i += 2)
+            readUtf8Lines (pending, raw.data() + i, (int) std::min<std::size_t> (2, raw.size() - i), false,
+                           [&] (const juce::String& l) { lines.add (l); });
+        readUtf8Lines (pending, nullptr, 0, true, [&] (const juce::String& l) { lines.add (l); });
+        check (lines.size() == 2
+                   && lines[0] == juce::String::fromUTF8 ("juststem-title \xe0\xb9\x80\xe0\xb8\x9e\xe0\xb8\xa5\xe0\xb8\x87\xe0\xb9\x84\xe0\xb8\x97\xe0\xb8\xa2")
+                   && lines[1] == "ERROR: trailing",
+               "split UTF-8 pipe chunks and trailing line without newline decode intact");
     }
 
     std::printf ("Spectrogram model path (Stft + ONNX)\n");

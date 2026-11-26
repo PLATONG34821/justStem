@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <limits>
 #include <numbers>
 
 static int failures = 0;
@@ -28,8 +29,8 @@ static void snapshot (juce::Component& c, const juce::File& f)
 
 static void pumpUntil (const std::function<bool()>& done, int timeoutMs)
 {
-    const auto end = juce::Time::getMillisecondCounter() + (juce::uint32) timeoutMs;
-    while (! done() && juce::Time::getMillisecondCounter() < end)
+    const auto end = juce::Time::getMillisecondCounterHiRes() + timeoutMs;
+    while (! done() && juce::Time::getMillisecondCounterHiRes() < end)
         juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
 }
 
@@ -234,6 +235,17 @@ int main (int argc, char** argv)
         const auto saved = juststem::storage::savedSongs();
         check (std::any_of (saved.begin(), saved.end(), [&] (const auto& x) { return x.folder == proc->getSong()->folder; }),
                "current song listed in storage");
+        // A shared fast model in paths::models() (macOS "Install for me only") must not show up as HQ AI model.
+        const auto fastInUserModels = juststem::paths::models().getChildFile (juststem::text::from (juststem::model::fast.fileName));
+        const bool hadFast = fastInUserModels.existsAsFile();
+        if (! hadFast) fastInUserModels.replaceWithText ("dummy fast model");
+        panel->refresh();
+        auto* clearHq = findChild<juce::Button> (*panel, [] (juce::Button& b) { return b.getTitle() == "Remove HQ AI model"; });
+        const auto hqInUserModels = juststem::paths::models().getChildFile (juststem::text::from (juststem::model::hq.fileName));
+        check (clearHq != nullptr && (hqInUserModels.existsAsFile() ? clearHq->isEnabled() : ! clearHq->isEnabled()),
+               "Storage HQ model row ignores the fast model in paths::models()");
+        if (! hadFast) fastInUserModels.deleteFile();
+        panel->refresh();
         check (editor->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)), "Escape handled while Storage is open");
         pumpUntil ([] { return false; }, 200);
         check (findChild<juststem::ui::StoragePanel> (*editor) == nullptr,
@@ -349,6 +361,9 @@ int main (int argc, char** argv)
     }
     pl.setVolume (1, 0.5f);
     pl.setPlaying (false);
+    check (editor->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)) && pl.isPlaying()
+               && editor->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)) && ! pl.isPlaying(),
+           "Spacebar toggles preview play and pause");
     const int afterPlayerChanges = hostListener.nonParamChanges;
     pl.setMute (0, true);
     pl.setMute (0, false);
@@ -590,9 +605,31 @@ int main (int argc, char** argv)
     auto proc2 = std::make_unique<justStemProcessor> (model);
     proc2->prepareToPlay (44100, 256);
     proc2->setStateInformation (state.getData(), (int) state.getSize());
+    {
+        // Saving while Reload is still queued/running must preserve the restored song folder.
+        juce::MemoryBlock duringReload;
+        proc2->getStateInformation (duringReload);
+        const auto tree = juce::ValueTree::readFromData (duringReload.getData(), duringReload.getSize());
+        check (proc2->getSong() == nullptr && tree["folder"].toString() == s->folder.getFullPathName(),
+               "getStateInformation during Reload preserves the song folder");
+    }
     pumpUntil ([&] { return proc2->getSong() != nullptr && ! proc2->isBusy(); }, 60000);
     check (proc2->getSong() != nullptr && proc2->getSong()->title == s->title, "song reloaded from the saved state");
     check (proc2->player().getVolume (1) == 0.5f, "stem volume restored");
+    {
+        // Corrupt or missing stem volumes in state are clamped/defaulted instead of injecting NaN or silence.
+        auto badTree = juce::ValueTree::readFromData (state.getData(), state.getSize());
+        badTree.getChild (0).removeProperty ("volume", nullptr);
+        badTree.getChild (1).setProperty ("volume", std::numeric_limits<double>::quiet_NaN(), nullptr);
+        badTree.getChild (2).setProperty ("volume", 99.0, nullptr);
+        badTree.getChild (3).setProperty ("volume", -5.0, nullptr);
+        juce::MemoryBlock badBlob;
+        { juce::MemoryOutputStream out (badBlob, false); badTree.writeToStream (out); }
+        proc2->setStateInformation (badBlob.getData(), (int) badBlob.getSize());
+        check (proc2->player().getVolume (0) == 1.0f && proc2->player().getVolume (1) == 1.0f
+                   && proc2->player().getVolume (2) == 1.5f && proc2->player().getVolume (3) == 0.0f,
+               "corrupt or missing stem volumes clamp/default safely");
+    }
     if (proc2->getSong())
     {
         const auto& b = proc2->getSong()->analysis;
