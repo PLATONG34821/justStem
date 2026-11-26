@@ -138,19 +138,9 @@ StereoAudio loadAudioFile (const juce::File& file, double maxSeconds)
     if (decoded.sampleRate <= 0 || decoded.left.empty()) throw std::runtime_error ("The audio file is empty");
     if ((double) decoded.left.size() / decoded.sampleRate > maxSeconds) throw songTooLong (maxSeconds);
 
-    StereoAudio out;
-    if ((int) decoded.sampleRate == sampleRate)
-    {
-        out.left = std::move (decoded.left);
-        out.right = std::move (decoded.right);
-    }
-    else
-    {
-        const int rate = (int) std::lround (decoded.sampleRate);
-        out.left = resample (decoded.left, rate, sampleRate);
-        out.right = resample (decoded.right, rate, sampleRate);
-    }
-    return out;
+    if ((int) decoded.sampleRate != sampleRate)
+        resampleStereo (decoded.left, decoded.right, (int) std::lround (decoded.sampleRate), sampleRate);
+    return { std::move (decoded.left), std::move (decoded.right) };
 }
 
 namespace
