@@ -1,12 +1,40 @@
 #include "Dsp.h"
-#include "Fft.h"
+
+#include <signalsmith-linear/fft.h>
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <numbers>
 
 namespace juststem::dsp
 {
+namespace
+{
+struct RealFft
+{
+    explicit RealFft (int n) : n (n), fft ((size_t) n), spec ((size_t) n / 2) {}
+
+    void magnitudes (const float* x, float* mag)
+    {
+        fft.fft (x, spec.data());
+        mag[0] = std::abs (spec[0].real());
+        mag[n / 2] = std::abs (spec[0].imag());
+        for (int k = 1; k < n / 2; ++k) mag[k] = std::abs (spec[(size_t) k]);
+    }
+
+    int n;
+    signalsmith::linear::RealFFT<float> fft;
+    std::vector<std::complex<float>> spec;
+};
+} // namespace
+
+std::vector<float> spectrumMagnitudes (const std::vector<float>& frame)
+{
+    std::vector<float> mag (frame.size() / 2 + 1);
+    RealFft ((int) frame.size()).magnitudes (frame.data(), mag.data());
+    return mag;
+}
 std::vector<float> hann (int n)
 {
     std::vector<float> w ((size_t) n);

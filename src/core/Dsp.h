@@ -7,6 +7,9 @@ namespace juststem::dsp
 {
 std::vector<float> hann (int n);
 
+/** Magnitudes of bins 0..n/2 of a power-of-two real frame x[0..n-1]. */
+std::vector<float> spectrumMagnitudes (const std::vector<float>& frame);
+
 struct Peak
 {
     float freq, mag;

@@ -2,7 +2,7 @@
 // on synthetic signals with known answers. See tools/cli.cpp for the commands.
 #include "cli.h"
 #include "../src/core/Analysis.h"
-#include "../src/core/Fft.h"
+#include "../src/core/Dsp.h"
 #include "../src/core/PitchShift.h"
 #include "../src/core/Resampler.h"
 #include "../src/core/Separator.h"
@@ -392,9 +392,9 @@ int analysisSelftest()
         x.right = x.left;
         auto freqAt = [] (const std::vector<float>& v, int from) { // FFT peak with parabolic interpolation
             constexpr int fftN = 32768;
-            std::vector<float> w ((size_t) fftN), mag ((size_t) fftN / 2 + 1);
+            std::vector<float> w ((size_t) fftN);
             for (int i = 0; i < fftN; ++i) w[(size_t) i] = v[(size_t) (from + i)] * (float) (0.5 - 0.5 * std::cos (2 * std::numbers::pi * i / fftN));
-            RealFft (fftN).magnitudes (w.data(), mag.data());
+            const auto mag = dsp::spectrumMagnitudes (w);
             const int k = (int) (std::max_element (mag.begin() + 1, mag.end() - 1) - mag.begin());
             const double a = std::log (mag[(size_t) k - 1]), b = std::log (mag[(size_t) k]), c = std::log (mag[(size_t) k + 1]);
             return (k + 0.5 * (a - c) / (a - 2 * b + c)) * sampleRate / fftN;
