@@ -42,10 +42,17 @@ void download (const juce::URL& url, const juce::File& dest, const juce::String&
     for (int n; (n = stream->read (buf.get(), 1 << 16)) > 0;)
     {
         if (cancel.load()) throw std::runtime_error ("cancelled");
-        out.write (buf.get(), (size_t) n);
+        if (! out.write (buf.get(), (size_t) n))
+            throw std::runtime_error ("Write failed (disk full?): " + dest.getFullPathName().toStdString());
         done += n;
         if (progress) progress (step, total > 0 ? (double) done / (double) total : -1.0);
     }
+    out.flush();
+    if (out.getStatus().failed())
+        throw std::runtime_error ("Write failed: " + out.getStatus().getErrorMessage().toStdString());
+    if (done == 0 || (total > 0 && done != total))
+        throw std::runtime_error ("Download interrupted (" + juce::File::descriptionOfSizeInBytes (done).toStdString()
+                                  + (total > 0 ? " of " + juce::File::descriptionOfSizeInBytes (total).toStdString() : "") + ")");
 }
 
 /** Throws (and deletes `file`) unless its SHA-256 matches the entry for `name` in the checksum file at `sumsUrl`. */
@@ -127,18 +134,18 @@ bool replaceFileAtomically (const juce::File& from, const juce::File& to)
 
 juce::String findSha256InSums (const juce::String& sumsText, const juce::String& fileName)
 {
-    // Checksum files are "<hash>  <name>" per line, or just one line for a single file.
+    // Checksum files are "<hash>  <name>" (or "<hash> *<name>", "<hash>\t<name>"), or "<hash>" alone for a single file.
     const auto lines = juce::StringArray::fromLines (sumsText.trim());
     juce::String expected;
     for (const auto& raw : lines)
     {
         const auto line = raw.trim();
-        if (lines.size() == 1 || line.endsWith (" " + fileName) || line.endsWith ("*" + fileName))
-        {
-            const auto token = line.upToFirstOccurrenceOf (" ", false, false).upToFirstOccurrenceOf ("\t", false, false);
-            if (token.length() == 64 && token.containsOnly ("0123456789abcdefABCDEF"))
-                expected = token;
-        }
+        const auto token = line.upToFirstOccurrenceOf (" ", false, false).upToFirstOccurrenceOf ("\t", false, false);
+        if (token.length() != 64 || ! token.containsOnly ("0123456789abcdefABCDEF")) continue;
+        const auto rest = line.substring (token.length()).trimCharactersAtStart (" \t*");
+        const auto name = rest.startsWith ("./") ? rest.substring (2) : rest;
+        if ((lines.size() == 1 && rest.isEmpty()) || name == fileName)
+            expected = token;
     }
     return expected;
 }
@@ -176,10 +183,10 @@ juce::File ensureYtDlp (const ProgressCallback& progress, const std::atomic<bool
         juce::ChildProcess p;
         bool finished = false;
         if (p.start (juce::StringArray { exe.getFullPathName(), "--ignore-config", "-U" }))
-            for (const auto end = juce::Time::getMillisecondCounter() + 120000; ! (finished = p.waitForProcessToFinish (50));)
+            for (const auto end = juce::Time::getMillisecondCounterHiRes() + 120000.0; ! (finished = p.waitForProcessToFinish (50));)
             {
                 if (cancel.load()) { p.kill(); throw std::runtime_error ("cancelled"); } // the update is tried again next time
-                if (juce::Time::getMillisecondCounter() > end) { p.kill(); break; }
+                if (juce::Time::getMillisecondCounterHiRes() > end) { p.kill(); break; }
             }
         if (finished) stamp.touch();
     }
