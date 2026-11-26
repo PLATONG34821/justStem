@@ -234,7 +234,7 @@ jobs:
               <choice id="standalone" title="Standalone App" description="Installs justStem.app to Applications" selected="false">
                   <pkg-ref id="com.juststem.juststem.standalone"/>
               </choice>
-              <choice id="model" title="Standard AI Model" visible="false">
+              <choice id="model" title="Standard AI Model (Required)" description="Installs the shared HT-Demucs 6-stem model (163 MB) so justStem works offline" enabled="false">
                   <pkg-ref id="com.juststem.juststem.model"/>
               </choice>
               <pkg-ref id="com.juststem.juststem.vst3" version="$cmake_ver">vst3.pkg</pkg-ref>
