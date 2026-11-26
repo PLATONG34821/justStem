@@ -234,13 +234,14 @@ juce::File ensureModel (const juce::File& dest, const ProgressCallback& progress
                                   ? "Downloading HQ AI model"
                                   : "Downloading AI model";
     const juce::String repoBase = "https://github.com/PLATONG34821/justStem/releases/";
-    const juce::String bases[] { repoBase + "download/v" + juce::String (JUSTSTEM_VERSION) + "/",
+    const juce::String bases[] { repoBase + "download/models-v1/",
+                                 repoBase + "download/v" + juce::String (JUSTSTEM_VERSION) + "/",
                                  repoBase + "latest/download/" };
 
     const auto tmp = scratchFor (dest, ".part");
     try
     {
-        for (int i = 0; i < 2; ++i)
+        for (size_t i = 0; i < std::size (bases); ++i)
         {
             try
             {
@@ -250,7 +251,7 @@ juce::File ensureModel (const juce::File& dest, const ProgressCallback& progress
             }
             catch (const HttpError& e)
             {
-                if (i == 0 && e.status == 404) continue; // local/untagged build: fall back to latest release
+                if (i + 1 < std::size (bases) && e.status == 404) continue;
                 throw;
             }
         }

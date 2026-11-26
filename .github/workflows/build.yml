@@ -1,7 +1,8 @@
 # Builds and tests justStem on macOS, Windows and Linux, and uploads the plug-ins.
-# Pushing a tag like v0.0.3 builds with the fast model bundled (so every download works offline),
-# uploads the HQ model once for on-demand download, zips each plug-in (justStem-<version>-<OS>-<format>.zip),
-# builds a combined macOS installer (justStem-<version>-macOS.pkg), and creates a draft GitHub release.
+# Pushing a v* tag builds with the fast model bundled (so every download works offline), zips each
+# plug-in and Standalone app, builds the macOS .pkg installer, and creates a draft GitHub release.
+# Pushing a models-* tag (e.g. models-v1) builds and publishes the shared ONNX models once as a
+# prerelease for on-demand HQ download.
 name: build
 
 on:
@@ -14,6 +15,7 @@ env:
 
 jobs:
   build:
+    if: "!startsWith(github.ref, 'refs/tags/models-')"
     strategy:
       fail-fast: false
       matrix:
@@ -256,12 +258,6 @@ jobs:
           productbuild --distribution "$stage/distribution.xml" --package-path "$stage" "$out/justStem-$ver-macOS.pkg"
           rm -rf "$stage"
           ls -lh "$out"
-      - name: Stage HQ model for release
-        if: env.RELEASE == 'true' && runner.os == 'Linux'
-        shell: bash
-        run: |
-          cp models/bs_roformer_sw_6stem_opt.onnx release/
-          ls -lh release
       - name: Upload release assets
         if: env.RELEASE == 'true'
         uses: actions/upload-artifact@v7
@@ -270,11 +266,10 @@ jobs:
           path: |
             release/*.zip
             release/*.pkg
-            release/*.onnx
           compression-level: 0 # already compressed
           if-no-files-found: error
 
-  # A draft release with the installers, zips and shared models, once every platform built and passed its tests.
+  # A draft release with the installers and zips, once every platform built and passed its tests.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
@@ -292,8 +287,35 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Checksums, so downloads can be checked (see the README's Install section).
-          (cd release && sha256sum *.zip *.pkg *.onnx > SHA256SUMS && cat SHA256SUMS)
+          (cd release && sha256sum *.zip *.pkg > SHA256SUMS && cat SHA256SUMS)
           ls -l release
           pre=(); case "$GITHUB_REF_NAME" in *-*) pre=(--prerelease) ;; esac # v0.0.3-ci-test
-          gh release create "$GITHUB_REF_NAME" release/*.zip release/*.pkg release/*.onnx release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --draft "${pre[@]}" \
+          gh release create "$GITHUB_REF_NAME" release/*.zip release/*.pkg release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --draft "${pre[@]}" \
             --title "justStem ${GITHUB_REF_NAME#v}" --generate-notes
+
+  # One-time model release (e.g. models-v1): prerelease so /releases/latest stays on app versions.
+  models-release:
+    if: startsWith(github.ref, 'refs/tags/models-')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Build models
+        run: |
+          python -m pip install -r scripts/requirements.txt
+          bash scripts/fetch_model.sh fast
+          bash scripts/fetch_model.sh hq
+          mkdir -p release
+          python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx release/htdemucs_6s_opt.onnx
+          python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx release/bs_roformer_sw_6stem_opt.onnx
+          (cd release && sha256sum *.onnx > SHA256SUMS && cat SHA256SUMS)
+      - name: Publish model release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/*.onnx release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --prerelease \
+            --title "$GITHUB_REF_NAME" --notes "Shared ONNX models downloaded on demand by justStem."
