@@ -338,6 +338,18 @@ ChordResult songChords (const SongParts& parts, const ChordPeaks& peaks, const s
 }
 } // namespace
 
+SongAnalysis analyzeSong (const StemMap& stems, LoudnessResult loudness)
+{
+    const SongParts parts ({}, stems);
+    auto onsets = std::async (std::launch::async, [&] { return rhythmOnsets (parts); });
+    auto key = std::async (std::launch::async, [&] { return detectKey (parts.nonDrums, sampleRate); });
+    const auto peaks = chordPeaks (parts.harmonic, parts.bass, sampleRate);
+    const auto rhythm = onsets.get();
+    SongAnalysis a { key.get(), tempoFromOnsets (rhythm, sampleRate), loudness, {} };
+    a.chords = songChords (parts, peaks, rhythm, a.tempo.bpm, a.key);
+    return a;
+}
+
 SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems)
 {
     // Key from everything except drums; tempo and beats from the drums (from the other instruments

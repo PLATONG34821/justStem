@@ -318,7 +318,9 @@ SongResultPtr SongJob::process()
 
     setStatus ("Analysing song", -1); // key, tempo and chords
     const auto analysisStart = nowMs();
-    song->analysis = analyzeSong (mix, song->stems);
+    const auto loudness = measureLoudness (mix.left, mix.right, sampleRate);
+    mix = {}; // free the 44.1 kHz mix before building SongParts and saving stems
+    song->analysis = analyzeSong (song->stems, loudness);
     const double analysisMs = nowMs() - analysisStart;
     const auto& a = song->analysis;
     addLog ("Key " + juce::String (a.key.name()) + " (Camelot " + juce::String (a.key.camelot()) + "), "

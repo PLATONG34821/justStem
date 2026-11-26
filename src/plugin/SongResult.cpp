@@ -95,16 +95,16 @@ juce::File findSavedSong (const juce::String& audioHash, const juce::String& mod
 
 void saveSong (const SongResult& song)
 {
-    StereoAudio instrumental, fullMix;
+    StereoAudio mix;
     for (auto stem : stemOrder)
     {
         const auto& s = song.stems.at (stem);
         writeFlac (song.folder.getChildFile (juce::String (stemFileName (stem))), s);
-        if (stem != Stem::Vocals) addInto (instrumental, s);
-        addInto (fullMix, s);
+        if (stem != Stem::Vocals) addInto (mix, s);
     }
-    writeFlac (song.folder.getChildFile ("instrumental.flac"), instrumental);
-    writeFlac (song.folder.getChildFile ("full mix.flac"), fullMix);
+    writeFlac (song.folder.getChildFile ("instrumental.flac"), mix);
+    addInto (mix, song.stems.at (Stem::Vocals));
+    writeFlac (song.folder.getChildFile ("full mix.flac"), mix);
     saveInfo (song);
 }
 
@@ -113,20 +113,20 @@ bool copyStems (const SongResult& song, const juce::File& dir, const std::functi
     if (! dir.createDirectory()) throw std::runtime_error ("Couldn't create " + dir.getFullPathName().toStdString());
     // From the stems in memory (the saved ones are FLAC; WAV opens in every DAW).
     constexpr double files = numStems + 2;
-    StereoAudio instrumental, fullMix;
+    StereoAudio mix;
     for (std::size_t i = 0; i < stemOrder.size(); ++i)
     {
         if (! progress ((double) i / files)) return false;
         const auto stem = stemOrder[i];
         const auto& s = song.stems.at (stem);
         writeWav (dir.getChildFile (juce::String (stemWavName (stem))), s);
-        if (stem != Stem::Vocals) addInto (instrumental, s);
-        addInto (fullMix, s);
+        if (stem != Stem::Vocals) addInto (mix, s);
     }
     if (! progress ((double) numStems / files)) return false;
-    writeWav (dir.getChildFile ("instrumental.wav"), instrumental);
+    writeWav (dir.getChildFile ("instrumental.wav"), mix);
     if (! progress ((double) (numStems + 1) / files)) return false;
-    writeWav (dir.getChildFile ("full mix.wav"), fullMix);
+    addInto (mix, song.stems.at (Stem::Vocals));
+    writeWav (dir.getChildFile ("full mix.wav"), mix);
     progress (1.0);
     return true;
 }
@@ -178,21 +178,20 @@ bool saveTransposedStems (const SongResult& song, int semitones, const juce::Fil
     // Shifting changes phase relationships and can push stems or mixes past full scale.
     fitUnderFullScale (shiftedStems);
 
-    StereoAudio instrumental, fullMix;
+    StereoAudio mix;
     constexpr double writeSteps = numStems + 2;
     for (std::size_t i = 0; i < stemOrder.size(); ++i)
     {
         if (! progress (0.9 + 0.1 * (double) i / writeSteps)) return false;
         const auto stem = stemOrder[i];
-        auto node = shiftedStems.extract (stem);
-        writeWav (dir.getChildFile (juce::String (stemWavName (stem))), node.mapped());
-        if (stem != Stem::Vocals) addInto (instrumental, node.mapped());
-        addInto (fullMix, node.mapped());
+        writeWav (dir.getChildFile (juce::String (stemWavName (stem))), shiftedStems.at (stem));
+        if (stem != Stem::Vocals) addInto (mix, shiftedStems.extract (stem).mapped());
     }
     if (! progress (0.9 + 0.1 * (double) numStems / writeSteps)) return false;
-    writeWav (dir.getChildFile ("instrumental.wav"), instrumental);
+    writeWav (dir.getChildFile ("instrumental.wav"), mix);
     if (! progress (0.9 + 0.1 * (double) (numStems + 1) / writeSteps)) return false;
-    writeWav (dir.getChildFile ("full mix.wav"), fullMix);
+    addInto (mix, shiftedStems.extract (Stem::Vocals).mapped());
+    writeWav (dir.getChildFile ("full mix.wav"), mix);
     progress (1.0);
     return true;
 }

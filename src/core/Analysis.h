@@ -56,6 +56,9 @@ struct SongAnalysis
     without drums), loudness (from the mix) and chords. Pass an empty StemMap to analyse the mix alone. */
 SongAnalysis analyzeSong (const StereoAudio& mix, const StemMap& stems);
 
+/** Same as analyzeSong, when loudness was already measured from the mix before freeing it. */
+SongAnalysis analyzeSong (const StemMap& stems, LoudnessResult loudness);
+
 /** The chords alone (as analyzeSong finds them), for a known tempo and key: from the separated stems
     (guitar + piano + other, bass, drums), or from the mix when `stems` is empty. */
 ChordResult detectSongChords (const StereoAudio& mix, const StemMap& stems, float bpm, const KeyResult& key);
