@@ -28,7 +28,11 @@ public:
     void startYouTube (const juce::String& link) { startJob (juststem::SongJob::Kind::YouTube, link); }
     void startFile (const juce::File& file) { startJob (juststem::SongJob::Kind::File, file.getFullPathName()); }
     /** Load a song split earlier (its folder under the songs folder) without splitting it again. */
-    void openSaved (const juce::File& folder) { startJob (juststem::SongJob::Kind::Reload, folder.getFullPathName()); }
+    void openSaved (const juce::File& folder)
+    {
+        { const juce::ScopedLock sl (songLock); if (job == nullptr) pendingFolder = folder; }
+        startJob (juststem::SongJob::Kind::Reload, folder.getFullPathName());
+    }
     void cancelJob();
     bool isBusy() const { return job != nullptr; }
     juststem::SongJob::Status jobStatus() const;
@@ -106,6 +110,7 @@ private:
     std::unique_ptr<juststem::SongJob> job;
     std::unique_ptr<juststem::ui::StemExport> stemExport;
     juststem::SongResultPtr song; // set on the message thread, under songLock
+    juce::File pendingFolder;     // target song folder while a restore/reload is in flight, under songLock
     // Hosts may save or restore the state on any thread, which reads `song` while a job replaces it.
     juce::CriticalSection songLock;
     juce::String error;
