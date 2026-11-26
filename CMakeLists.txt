@@ -6,7 +6,7 @@ set(JUSTSTEM_LANGUAGES C CXX)
 if(APPLE)
     list(APPEND JUSTSTEM_LANGUAGES OBJC OBJCXX)
 endif()
-project(justStem VERSION 0.0.6 LANGUAGES ${JUSTSTEM_LANGUAGES})
+project(justStem VERSION 0.0.7 LANGUAGES ${JUSTSTEM_LANGUAGES})
 
 # windows.h defines min/max macros, which break std::min/std::max calls throughout the code.
 if(WIN32)
