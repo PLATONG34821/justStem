@@ -27,10 +27,41 @@ void DownloadedAudio::deleteFolder()
 bool isYouTubeLink (const juce::String& text)
 {
     auto t = text.trim();
-    if (! t.startsWithIgnoreCase ("http")) t = "https://" + t;
-    const auto host = juce::URL (t).getDomain().toLowerCase().fromLastOccurrenceOf ("www.", false, false);
-    return host == "youtube.com" || host == "youtu.be" || host == "m.youtube.com" || host == "music.youtube.com"
-        || host.endsWith (".youtube.com");
+    if (! t.contains ("://")) t = "https://" + t;
+    if (! t.startsWithIgnoreCase ("https://") && ! t.startsWithIgnoreCase ("http://")) return false;
+    const auto afterScheme = t.fromFirstOccurrenceOf ("://", false, false);
+    const int end = afterScheme.indexOfAnyOf ("/?#");
+    const auto authority = end >= 0 ? afterScheme.substring (0, end) : afterScheme;
+    if (authority.isEmpty() || authority.containsAnyOf ("@ \t\r\n")) return false;
+    if (authority.containsChar (':'))
+    {
+        const auto port = authority.fromFirstOccurrenceOf (":", false, false);
+        if (port.isEmpty() || ! port.containsOnly ("0123456789")) return false;
+    }
+    auto host = authority.upToFirstOccurrenceOf (":", false, false).toLowerCase();
+    if (host.startsWith ("www.")) host = host.substring (4);
+    if (host.startsWith (".") || host.contains ("..")) return false;
+    return host == "youtube.com" || host == "youtu.be" || host.endsWith (".youtube.com");
+}
+
+void readUtf8Lines (std::string& pending, const char* data, int bytes, bool eof,
+                    const std::function<void (const juce::String&)>& onLine)
+{
+    if (bytes > 0) pending.append (data, (std::size_t) bytes);
+    std::size_t start = 0;
+    for (;;)
+    {
+        const auto nl = pending.find ('\n', start);
+        if (nl == std::string::npos) break;
+        onLine (juce::String::fromUTF8 (pending.data() + start, (int) (nl - start)).trim());
+        start = nl + 1;
+    }
+    pending.erase (0, start);
+    if (eof && ! pending.empty())
+    {
+        onLine (juce::String::fromUTF8 (pending.data(), (int) pending.size()).trim());
+        pending.clear();
+    }
 }
 
 DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCallback& progress, const std::atomic<bool>& cancel)
@@ -69,7 +100,19 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
     if (! proc.start (args, juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
         throw std::runtime_error ("Couldn't start yt-dlp");
 
-    juce::String pending, errors;
+    std::string pending;
+    juce::String errors;
+    auto handleLine = [&] (const juce::String& line) {
+        if (line.startsWith ("juststem-title ")) result.title = line.fromFirstOccurrenceOf (" ", false, false);
+        else if (line.startsWith ("juststem-file ")) result.file = juce::File (line.fromFirstOccurrenceOf (" ", false, false));
+        else if (line.startsWith ("juststem-progress "))
+        {
+            const auto pct = line.fromFirstOccurrenceOf (" ", false, false).retainCharacters ("0123456789.");
+            if (progress && pct.isNotEmpty()) progress ("Getting audio", pct.getDoubleValue() / 100.0);
+        }
+        else if (line.startsWith ("ERROR")) errors << line << "\n";
+        else if (line.startsWith ("WARNING")) { DBG (line); }
+    };
     char buf[4096];
     for (;;)
     {
@@ -81,25 +124,15 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
         const int n = proc.readProcessOutput (buf, sizeof (buf));
         if (n <= 0)
         {
-            if (! proc.isRunning()) break;
+            if (! proc.isRunning())
+            {
+                readUtf8Lines (pending, nullptr, 0, true, handleLine);
+                break;
+            }
             juce::Thread::sleep (20);
             continue;
         }
-        pending += juce::String::fromUTF8 (buf, n);
-        while (pending.containsChar ('\n'))
-        {
-            const auto line = pending.upToFirstOccurrenceOf ("\n", false, false).trim();
-            pending = pending.fromFirstOccurrenceOf ("\n", false, false);
-            if (line.startsWith ("juststem-title ")) result.title = line.fromFirstOccurrenceOf (" ", false, false);
-            else if (line.startsWith ("juststem-file ")) result.file = juce::File (line.fromFirstOccurrenceOf (" ", false, false));
-            else if (line.startsWith ("juststem-progress "))
-            {
-                const auto pct = line.fromFirstOccurrenceOf (" ", false, false).retainCharacters ("0123456789.");
-                if (progress && pct.isNotEmpty()) progress ("Getting audio", pct.getDoubleValue() / 100.0);
-            }
-            else if (line.startsWith ("ERROR")) errors << line << "\n";
-            else if (line.startsWith ("WARNING")) { DBG (line); }
-        }
+        readUtf8Lines (pending, buf, n, false, handleLine);
     }
 
     if (proc.getExitCode() == 101)
