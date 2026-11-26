@@ -1,7 +1,7 @@
 # Builds and tests justStem on macOS, Windows and Linux, and uploads the plug-ins.
-# Pushing a tag like v0.0.3 also bundles the HQ model, zips each plug-in like the earlier releases
-# (justStem-<version>-<OS>-<format>.zip) and creates a draft GitHub release with them, to review
-# and publish by hand.
+# Pushing a tag like v0.0.3 builds with the fast model bundled (so every download works offline),
+# uploads the HQ model once for on-demand download, zips each plug-in (justStem-<version>-<OS>-<format>.zip),
+# builds a combined macOS installer (justStem-<version>-macOS.pkg), and creates a draft GitHub release.
 name: build
 
 on:
@@ -89,7 +89,7 @@ jobs:
           python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DJUSTSTEM_BUNDLE_MODELS=FAST
       - name: Build
         run: cmake --build build
 
@@ -145,16 +145,127 @@ jobs:
           pack VST3 justStem.vst3 VST3
           if [ "$RUNNER_OS" = macOS ]; then pack AU justStem.component AU; fi
           ls -l "$out"
-      - name: Upload release zips
+      - name: Build macOS installer (.pkg)
+        if: env.RELEASE == 'true' && runner.os == 'macOS'
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          cmake_ver=$(sed -n 's/^project(justStem VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          out="$PWD/release"
+          stage="$PWD/build/pkg-stage"
+          rm -rf "$stage"
+          mkdir -p "$stage/roots/vst3" "$stage/roots/au" "$stage/roots/standalone" "$stage/roots/model" \
+                   "$stage/scripts/vst3" "$stage/scripts/au" "$stage/scripts/standalone" "$stage/scripts/model"
+
+          art="$PWD/build/justStem_artefacts/Release"
+          ditto "$art/VST3/justStem.vst3" "$stage/roots/vst3/justStem.vst3"
+          ditto "$art/AU/justStem.component" "$stage/roots/au/justStem.component"
+          ditto "$art/Standalone/justStem.app" "$stage/roots/standalone/justStem.app"
+          cp models/htdemucs_6s_opt.onnx "$stage/roots/model/"
+
+          # Keep one shared copy of the fast model in /Library/Application Support/justStem/models
+          # instead of repeating 155 MB inside all three bundles in the .pkg.
+          for b in "$stage/roots/vst3/justStem.vst3" \
+                   "$stage/roots/au/justStem.component" \
+                   "$stage/roots/standalone/justStem.app"; do
+            rm -f "$b/Contents/Resources/htdemucs_6s_opt.onnx"
+            codesign --force --sign - "$b"
+          done
+
+          make_postinstall() {
+            local script="$1" item="$2"
+            cat > "$script" <<EOF
+          #!/bin/sh
+          if [ -e "\$2/$item" ]; then
+              xattr -rd com.apple.quarantine "\$2/$item" 2>/dev/null || true
+          fi
+          exit 0
+          EOF
+            chmod 755 "$script"
+          }
+          make_postinstall "$stage/scripts/vst3/postinstall" "justStem.vst3"
+          make_postinstall "$stage/scripts/au/postinstall" "justStem.component"
+          make_postinstall "$stage/scripts/standalone/postinstall" "justStem.app"
+          make_postinstall "$stage/scripts/model/postinstall" "htdemucs_6s_opt.onnx"
+
+          build_component() {
+            local kind="$1" id="$2" loc="$3"
+            xattr -cr "$stage/roots/$kind"
+            pkgbuild --analyze --root "$stage/roots/$kind" "$stage/$kind.plist"
+            plutil -replace 0.BundleIsRelocatable -bool false "$stage/$kind.plist"
+            pkgbuild --root "$stage/roots/$kind" \
+              --component-plist "$stage/$kind.plist" \
+              --scripts "$stage/scripts/$kind" \
+              --identifier "$id" \
+              --version "$cmake_ver" \
+              --install-location "$loc" \
+              "$stage/$kind.pkg"
+          }
+
+          build_component vst3 com.juststem.juststem.vst3 /Library/Audio/Plug-Ins/VST3
+          build_component au com.juststem.juststem.au /Library/Audio/Plug-Ins/Components
+          build_component standalone com.juststem.juststem.standalone /Applications
+          xattr -cr "$stage/roots/model"
+          pkgbuild --root "$stage/roots/model" \
+            --scripts "$stage/scripts/model" \
+            --identifier com.juststem.juststem.model \
+            --version "$cmake_ver" \
+            --install-location "/Library/Application Support/justStem/models" \
+            "$stage/model.pkg"
+
+          cat > "$stage/distribution.xml" <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <installer-gui-script minSpecVersion="2">
+              <title>justStem $ver</title>
+              <options customize="always" require-scripts="false" hostArchitectures="arm64"/>
+              <domains enable_anywhere="false" enable_currentUserHome="true" enable_localSystem="true"/>
+              <choices-outline>
+                  <line choice="vst3"/>
+                  <line choice="au"/>
+                  <line choice="standalone"/>
+                  <line choice="model"/>
+              </choices-outline>
+              <choice id="vst3" title="VST3 Plug-in" description="Installs justStem.vst3 to Library/Audio/Plug-Ins/VST3">
+                  <pkg-ref id="com.juststem.juststem.vst3"/>
+              </choice>
+              <choice id="au" title="Audio Unit (AU) Plug-in" description="Installs justStem.component to Library/Audio/Plug-Ins/Components (Logic, GarageBand)">
+                  <pkg-ref id="com.juststem.juststem.au"/>
+              </choice>
+              <choice id="standalone" title="Standalone App" description="Installs justStem.app to Applications" selected="false">
+                  <pkg-ref id="com.juststem.juststem.standalone"/>
+              </choice>
+              <choice id="model" title="Standard AI Model" visible="false">
+                  <pkg-ref id="com.juststem.juststem.model"/>
+              </choice>
+              <pkg-ref id="com.juststem.juststem.vst3" version="$cmake_ver">vst3.pkg</pkg-ref>
+              <pkg-ref id="com.juststem.juststem.au" version="$cmake_ver">au.pkg</pkg-ref>
+              <pkg-ref id="com.juststem.juststem.standalone" version="$cmake_ver">standalone.pkg</pkg-ref>
+              <pkg-ref id="com.juststem.juststem.model" version="$cmake_ver">model.pkg</pkg-ref>
+          </installer-gui-script>
+          EOF
+
+          productbuild --distribution "$stage/distribution.xml" --package-path "$stage" "$out/justStem-$ver-macOS.pkg"
+          rm -rf "$stage"
+          ls -lh "$out"
+      - name: Stage HQ model for release
+        if: env.RELEASE == 'true' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          cp models/bs_roformer_sw_6stem_opt.onnx release/
+          ls -lh release
+      - name: Upload release assets
         if: env.RELEASE == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.name }}
-          path: release/*.zip
-          compression-level: 0 # already zipped
+          path: |
+            release/*.zip
+            release/*.pkg
+            release/*.onnx
+          compression-level: 0 # already compressed
           if-no-files-found: error
 
-  # A draft release with the zips, once every platform built and passed its tests.
+  # A draft release with the installers, zips and shared models, once every platform built and passed its tests.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
@@ -172,8 +283,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Checksums, so downloads can be checked (see the README's Install section).
-          (cd release && sha256sum *.zip > SHA256SUMS && cat SHA256SUMS)
+          (cd release && sha256sum *.zip *.pkg *.onnx > SHA256SUMS && cat SHA256SUMS)
           ls -l release
           pre=(); case "$GITHUB_REF_NAME" in *-*) pre=(--prerelease) ;; esac # v0.0.3-ci-test
-          gh release create "$GITHUB_REF_NAME" release/*.zip release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --draft "${pre[@]}" \
+          gh release create "$GITHUB_REF_NAME" release/*.zip release/*.pkg release/*.onnx release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --draft "${pre[@]}" \
             --title "justStem ${GITHUB_REF_NAME#v}" --generate-notes

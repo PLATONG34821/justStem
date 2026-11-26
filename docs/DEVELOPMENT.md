@@ -16,10 +16,12 @@ packages and libcurl for HTTPS (see `.github/workflows/build.yml`). JUCE, ONNX R
    scripts/fetch_model.sh fast
    .venv/bin/python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
    ```
-   Optional, for HQ mode (BS-RoFormer 6-stem): build `models/bs_roformer_sw_6stem_opt.onnx` and the
-   plug-in bundles it and shows the HQ switch; without it HQ mode is hidden. See the top of
-   `scripts/prepare_roformer_onnx.py`. The weights have no stated licence (justStem treats them as CC-BY-NC-SA-4.0);
-   see [Third-party licences](#third-party-licences) before distributing a build that includes them.
+   Optional, for HQ mode (BS-RoFormer 6-stem): build `models/bs_roformer_sw_6stem_opt.onnx` and pass
+   `-DJUSTSTEM_BUNDLE_MODELS=ALL` to bundle it inside the plug-in (by default `JUSTSTEM_BUNDLE_MODELS=FAST`
+   bundles only the fast model, and the plug-in downloads the HQ model on first HQ use; `OFF` bundles
+   neither). See the top of `scripts/prepare_roformer_onnx.py`. The weights have no stated licence
+   (justStem treats them as CC-BY-NC-SA-4.0); see [Third-party licences](#third-party-licences)
+   before distributing a build that includes them.
    ```sh
    scripts/fetch_model.sh hq
    .venv/bin/python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
@@ -88,7 +90,7 @@ src/io/        Files and the outside world (JUCE).
   AudioFiles.*   decode audio files to 44.1 kHz stereo (gapless); write WAV and FLAC
   M4aDecoder.*   M4A / MP4 reader (classic and fragmented) + FAAD2 AAC decoding
   YouTube.*      download a video's audio with yt-dlp
-  ToolInstaller.* download and verify yt-dlp and Deno
+  ToolInstaller.* download and verify yt-dlp, Deno and the HQ AI model
   AppPaths.h     where files are stored
 src/plugin/    The plug-in.
   PluginProcessor.*  audio pass-through + stem preview, runs song jobs, saves state
@@ -113,6 +115,7 @@ cmake/         ONNX Runtime download (per OS), packaging.
 | What | Where |
 |---|---|
 | Stems for each song (8 FLACs + `info.json`; older songs have WAVs) | `<your Music folder>/justStem/<song title>/` |
+| Downloaded HQ AI model (shared across VST3, AU, and Standalone) | `<app data>/justStem/models/` |
 | yt-dlp and Deno (downloaded on the first YouTube link) | `<app data>/justStem/bin/` |
 | CoreML's compiled model (macOS; makes later loads fast) | `<app data>/justStem/coreml-cache/` |
 | YouTube audio while it's being decoded (a folder per download, deleted after) | `<app data>/justStem/downloads/` |

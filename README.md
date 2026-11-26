@@ -24,8 +24,10 @@ computer, and nothing is uploaded.
 
 ## Install
 
-Download from [Releases](https://github.com/PLATONG34821/justStem/releases), unzip, and copy the
-plug-in into this folder, then rescan plug-ins in your DAW:
+Download from [Releases](https://github.com/PLATONG34821/justStem/releases), then rescan plug-ins in your DAW:
+
+- **macOS (installer, recommended):** open `justStem-<version>-macOS.pkg` to install the VST3 and AU plug-ins (and optionally the Standalone app), either for all users or for your account only. Because the installer isn't notarized yet, macOS will block it on first open—go to **System Settings → Privacy & Security** and click **Open Anyway**.
+- **Manual install (zips):** unzip and copy the plug-in into this folder:
 
 | | File | Copy to |
 |---|---|---|
@@ -34,12 +36,15 @@ plug-in into this folder, then rescan plug-ins in your DAW:
 | **Windows** | `justStem.vst3` | `C:\Program Files\Common Files\VST3\` |
 | **Linux** | `justStem.vst3` | `~/.vst3/` |
 
+The standard AI model is built in so splitting works offline right away; the first time you turn on
+**HQ** mode, `justStem` downloads the HQ model from GitHub Releases and verifies its SHA-256 checksum.
+
 **Checking a download** (from 0.0.4): each release has a `SHA256SUMS` file. Download it next to the
-zip, then run `shasum -a 256 -c --ignore-missing SHA256SUMS` (macOS) or
+installer or zip, then run `shasum -a 256 -c --ignore-missing SHA256SUMS` (macOS) or
 `sha256sum -c --ignore-missing SHA256SUMS` (Linux); it should say `OK`. On Windows, compare
 `(Get-FileHash <zip>).Hash` in PowerShell with the zip's line in the file.
 
-**macOS:** the builds aren't notarized yet, so run this once after copying:
+**macOS (manual zip install only):** the builds aren't notarized yet, so run this once after copying:
 
 ```sh
 xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/justStem.vst3 ~/Library/Audio/Plug-Ins/Components/justStem.component

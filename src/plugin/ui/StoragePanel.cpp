@@ -87,10 +87,12 @@ StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool
     closeButton.setTitle ("Close");
     showFolderButton.setTitle ("Show songs folder");
     deleteAllButton.setTitle ("Delete all songs");
+    clearModelsButton.setTitle ("Remove HQ AI model");
     clearCacheButton.setTitle ("Clear model cache");
     removeToolsButton.setTitle ("Remove YouTube tools");
     clearDownloadsButton.setTitle ("Clear temporary downloads");
     deleteAllButton.setTooltip ("Delete all songs (except the ones open in justStem)");
+    clearModelsButton.setTooltip ("Remove the downloaded HQ AI model");
     clearCacheButton.setTooltip ("Clear the AI model cache");
     removeToolsButton.setTooltip ("Remove the YouTube tools");
     clearDownloadsButton.setTooltip ("Clear temporary downloads");
@@ -112,6 +114,10 @@ StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool
                      refresh();
                  });
     };
+    clearModelsButton.onClick = [this] {
+        confirm ("Remove the downloaded HQ AI model?", "It's downloaded again the next time you use HQ mode.",
+                 "Remove", [this] { if (! isBusy()) storage::clearFolder (paths::models()); refresh(); });
+    };
     clearCacheButton.onClick = [this] {
         confirm ("Clear the AI model cache?", "It's rebuilt automatically the next time you split a song (once; about " + compileTimes() + ").",
                  "Clear", [this] { if (! isBusy()) storage::clearFolder (paths::coremlCache()); refresh(); });
@@ -122,7 +128,8 @@ StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool
     };
     clearDownloadsButton.onClick = [this] { if (! isBusy()) storage::clearFolder (paths::downloads()); refresh(); };
 
-    for (auto* b : { &closeButton, &deleteAllButton, &showFolderButton, &clearCacheButton, &removeToolsButton, &clearDownloadsButton })
+    for (auto* b : { &closeButton, &deleteAllButton, &showFolderButton, &clearModelsButton, &clearCacheButton, &removeToolsButton,
+                     &clearDownloadsButton })
         addAndMakeVisible (*b);
     viewport.setViewedComponent (&listContent, false);
     viewport.setScrollBarsShown (true, false);
@@ -166,12 +173,14 @@ void StoragePanel::refresh()
         };
         listContent.addAndMakeVisible (row);
     }
+    modelsBytes = storage::folderSize (paths::models());
     cacheBytes = storage::folderSize (paths::coremlCache());
     toolsBytes = storage::folderSize (paths::tools());
     downloadsBytes = storage::folderSize (paths::downloads());
 
     const bool anyDeletable = std::any_of (rows.begin(), rows.end(), [] (SongRow* r) { return ! r->used; });
     deleteAllButton.setEnabled (! busy && anyDeletable);
+    clearModelsButton.setEnabled (! busy && modelsBytes > 0);
     clearCacheButton.setEnabled (! busy && cacheBytes > 0);
     removeToolsButton.setEnabled (! busy && toolsBytes > 0);
     clearDownloadsButton.setEnabled (! busy && downloadsBytes > 0);
@@ -179,7 +188,7 @@ void StoragePanel::refresh()
     repaint();
 }
 
-juce::Rectangle<int> StoragePanel::card() const { return getLocalBounds().withSizeKeepingCentre (600, 490); } // list fits 4 whole rows
+juce::Rectangle<int> StoragePanel::card() const { return getLocalBounds().withSizeKeepingCentre (600, 490 + otherRowH); } // list fits 4 whole rows
 
 void StoragePanel::resized()
 {
@@ -193,7 +202,7 @@ void StoragePanel::resized()
     h.removeFromRight (8);
     placeRight (h, showFolderButton, btn, btn);
 
-    otherArea = r.removeFromBottom (3 * otherRowH);
+    otherArea = r.removeFromBottom (4 * otherRowH);
     r.removeFromBottom (28); // room for the busy warning above the footer
     // The scrollbar sits out in the card's margin, so the rows keep the full width and their
     // Delete buttons line up with the Clear / Remove buttons below.
@@ -205,7 +214,7 @@ void StoragePanel::resized()
     for (int i = 0; i < rows.size(); ++i) rows[i]->setBounds (0, i * songRowH, listContent.getWidth(), songRowH);
 
     auto other = otherArea;
-    for (auto* b : { &clearCacheButton, &removeToolsButton, &clearDownloadsButton })
+    for (auto* b : { &clearModelsButton, &clearCacheButton, &removeToolsButton, &clearDownloadsButton })
     {
         auto row = other.removeFromTop (otherRowH);
         placeRight (row, *b, btn, btn);
@@ -251,7 +260,7 @@ void StoragePanel::paint (juce::Graphics& g)
     g.drawSingleLineText ("Storage", top.getX(), baseline);
     g.setColour (Palette::dim);
     g.setFont (font (Weight::Regular, 13.0f));
-    g.drawSingleLineText (size (songsBytes + cacheBytes + toolsBytes + downloadsBytes) + " used", top.getX() + 130, baseline);
+    g.drawSingleLineText (size (songsBytes + modelsBytes + cacheBytes + toolsBytes + downloadsBytes) + " used", top.getX() + 130, baseline);
     g.setColour (Palette::faint);
     g.setFont (font (Weight::Regular, 12.0f));
     g.drawSingleLineText (about, top.getRight() - btn - 16, baseline, juce::Justification::right);
@@ -273,9 +282,10 @@ void StoragePanel::paint (juce::Graphics& g)
                     juce::Justification::centredLeft, false);
     }
 
-    // Cache / tools / downloads rows.
+    // Models / cache / tools / downloads rows.
     struct Item { const char* name; juce::String note; juce::int64 bytes; };
-    const Item items[] { { "AI model cache", "Rebuilt automatically on the next split (" + compileTimes() + ")", cacheBytes },
+    const Item items[] { { "HQ AI model", "BS-RoFormer, downloaded again when HQ mode is used", modelsBytes },
+                         { "AI model cache", "Rebuilt automatically on the next split (" + compileTimes() + ")", cacheBytes },
                          { "YouTube tools", "yt-dlp and Deno, downloaded again when needed", toolsBytes },
                          { "Temporary downloads", "YouTube audio waiting to be split", downloadsBytes } };
     // They sit in a darker footer, set apart from the songs.

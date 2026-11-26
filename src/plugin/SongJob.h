@@ -30,7 +30,7 @@ public:
     using Finished = std::function<void (SongResultPtr result, juce::String error)>;
 
     /** @param source  a YouTube link, an audio file path, or (Reload) a saved song folder. */
-    SongJob (Kind, juce::String source, juce::File modelFile, Finished onFinished);
+    SongJob (Kind, juce::String source, juce::File modelFile, Finished onFinished, bool allowModelDownload = false);
     ~SongJob() override;
 
     void start() { startThread (juce::Thread::Priority::normal); }
@@ -61,6 +61,7 @@ private:
     const juce::String source;
     const juce::File modelFile;
     const Finished onFinished;
+    const bool allowModelDownload;
     std::atomic<bool> cancelled { false };
     bool abandoned = false; // message thread
     mutable juce::CriticalSection statusLock; // guards current, logLines, lastStep, lastTenth

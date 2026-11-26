@@ -52,10 +52,11 @@ private:
     bool shownBusy = false, shownBusyHere = false;
     juce::File shownOpenHere;
     juce::Array<juce::File> shownInUse;
-    juce::int64 songsBytes = 0, cacheBytes = 0, toolsBytes = 0, downloadsBytes = 0;
+    juce::int64 songsBytes = 0, modelsBytes = 0, cacheBytes = 0, toolsBytes = 0, downloadsBytes = 0;
 
     PillButton closeButton { {}, icons::close() }, deleteAllButton { {}, icons::trash() }, showFolderButton { {}, icons::folder() };
-    PillButton clearCacheButton { {}, icons::trash() }, removeToolsButton { {}, icons::trash() }, clearDownloadsButton { {}, icons::trash() };
+    PillButton clearModelsButton { {}, icons::trash() }, clearCacheButton { {}, icons::trash() }, removeToolsButton { {}, icons::trash() },
+        clearDownloadsButton { {}, icons::trash() };
     /** Tells the panel when the list scrolls, so the edge fades follow. */
     struct ListViewport final : juce::Viewport
     {

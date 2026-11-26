@@ -16,21 +16,43 @@ juce::CriticalSection instancesLock;
 juce::Array<justStemProcessor*> instances;
 } // namespace
 
-juce::File justStemProcessor::bundledModelFile()
+juce::File justStemProcessor::defaultModelFile (std::string_view fileName)
 {
     // For a plug-in, currentExecutableFile is the plug-in binary itself, not the host.
     const auto binaryDir = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory();
-    const auto name = text::from (model::fast.fileName);
+    const auto name = text::from (fileName);
     const juce::File candidates[] {
         // Bundles keep resources in Contents/Resources next to the binary's folder: macOS bundles
         // (Contents/MacOS) and VST3 bundles on every OS (Contents/x86_64-win, Contents/x86_64-linux).
         binaryDir.getSiblingFile ("Resources").getChildFile (name),
         // A plain executable or library (e.g. the Windows / Linux standalone app): next to it.
         binaryDir.getChildFile (name),
+       #if JUCE_MAC
+        // Shared system folder installed by the macOS .pkg so VST3, AU and Standalone share one copy.
+        juce::File ("/Library/Application Support/justStem/models").getChildFile (name),
+       #endif
     };
     for (const auto& f : candidates)
         if (f.existsAsFile()) return f;
-    return candidates[0]; // missing: SongJob reports it
+    return paths::models().getChildFile (name);
+}
+
+juce::File justStemProcessor::bundledModelFile()
+{
+    return defaultModelFile (model::fast.fileName);
+}
+
+justStemProcessor::justStemProcessor()
+    : AudioProcessor (BusesProperties()
+                          .withInput ("Input", juce::AudioChannelSet::stereo(), true)
+                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      fastModelFile (defaultModelFile (model::fast.fileName)),
+      hqModelFile (defaultModelFile (model::hq.fileName)),
+      allowModelDownload (true)
+{
+    const juce::ScopedLock sl (instancesLock);
+    instances.add (this);
+    stemPlayer.onSettingChanged = [this] { notifyHostStateChanged(); };
 }
 
 justStemProcessor::justStemProcessor (juce::File fastModel)
@@ -38,7 +60,8 @@ justStemProcessor::justStemProcessor (juce::File fastModel)
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       fastModelFile (std::move (fastModel)),
-      hqModelFile (fastModelFile.getSiblingFile (text::from (model::hq.fileName)))
+      hqModelFile (fastModelFile.getSiblingFile (text::from (model::hq.fileName))),
+      allowModelDownload (false)
 {
     const juce::ScopedLock sl (instancesLock);
     instances.add (this);
@@ -89,7 +112,8 @@ void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source
     if (job != nullptr) return;
     error.clear();
     std::weak_ptr<bool> token = alive;
-    job = std::make_unique<SongJob> (kind, source, getHQ() ? hqModelFile : fastModelFile, [this, token, fromRestore] (SongResultPtr result, juce::String err) {
+    job = std::make_unique<SongJob> (kind, source, getHQ() ? hqModelFile : fastModelFile,
+        [this, token, fromRestore] (SongResultPtr result, juce::String err) {
         if (token.expired()) return;
         lastLog = job->log();
         job.reset();
@@ -106,7 +130,7 @@ void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source
             error = err;
         sendChangeMessage();
         if (restoredFolder != juce::File()) reloadRestored (std::exchange (restoredFolder, {}));
-    });
+    }, allowModelDownload);
     job->start();
     sendChangeMessage();
 }

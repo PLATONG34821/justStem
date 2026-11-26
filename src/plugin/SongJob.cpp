@@ -2,6 +2,7 @@
 #include "Text.h"
 #include "../core/Separator.h"
 #include "../io/AudioFiles.h"
+#include "../io/ToolInstaller.h"
 #include "../io/YouTube.h"
 
 #include <juce_events/juce_events.h>
@@ -52,8 +53,9 @@ float rmsDb (const StereoAudio& a)
 }
 } // namespace
 
-SongJob::SongJob (Kind k, juce::String src, juce::File model, Finished done)
-    : juce::Thread ("justStem song job"), kind (k), source (std::move (src)), modelFile (std::move (model)), onFinished (std::move (done))
+SongJob::SongJob (Kind k, juce::String src, juce::File model, Finished done, bool downloadModel)
+    : juce::Thread ("justStem song job"), kind (k), source (std::move (src)), modelFile (std::move (model)),
+      onFinished (std::move (done)), allowModelDownload (downloadModel)
 {
 }
 
@@ -220,7 +222,13 @@ SongResultPtr SongJob::process()
     addLog ("Decoded " + text::minutesSeconds (song->durationSeconds) + " of audio in " + seconds (decodeMs)
             + " (working at 44.1 kHz stereo, " + juce::String (rmsDb (mix), 1) + " dB RMS)");
 
-    if (! modelFile.existsAsFile()) throw std::runtime_error ("The AI model is missing from the plug-in. Please reinstall justStem.");
+    if (! modelFile.existsAsFile())
+    {
+        if (! allowModelDownload)
+            throw std::runtime_error ("The AI model is missing from the plug-in. Please reinstall justStem.");
+        addLog ("Downloading " + modelFile.getFileName() + " from GitHub (saved for future runs)");
+        ensureModel (modelFile, [this] (const juce::String& s, double f) { setStatus (s, f); }, cancelled);
+    }
     const auto& spec = model::forFile (modelFile.getFullPathName().toStdString());
 
     // The same song split before with this model: reuse its stems instead of splitting (and storing) it again.

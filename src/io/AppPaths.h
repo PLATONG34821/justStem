@@ -51,6 +51,7 @@ namespace paths
     }
 
     inline juce::File tools() { return support ("bin"); }                // yt-dlp, Deno
+    inline juce::File models() { return support ("models"); }            // downloaded ONNX models
     inline juce::File coremlCache() { return support ("coreml-cache"); } // compiled model
     inline juce::File downloads() { return support ("downloads"); }      // YouTube audio, deleted after use
 

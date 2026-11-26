@@ -1,4 +1,5 @@
 #include "ToolInstaller.h"
+#include "../core/Separator.h"
 
 #include <juce_cryptography/juce_cryptography.h>
 
@@ -6,10 +7,20 @@
 #include <stdexcept>
 #include <string>
 
+#ifndef JUSTSTEM_VERSION
+ #error "JUSTSTEM_VERSION must be defined (CMakeLists.txt sets it from the project version)"
+#endif
+
 namespace juststem
 {
 namespace
 {
+struct HttpError : std::runtime_error
+{
+    int status;
+    HttpError (int code, const std::string& msg) : std::runtime_error (msg), status (code) {}
+};
+
 void download (const juce::URL& url, const juce::File& dest, const juce::String& step, const ProgressCallback& progress,
                const std::atomic<bool>& cancel)
 {
@@ -19,7 +30,7 @@ void download (const juce::URL& url, const juce::File& dest, const juce::String&
                                              .withNumRedirectsToFollow (10)
                                              .withStatusCode (&status));
     if (stream == nullptr || status >= 400)
-        throw std::runtime_error ("Download failed (HTTP " + std::to_string (status) + "): " + url.toString (false).toStdString());
+        throw HttpError (status, "Download failed (HTTP " + std::to_string (status) + "): " + url.toString (false).toStdString());
 
     dest.deleteFile();
     juce::FileOutputStream out (dest);
@@ -211,5 +222,48 @@ juce::File ensureDeno (const ProgressCallback& progress, const std::atomic<bool>
     zip.deleteFile();
     unpackDir.deleteRecursively();
     return exe;
+}
+
+juce::File ensureModel (const juce::File& dest, const ProgressCallback& progress, const std::atomic<bool>& cancel)
+{
+    if (dest.existsAsFile()) return dest;
+    dest.getParentDirectory().createDirectory();
+
+    const juce::String fileName = dest.getFileName();
+    const juce::String step = fileName == juce::String::fromUTF8 (model::hq.fileName.data(), (int) model::hq.fileName.size())
+                                  ? "Downloading HQ AI model"
+                                  : "Downloading AI model";
+    const juce::String repoBase = "https://github.com/PLATONG34821/justStem/releases/";
+    const juce::String bases[] { repoBase + "download/v" + juce::String (JUSTSTEM_VERSION) + "/",
+                                 repoBase + "latest/download/" };
+
+    const auto tmp = scratchFor (dest, ".part");
+    try
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            try
+            {
+                download (juce::URL (bases[i] + fileName), tmp, step, progress, cancel);
+                verifyChecksum (tmp, juce::URL (bases[i] + "SHA256SUMS"), fileName);
+                break;
+            }
+            catch (const HttpError& e)
+            {
+                if (i == 0 && e.status == 404) continue; // local/untagged build: fall back to latest release
+                throw;
+            }
+        }
+        // Another plug-in may have finished installing the same model meanwhile.
+        if (! replaceFileAtomically (tmp, dest) && ! dest.existsAsFile())
+            throw std::runtime_error ("Can't install " + fileName.toStdString());
+    }
+    catch (...)
+    {
+        tmp.deleteFile();
+        throw;
+    }
+    tmp.deleteFile();
+    return dest;
 }
 } // namespace juststem

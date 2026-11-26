@@ -15,11 +15,13 @@ namespace juststem::ui { class StemExport; }
 class justStemProcessor final : public juce::AudioProcessor, public juce::ChangeBroadcaster
 {
 public:
-    /** The fast model shipped with the plug-in (in its bundle's Contents/Resources, or next to the
-        binary). The HQ model, when bundled, sits next to it. */
+    /** A bundled model (in Contents/Resources or next to the binary), or its path in paths::models()
+        where it is downloaded on first use. */
+    static juce::File defaultModelFile (std::string_view fileName);
     static juce::File bundledModelFile();
 
-    explicit justStemProcessor (juce::File fastModelFile = bundledModelFile());
+    justStemProcessor();
+    explicit justStemProcessor (juce::File fastModelFile);
     ~justStemProcessor() override;
 
     // ---- song workflow (message thread)
@@ -39,7 +41,7 @@ public:
     void exportStems (const juce::File& dest, juce::Component* editor = nullptr);
     bool isExporting() const { return stemExport != nullptr; }
     /** HQ mode splits with BS-RoFormer instead of HT-Demucs (saved with the DAW project). */
-    bool hqAvailable() const { return hqModelFile.existsAsFile(); }
+    bool hqAvailable() const { return allowModelDownload || hqModelFile.existsAsFile(); }
     bool getHQ() const { return hq && hqAvailable(); }
     void setHQ (bool on)
     {
@@ -99,6 +101,7 @@ private:
     void notifyHostStateChanged();
 
     const juce::File fastModelFile, hqModelFile;
+    const bool allowModelDownload = false;
     juststem::StemPlayer stemPlayer;
     std::unique_ptr<juststem::SongJob> job;
     std::unique_ptr<juststem::ui::StemExport> stemExport;
