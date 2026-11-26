@@ -30,6 +30,7 @@ public:
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
     bool keyPressed (const juce::KeyPress&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     bool isInterestedInFileDrag (const juce::StringArray&) override;
     void fileDragEnter (const juce::StringArray&, int, int) override { dropHover = true; repaint(); }
@@ -48,6 +49,7 @@ private:
     void showStorage();
     void showChords (bool);
     void copyChords();
+    void copyLog();
     /** The link box (and Choose file / Split) are shown with no song open, while working, or after New song. */
     bool inputShown() const;
     void showInput (bool);
@@ -69,7 +71,8 @@ private:
     juststem::ui::PillButton pasteButton { {}, juststem::ui::icons::paste() }; // DAWs often keep Cmd/Ctrl+V for themselves
     juststem::ui::PillButton newSongButton { {}, juststem::ui::icons::plus() };
     juststem::ui::PillButton closeInputButton { {}, juststem::ui::icons::close() };
-    juststem::ui::PillButton hqToggle { "HQ" }; // on/off; shown only when the HQ model is bundled
+    juststem::ui::PillButton hqToggle { "HQ" }; // on/off; downloads BS-RoFormer on first use when not bundled
+    juststem::ui::PillButton copyLogButton { {}, juststem::ui::icons::copy() };
     bool wantInput = false; // New song pressed while a song is open
     std::unique_ptr<juce::FileChooser> chooser;
 
@@ -95,6 +98,8 @@ private:
 
     juststem::SongResultPtr shownSong;
     int shownLogLines = -1; // log lines on screen while working
+    int logScroll = 0;      // lines scrolled up from the newest log line
+    float logWheelPx = 0.0f;
     bool dropHover = false;
 
     // Shows the buttons' tooltips. A child of the editor (not a desktop window), so it stays inside the

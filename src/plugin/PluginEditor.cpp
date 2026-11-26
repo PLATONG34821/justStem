@@ -94,9 +94,13 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     hqToggle.setColour (juce::TextButton::textColourOnId, Palette::bgBottom);
     hqToggle.onClick = [this] { proc.setHQ (hqToggle.getToggleState()); };
     hqToggle.setTooltip ("Higher-quality split with BS-RoFormer: cleaner stems, especially guitar and piano, "
-                         "but about 4x slower than the standard model");
+                         "about 4x slower (downloads ~350 MB once on first use; non-commercial use)");
     addChildComponent (hqToggle);
     addChildComponent (cancelButton);
+    copyLogButton.setName ("Copy log");
+    copyLogButton.setTooltip ("Copy the log to the clipboard");
+    copyLogButton.onClick = [this] { copyLog(); };
+    addChildComponent (copyLogButton);
 
     addAndMakeVisible (gauge);
 
@@ -132,6 +136,7 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
         { &newSongButton, "New song" }, { &closeInputButton, "Back to song" }, { &cancelButton, "Cancel" },
         { &revealButton, "Show stems folder" }, { &saveAllButton, "Save all stems" }, { &storageButton, "Storage" },
         { &transposeDown, "Transpose down" }, { &transposeUp, "Transpose up" }, { &copyButton, "Copy chord chart" },
+        { &copyLogButton, "Copy log" },
     };
     for (const auto& [button, title] : titles) button->setTitle (title);
     for (auto* t : { &tempoText, &loudText }) addAndMakeVisible (t);
@@ -241,7 +246,12 @@ void justStemEditor::resized()
 
     auto header = stemsHeader;
     const auto placePill = [&header] (PillButton& b) { placeRight (header, b, b.idealWidth (26), 26); };
-    if (busy) placePill (cancelButton); // on the right of the LOG heading
+    if (busy)
+    {
+        placePill (cancelButton); // on the right of the LOG heading
+        header.removeFromRight (8);
+    }
+    if (copyLogButton.isVisible()) placePill (copyLogButton);
     // Stems | Chords as a segmented control, the same height as the other buttons.
     tabsArea = header.removeFromLeft (184).withSizeKeepingCentre (184, 26);
     {
@@ -372,14 +382,17 @@ void justStemEditor::paint (juce::Graphics& g)
 
     if (showLog)
     {
-        // Newest line at the bottom; the current step brightest.
+        // Newest line at the bottom unless scrolled up; the current step brightest.
         constexpr int lineH = 19;
         auto area = stemsArea.reduced (0, 8);
-        const int fit = area.getHeight() / lineH;
-        const int first = std::max (0, log.size() - fit);
+        const int fit = std::max (1, area.getHeight() / lineH);
+        const int maxScroll = std::max (0, log.size() - fit);
+        const int scroll = std::clamp (logScroll, 0, maxScroll);
+        const int first = maxScroll - scroll;
+        const int end = std::min (log.size(), first + fit);
         g.setFont (font (Weight::Regular, 12.5f));
         auto y = area.getY();
-        for (int i = first; i < log.size(); ++i, y += lineH)
+        for (int i = first; i < end; ++i, y += lineH)
         {
             const bool last = i == log.size() - 1;
             g.setColour (log[i].contains ("Error:") ? Palette::bad : last ? Palette::text : Palette::dim);
@@ -425,7 +438,9 @@ void justStemEditor::refreshAll()
     hqToggle.setEnabled (! busy);
     hqToggle.setToggleState (proc.getHQ(), juce::dontSendNotification);
     refreshPasteButton(); // Paste and Choose file
+    const bool showLog = busy || (song == nullptr && ! proc.jobLog().isEmpty());
     cancelButton.setVisible (busy);
+    copyLogButton.setVisible (showLog);
     saveAllButton.setVisible (song != nullptr && ! chordsShown);
     revealButton.setVisible (song != nullptr && ! chordsShown);
     stemsTab.setVisible (song != nullptr);
@@ -542,6 +557,7 @@ void justStemEditor::timerCallback()
         // The log only ever grows: repaint it when a line was added.
         if (const int lines = proc.jobLog().size(); lines != shownLogLines)
         {
+            if (lines < shownLogLines) { logScroll = 0; logWheelPx = 0.0f; }
             shownLogLines = lines;
             repaint (stemsArea);
         }
@@ -651,7 +667,42 @@ bool justStemEditor::keyPressed (const juce::KeyPress& key)
         if (updatePopup != nullptr && updatePopup->onLater) { updatePopup->onLater(); return true; }
         if (storagePanel != nullptr && storagePanel->onClose) { storagePanel->onClose(); return true; }
     }
+    if (key == juce::KeyPress::spaceKey && updatePopup == nullptr && storagePanel == nullptr
+        && visibleSong() != nullptr && ! proc.player().followsHost() && ! linkBox.hasKeyboardFocus (true))
+    {
+        proc.player().setPlaying (! proc.player().isPlaying());
+        updatePlayerBar();
+        return true;
+    }
     return false;
+}
+
+void justStemEditor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    const auto log = proc.jobLog();
+    const bool showLog = proc.isBusy() || (visibleSong() == nullptr && ! log.isEmpty());
+    if (! showLog || ! stemsArea.contains (e.getEventRelativeTo (this).getPosition())) return;
+    if (std::abs (wheel.deltaY) <= std::abs (wheel.deltaX) || wheel.deltaY == 0.0f) return;
+    constexpr int lineH = 19;
+    const int fit = std::max (1, stemsArea.reduced (0, 8).getHeight() / lineH);
+    const int maxScroll = std::max (0, log.size() - fit);
+    int steps = 0;
+    if (wheel.isSmooth)
+    {
+        logWheelPx += wheel.deltaY * 256.0f;
+        steps = (int) (logWheelPx / (float) lineH);
+        logWheelPx -= (float) (steps * lineH);
+    }
+    else
+    {
+        steps = wheel.deltaY > 0.0f ? 3 : -3;
+    }
+    const int next = std::clamp (logScroll + steps, 0, maxScroll);
+    if (next != logScroll)
+    {
+        logScroll = next;
+        repaint (stemsArea);
+    }
 }
 
 // ============================================================================ chords
@@ -667,8 +718,21 @@ void justStemEditor::copyChords()
     if (song == nullptr) return;
     juce::SystemClipboard::copyTextToClipboard (ChordView::chartText (*song, proc.getTranspose()));
     copyButton.setButtonText ("Copied");
+    resized();
     juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer<justStemEditor> (this)] {
-        if (safe != nullptr) safe->copyButton.setButtonText ({});
+        if (safe != nullptr) { safe->copyButton.setButtonText ({}); safe->resized(); }
+    });
+}
+
+void justStemEditor::copyLog()
+{
+    const auto log = proc.jobLog();
+    if (log.isEmpty()) return;
+    juce::SystemClipboard::copyTextToClipboard (log.joinIntoString ("\n"));
+    copyLogButton.setButtonText ("Copied");
+    resized();
+    juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer<justStemEditor> (this)] {
+        if (safe != nullptr) { safe->copyLogButton.setButtonText ({}); safe->resized(); }
     });
 }
 
