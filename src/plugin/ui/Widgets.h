@@ -108,7 +108,7 @@ public:
     void change (float v);
 
     static constexpr int segments = 15;
-    static constexpr float maxValue = 1.5f;
+    static constexpr float maxValue = StemPlayer::maxVolume;
 
 private:
     void setFromX (float x);

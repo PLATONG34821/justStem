@@ -7,6 +7,7 @@
 
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <functional>
 
 namespace juststem
@@ -50,8 +51,11 @@ public:
     void setTranspose (int semitones) { transpose = semitones; }
     double durationSeconds() const { return (double) length.load() / sampleRate; }
 
+    static constexpr float maxVolume = 1.5f;
+
     void setVolume (int stem, float v)
     {
+        v = std::isfinite (v) ? juce::jlimit (0.0f, maxVolume, v) : 1.0f;
         if (! juce::exactlyEqual (volume[(size_t) stem].exchange (v), v) && onSettingChanged) onSettingChanged();
     }
     void setMute (int stem, bool m) { if (mute[(size_t) stem].exchange (m) != m && onSettingChanged) onSettingChanged(); }
@@ -64,6 +68,10 @@ private:
     float targetGain (int stem) const;
     /** Audio thread: mixes and resamples `numSamples` (<= preparedBlock) into `out`. */
     void fillResampled (int numSamples);
+    /** Audio thread: renders `numSamples` (<= preparedBlock) at hostRate into `out`, including pitch shift. */
+    void renderBlock (int numSamples);
+    /** Audio thread: captures a ~4 ms fade-out from the current stream so stops and seeks don't click. */
+    void captureFade();
     /** Audio thread: fills the pitch shifter's pipeline from `targetPos` so playback starts there with no gap. */
     void primeShifter (juce::int64 targetPos);
     /** Audio thread: mixes, resamples and shifts `numSamples` (<= preparedBlock) into `buffer` at
@@ -88,6 +96,8 @@ private:
     std::array<float, numStems> currentGain {};
 
     std::vector<float> mixL, mixR;   // 44.1 kHz scratch
+    std::vector<float> fadeL, fadeR; // ~4 ms de-click tail at hostRate
+    int fadePos = 0, fadeLen = 0;
     juce::LagrangeInterpolator interpL, interpR;
     juce::AudioBuffer<float> out, shifted;
 };

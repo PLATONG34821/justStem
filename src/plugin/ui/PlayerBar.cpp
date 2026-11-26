@@ -16,7 +16,11 @@ PlayerBar::PlayerBar (StemPlayer& p, bool canFollowHost) : player (p)
     playButton.onClick = [this] { player.setPlaying (! player.isPlaying()); };
     position.setSliderStyle (juce::Slider::LinearHorizontal);
     position.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-    position.onValueChange = [this] { if (position.isMouseButtonDown()) player.seek (position.getValue()); };
+    position.onValueChange = [this] {
+        if (position.isMouseButtonDown()) repaint (timeArea);
+        else player.seek (position.getValue());
+    };
+    position.onDragEnd = [this] { player.seek (position.getValue()); };
     followHost.onClick = [this] { player.setFollowHost (followHost.getToggleState()); };
     followHost.setTooltip ("Play the stems along with your DAW's transport");
     addAndMakeVisible (playButton);
@@ -79,7 +83,8 @@ void PlayerBar::paint (juce::Graphics& g)
     if (song == nullptr) return;
     g.setColour (Palette::dim);
     g.setFont (timeFont());
-    g.drawText (text::minutesSeconds (player.positionSeconds()) + " / " + text::minutesSeconds (player.durationSeconds()), timeArea,
+    const double shown = position.isMouseButtonDown() ? position.getValue() : player.positionSeconds();
+    g.drawText (text::minutesSeconds (shown) + " / " + text::minutesSeconds (player.durationSeconds()), timeArea,
                 juce::Justification::centredRight, false);
 }
 } // namespace juststem::ui
