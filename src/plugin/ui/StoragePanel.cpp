@@ -9,6 +9,7 @@ namespace juststem::ui
 namespace
 {
 juce::String size (juce::int64 bytes) { return juce::File::descriptionOfSizeInBytes (bytes); }
+juce::File hqModelFile() { return paths::models().getChildFile (text::from (model::hq.fileName)); }
 
 constexpr int btn = 32;        // round icon buttons throughout the panel
 constexpr int headerH = 80;    // the darker band with the title and Close
@@ -116,7 +117,7 @@ StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool
     };
     clearModelsButton.onClick = [this] {
         confirm ("Remove the downloaded HQ AI model?", "It's downloaded again the next time you use HQ mode.",
-                 "Remove", [this] { if (! isBusy()) storage::clearFolder (paths::models()); refresh(); });
+                 "Remove", [this] { if (! isBusy()) hqModelFile().deleteFile(); refresh(); });
     };
     clearCacheButton.onClick = [this] {
         confirm ("Clear the AI model cache?", "It's rebuilt automatically the next time you split a song (once; about " + compileTimes() + ").",
@@ -173,7 +174,7 @@ void StoragePanel::refresh()
         };
         listContent.addAndMakeVisible (row);
     }
-    modelsBytes = storage::folderSize (paths::models());
+    modelsBytes = hqModelFile().existsAsFile() ? hqModelFile().getSize() : 0;
     cacheBytes = storage::folderSize (paths::coremlCache());
     toolsBytes = storage::folderSize (paths::tools());
     downloadsBytes = storage::folderSize (paths::downloads());
