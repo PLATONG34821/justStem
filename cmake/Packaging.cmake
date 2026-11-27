@@ -47,11 +47,9 @@ endif()
 
 # Copy ONNX Runtime next to a developer tool so it runs from the build folder.
 function(juststem_copy_runtime target)
-    if(NOT APPLE)
-        add_custom_command(TARGET ${target} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ORT_RUNTIME_FILES} "$<TARGET_FILE_DIR:${target}>"
-            VERBATIM)
-    endif()
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ORT_RUNTIME_FILES} "$<TARGET_FILE_DIR:${target}>"
+        VERBATIM)
     if(UNIX)
         set_target_properties(${target} PROPERTIES BUILD_RPATH "${ORT_LIB_DIR}")
     endif()

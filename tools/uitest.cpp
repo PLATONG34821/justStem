@@ -10,6 +10,7 @@
 #include <functional>
 #include <limits>
 #include <numbers>
+#include <thread>
 
 static int failures = 0;
 static void check (bool ok, const juce::String& what)
@@ -195,7 +196,7 @@ int main (int argc, char** argv)
     snapshot (*editor, outDir.getChildFile ("3-results.png"));
     {
         // Screen readers name each drag handle by its row.
-        int handles = 0, named = 0, midiShown = 0;
+        int handles = 0, named = 0, midiShown = 0, midiDraggable = 0;
         juststem::ui::DragHandle* firstHandle = nullptr;
         std::function<void (juce::Component&)> walk = [&] (juce::Component& c) {
             for (auto* child : c.getChildren())
@@ -204,19 +205,23 @@ int main (int argc, char** argv)
                 {
                     if (firstHandle == nullptr) firstHandle = d;
                     ++handles;
-                    named += d->getTitle().startsWith ("Drag ") ? 1 : 0;
-                    midiShown += d->getTitle().contains (" MIDI ") && d->isVisible() ? 1 : 0;
+                    named += d->getTitle().startsWith ("Drag ") || d->getTitle().startsWith ("No MIDI for ") ? 1 : 0;
+                    const bool isMidi = d->getTitle().contains (" MIDI ") || d->getTitle().startsWith ("No MIDI");
+                    midiShown += isMidi && d->isVisible() ? 1 : 0;
+                    midiDraggable += isMidi && d->isVisible() && d->getTitle().startsWith ("Drag ") ? 1 : 0;
                 }
                 walk (*child);
             }
         };
         walk (*editor);
-        // 8 for the audio (6 stems + 2 mixes), and a MIDI one on each stem row, shown when the stem has MIDI.
+        // 8 for the audio (6 stems + 2 mixes), and a MIDI one on each stem row: shown on the 4 stems that can
+        // have MIDI, draggable when the stem has it (crossed out when not).
         check (handles == 14 && named == 14, juce::String (named) + " of " + juce::String (handles) + " drag handles named for screen readers");
         int midiFiles = 0;
         for (auto stem : juststem::stemOrder) midiFiles += proc->getSong()->midiFile (stem).existsAsFile() ? 1 : 0;
-        check (midiShown == midiFiles && midiFiles > 0, juce::String (midiShown) + " MIDI handles shown, one for each MIDI file ("
-                                                              + juce::String (midiFiles) + ")");
+        check (midiShown == (int) juststem::midiStems.size() && midiDraggable == midiFiles && midiFiles > 0,
+               juce::String (midiShown) + " MIDI handles shown, " + juce::String (midiDraggable) + " draggable, one for each MIDI file ("
+                   + juce::String (midiFiles) + ")");
         check (firstHandle != nullptr && ! firstHandle->getTooltip().contains ("Save all"),
                "drag handle tooltip is plain when not transposed");
         auto* title = findChild<juststem::ui::SongTitle> (*editor);
@@ -761,6 +766,38 @@ int main (int argc, char** argv)
         expDest.deleteRecursively();
         check (ms < 1500 && left == 0,
                "closing the plug-in mid-export stops cleanly (" + juce::String (juce::roundToInt (ms)) + " ms) and cleans up");
+    }
+
+    std::printf ("Host boundary edge cases\n");
+    {
+        auto edgeProc = std::make_unique<justStemProcessor> (model);
+        edgeProc->prepareToPlay (0.0, 512);
+        edgeProc->prepareToPlay (48000.0, -64);
+        edgeProc->prepareToPlay (std::numeric_limits<double>::quiet_NaN(), 512);
+        edgeProc->prepareToPlay (48000.0, 1 << 20); // huge offline block size
+        edgeProc->setStateInformation (nullptr, 0);
+        edgeProc->setStateInformation ("bad", -5);
+        edgeProc->player().seek (std::numeric_limits<double>::quiet_NaN());
+        edgeProc->player().seek (1e30);
+        juce::AudioBuffer<float> buf (2, 512);
+        juce::MidiBuffer midi;
+        buf.clear();
+        edgeProc->processBlock (buf, midi);
+        check (true, "invalid prepareToPlay, setStateInformation and seek arguments do not throw or crash");
+
+        // Hosts may destroy AudioProcessor instances on a non-message worker thread while Save all is open.
+        auto offThreadProc = std::make_unique<justStemProcessor> (model);
+        offThreadProc->setStateInformation (state.getData(), (int) state.getSize());
+        pumpUntil ([&] { return offThreadProc->getSong() != nullptr && ! offThreadProc->isBusy(); }, 60000);
+        const auto offDest = outDir.getChildFile ("export-off-thread-close");
+        offDest.createDirectory();
+        offThreadProc->setTranspose (2);
+        offThreadProc->exportStems (offDest);
+        std::thread ([p = std::move (offThreadProc)] () mutable { p.reset(); }).join();
+        pumpUntil ([&] { return offDest.getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0; }, 5000);
+        const int rem = offDest.getNumberOfChildFiles (juce::File::findFilesAndDirectories);
+        offDest.deleteRecursively();
+        check (rem == 0, "destroying processor off the message thread mid-export cleans up safely");
     }
 
     std::printf ("A stem edited outside justStem\n");

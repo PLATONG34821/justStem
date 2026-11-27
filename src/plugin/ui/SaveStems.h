@@ -14,6 +14,7 @@ class StemExport
 {
 public:
     virtual ~StemExport() = default;
+    virtual void cancel() = 0;
 };
 
 /** Save all: the song's 6 stems, instrumental and full mix into a new folder in `dest`, "<title> stems" (copies),

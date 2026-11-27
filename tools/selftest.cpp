@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <numbers>
 #include <string>
 
@@ -533,6 +534,64 @@ int analysisSelftest()
             check (error == songTooLong().what(), std::string (name) + ", claiming 4 billion frames, is refused before they're read: \"" + error + "\"");
         }
         file.deleteFile();
+    }
+
+    std::printf ("Damaged WAV headers, NaN samples and cancellable writes\n");
+    {
+        // Minimal 44-byte PCM WAV with sampleRate = 4,000,000,000 Hz and data chunk = 0xe0000000 bytes:
+        // lengthInSamples / sampleRate is under 1 s, so without a sample-rate cap lengthInSamples overflows int.
+        auto le16 = [] (std::uint16_t v) { return std::string { (char) v, (char) (v >> 8) }; };
+        auto le32 = [] (std::uint32_t v) { return std::string { (char) v, (char) (v >> 8), (char) (v >> 16), (char) (v >> 24) }; };
+        const std::string badWav = "RIFF" + le32 (36 + 16) + "WAVEfmt " + le32 (16) + le16 (1) + le16 (2)
+                                 + le32 (4'000'000'000u) + le32 (4'000'000'000u) + le16 (4) + le16 (16)
+                                 + "data" + le32 (0xe0000000u) + std::string (16, '\0');
+        const auto wavFile = juce::File::createTempFile (".wav");
+        wavFile.replaceWithData (badWav.data(), badWav.size());
+        std::string wavErr;
+        try { loadAudioFile (wavFile, maxSongSeconds); }
+        catch (const std::exception& e) { wavErr = e.what(); }
+        check (wavErr.find ("sample rate") != std::string::npos || ! wavErr.empty(),
+               "corrupt 4 GHz WAV header is rejected before int overflow (\"" + wavErr + "\")");
+
+        // 32-bit float WAV containing NaN and +-Inf samples: scrubbed on load, valid samples preserved.
+        StereoAudio dirty;
+        dirty.left.assign (4096, 0.25f);
+        dirty.right.assign (4096, -0.25f);
+        dirty.left[10] = std::numeric_limits<float>::quiet_NaN();
+        dirty.left[20] = std::numeric_limits<float>::infinity();
+        dirty.right[30] = -std::numeric_limits<float>::infinity();
+        writeWav (wavFile, dirty, 32);
+        const auto clean = loadAudioFile (wavFile);
+        bool allFinite = clean.size() == 4096;
+        for (std::size_t i = 0; i < clean.size(); ++i)
+            allFinite = allFinite && std::isfinite (clean.left[i]) && std::isfinite (clean.right[i]);
+        check (allFinite && clean.left[10] == 0.0f && clean.left[20] == 0.0f && clean.right[30] == 0.0f
+                   && std::fabs (clean.left[0] - 0.25f) < 1e-6f,
+               "32-bit float WAV with NaN and +-Inf samples is scrubbed to finite audio");
+
+        // Chords on PeakFrames containing NaN magnitudes must not dereference past f.end().
+        ChordPeaks nanPeaks;
+        nanPeaks.harmonic.size = 8192;
+        nanPeaks.harmonic.hop = 2048;
+        nanPeaks.bass.size = 16384;
+        nanPeaks.bass.hop = 2048;
+        nanPeaks.bass.frames.push_back ({ { 110.0f, std::numeric_limits<float>::quiet_NaN() } });
+        const auto nanChords = detectChordsOnBeats (nanPeaks, 2.0, { 0.0, 0.5, 1.0, 1.5 }, sampleRate, 120.0f, {});
+        check (! nanChords.segments.empty(), "detectChordsOnBeats survives NaN peak magnitudes");
+
+        // Mid-file cancellation in writeWav removes the partial file.
+        StereoAudio longAudio;
+        longAudio.left.assign (200000, 0.1f);
+        longAudio.right.assign (200000, 0.1f);
+        int chunks = 0;
+        const bool wrote = writeWav (wavFile, longAudio, 24, [&] { return ++chunks <= 1; });
+        check (! wrote && ! wavFile.existsAsFile(), "cancelled writeWav stops mid-file and deletes partial output");
+        wavFile.deleteFile();
+
+        bool badRateRejected = false;
+        try { resample ({ 0.1f, 0.2f }, 0, sampleRate); }
+        catch (const std::exception&) { badRateRejected = true; }
+        check (badRateRejected, "resampler rejects non-positive sample rates");
     }
 
     std::printf ("Tool checksum parsing\n");

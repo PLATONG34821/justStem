@@ -41,7 +41,7 @@ public:
     bool isPlaying() const { return playing; }
     void setFollowHost (bool f) { if (followHost.exchange (f) != f && onSettingChanged) onSettingChanged(); }
     bool followsHost() const { return followHost; }
-    void seek (double seconds) { seekRequest = seconds; }
+    void seek (double seconds) { if (std::isfinite (seconds)) seekRequest = std::clamp (seconds, 0.0, 1e9); }
     /** Where the listener is: playback reads ahead of this by the pitch shifter's delay. */
     double positionSeconds() const
     {

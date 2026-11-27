@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <new>
 #include <set>
 #include <stdexcept>
 #include <tuple>
@@ -31,11 +32,13 @@ juce::File newSongFolder (const juce::String& title)
 
 double nowMs() { return juce::Time::getMillisecondCounterHiRes(); }
 
-/** Jobs whose owner has gone (SongJob::abandon), kept until their thread ends. Message thread. */
+/** Jobs whose owner has gone (SongJob::abandon), kept until their thread ends. Message thread.
+    Heap-allocated so process exit / DLL unload never runs ~SongJob() -> killThread() while an
+    uninterruptible step (e.g. CoreML compilation) is still finishing. */
 std::vector<std::unique_ptr<SongJob>>& abandonedJobs()
 {
-    static std::vector<std::unique_ptr<SongJob>> jobs;
-    return jobs;
+    static auto* jobs = new std::vector<std::unique_ptr<SongJob>>();
+    return *jobs;
 }
 
 juce::String seconds (double ms)
@@ -62,6 +65,7 @@ SongJob::SongJob (Kind k, juce::String src, juce::File model, MidiModels midi, F
 void SongJob::abandon (std::unique_ptr<SongJob> job)
 {
     if (job == nullptr) return;
+    pinPluginBinary();
     job->cancel();
     job->abandoned = true;
     abandonedJobs().push_back (std::move (job));
@@ -72,7 +76,7 @@ int SongJob::numAbandoned() { return (int) abandonedJobs().size(); }
 SongJob::~SongJob()
 {
     cancelled = true;
-    stopThread (30000);
+    stopThread (-1); // never force-kill (TerminateThread / pthread_cancel corrupts locks and C++ state)
 }
 
 SongJob::Status SongJob::status() const
@@ -144,6 +148,10 @@ void SongJob::run()
     try
     {
         result = process();
+    }
+    catch (const std::bad_alloc&)
+    {
+        error = "Not enough memory to split this song. Close other apps or try Fast mode.";
     }
     catch (const std::exception& e)
     {
@@ -409,6 +417,12 @@ void SongJob::makeMidi (const SongResult& song)
             addLog ("Made " + name + " MIDI: " + juce::String ((int) notes.notes.size()) + " notes"
                     + (notes.pedals.empty() ? juce::String() : ", " + juce::String ((int) notes.pedals.size()) + " pedal presses")
                     + " in " + seconds (nowMs() - start));
+        }
+        catch (const std::bad_alloc&)
+        {
+            file.deleteFile();
+            if (cancelled) throw std::runtime_error ("cancelled");
+            addLog ("No " + name + " MIDI: Not enough memory");
         }
         catch (const std::exception& e)
         {

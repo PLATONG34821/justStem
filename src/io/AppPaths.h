@@ -9,6 +9,10 @@ namespace juststem
 /** Reports a step name and its progress (0..1, or -1 when unknown). */
 using ProgressCallback = std::function<void (const juce::String& step, double fraction)>;
 
+/** Keeps the plug-in's shared library mapped in the host process when a detached/abandoned background
+    task outlives the last processor instance, so dlclose / FreeLibrary can't unmap code still running. */
+void pinPluginBinary() noexcept;
+
 /** Where justStem keeps its files. */
 namespace paths
 {

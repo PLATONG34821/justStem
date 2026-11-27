@@ -5,6 +5,7 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
+#include <functional>
 #include <stdexcept>
 
 namespace juststem
@@ -19,8 +20,10 @@ std::runtime_error songTooLong (double maxSeconds = maxSongSeconds);
     The same decoders on every OS. Throws std::runtime_error if the file can't be read or is too long. */
 StereoAudio loadAudioFile (const juce::File& file, double maxSeconds = maxSongSeconds);
 
-/** Write 44.1 kHz stereo as a WAV file (replacing it). Throws std::runtime_error. */
-void writeWav (const juce::File& file, const StereoAudio& audio, int bitsPerSample = 24);
+/** Write 44.1 kHz stereo as a WAV file (replacing it). If `shouldContinue` returns false part-way,
+    deletes the partial file and returns false. Throws std::runtime_error on I/O errors. */
+bool writeWav (const juce::File& file, const StereoAudio& audio, int bitsPerSample = 24,
+               const std::function<bool()>& shouldContinue = {});
 
 /** Write 44.1 kHz stereo as a FLAC file (replacing it): lossless, about half the size of a WAV.
     Throws std::runtime_error. */

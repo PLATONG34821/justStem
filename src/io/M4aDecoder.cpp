@@ -388,8 +388,11 @@ DecodedAudio decodeM4a (const juce::File& file, double maxSeconds)
     if (track.frames.empty()) fail ("it contains no audio");
 
     // Decode every AAC frame with FAAD2 (as float; surround is downmixed to stereo).
-    struct Decoder { NeAACDecHandle h = NeAACDecOpen(); ~Decoder() { NeAACDecClose (h); } } dec;
+    if (track.config.empty()) fail ("no AAC decoder settings");
+    struct Decoder { NeAACDecHandle h = NeAACDecOpen(); ~Decoder() { if (h != nullptr) NeAACDecClose (h); } } dec;
+    if (dec.h == nullptr) fail ("out of memory");
     auto* cfg = NeAACDecGetCurrentConfiguration (dec.h);
+    if (cfg == nullptr) fail ("unsupported AAC settings");
     cfg->outputFormat = FAAD_FMT_FLOAT;
     cfg->downMatrix = 1;
     NeAACDecSetConfiguration (dec.h, cfg);
@@ -397,9 +400,10 @@ DecodedAudio decodeM4a (const juce::File& file, double maxSeconds)
     unsigned char channels = 0;
     if (NeAACDecInit2 (dec.h, track.config.data(), (unsigned long) track.config.size(), &rate, &channels) < 0)
         fail ("unsupported AAC settings");
+    if (rate < 8000 || rate > 384000) fail ("unsupported AAC sample rate");
     // Refuse a long file before decoding it. An AAC frame is 1024 samples at the core rate, and `rate`
     // is that rate or (SBR) twice it, so this is never more than the real length.
-    if (rate > 0 && (double) track.frames.size() * 1024.0 / (double) rate > maxSeconds) throw songTooLong (maxSeconds);
+    if ((double) track.frames.size() * 1024.0 / (double) rate > maxSeconds) throw songTooLong (maxSeconds);
 
     DecodedAudio out;
     out.sampleRate = (double) rate;
@@ -415,6 +419,7 @@ DecodedAudio decodeM4a (const juce::File& file, double maxSeconds)
         NeAACDecFrameInfo info {};
         auto* pcm = static_cast<const float*> (NeAACDecDecode (dec.h, &info, packet.data(), (unsigned long) f.size));
         if (info.error != 0 || pcm == nullptr || info.channels == 0) continue; // FAAD2 outputs nothing for the first frame
+        if (info.samplerate < 8000 || info.samplerate > 384000) fail ("unsupported AAC sample rate");
         out.sampleRate = (double) info.samplerate; // SBR doubles the rate
         frameLength = info.samples / info.channels;
         sbr = info.sbr != NO_SBR;

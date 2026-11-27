@@ -2,16 +2,28 @@
 
 #include <onnxruntime_cxx_api.h>
 #if defined (_WIN32)
- #include <dml_provider_factory.h>
+ #ifndef NOMINMAX
+  #define NOMINMAX
+ #endif
+ #define WIN32_LEAN_AND_MEAN
+ #include <windows.h>
+#else
+ #include <dlfcn.h>
+ #include <unistd.h>
+ #if defined (__APPLE__)
+  #include <sys/sysctl.h>
+ #endif
 #endif
 
 #include <signalsmith-linear/fft.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <fstream>
 #include <cstdio>
 #include <cstdint>
+#include <new>
 #include <vector>
 #include <complex>
 #include <numbers>
@@ -33,11 +45,187 @@ const char* backendName (Backend b)
     return "?";
 }
 
+namespace
+{
+#if defined (_WIN32)
+std::string pathToUtf8 (const std::filesystem::path& p)
+{
+    const auto u8 = p.u8string();
+    return { u8.begin(), u8.end() };
+}
+#endif
+
+std::uint64_t totalSystemRamBytes() noexcept
+{
+#if defined (_WIN32)
+    MEMORYSTATUSEX ms {};
+    ms.dwLength = sizeof (ms);
+    return GlobalMemoryStatusEx (&ms) ? (std::uint64_t) ms.ullTotalPhys : 0;
+#elif defined (__APPLE__)
+    std::uint64_t mem = 0;
+    std::size_t len = sizeof (mem);
+    return sysctlbyname ("hw.memsize", &mem, &len, nullptr, 0) == 0 ? mem : 0;
+#else
+    const long pages = sysconf (_SC_PHYS_PAGES), pageSize = sysconf (_SC_PAGESIZE);
+    return pages > 0 && pageSize > 0 ? (std::uint64_t) pages * (std::uint64_t) pageSize : 0;
+#endif
+}
+
+bool isLowMemorySystem() noexcept
+{
+    static const bool low = [] {
+        const auto ram = totalSystemRamBytes();
+        return ram > 0 && ram <= (9ull << 30); // 8 GB class machines and below
+    }();
+    return low;
+}
+
+bool isSystemMemoryCritical() noexcept
+{
+#if defined (_WIN32)
+    MEMORYSTATUSEX ms {};
+    ms.dwLength = sizeof (ms);
+    // Under 1 GB of commit charge (RAM + pagefile) left: a multi-GB CPU fallback would starve the DAW.
+    if (GlobalMemoryStatusEx (&ms))
+        return ms.ullAvailPageFile < (1024ull << 20);
+#endif
+    return false;
+}
+
+bool isOutOfMemoryError (const std::string& msg)
+{
+    std::string lower = msg;
+    for (char& c : lower) c = (char) std::tolower ((unsigned char) c);
+    return lower.find ("allocate memory") != std::string::npos
+        || lower.find ("out of memory") != std::string::npos
+        || lower.find ("not enough memory") != std::string::npos
+        || lower.find ("bad allocation") != std::string::npos
+        || lower.find ("bad_alloc") != std::string::npos
+        || lower.find ("e_outofmemory") != std::string::npos;
+}
+
+struct OrtRuntime
+{
+    std::unique_ptr<Ort::Env> env;
+#if defined (_WIN32)
+    using AppendDmlFn = OrtStatus* (ORT_API_CALL*) (OrtSessionOptions*, int);
+    AppendDmlFn appendDml = nullptr;
+#endif
+};
+
+/** Loads justStem's own bundled ONNX Runtime by full path and pins it, so another plug-in or DAW with
+    an older onnxruntime in the same process can neither hijack our symbols nor make GetApi return null.
+    Heap-allocated so process exit never tears down Ort::Env under a still-finishing abandoned job. */
+const OrtRuntime& ortRuntime()
+{
+    static const OrtRuntime* rt = [] {
+#if defined (_WIN32)
+        HMODULE self = nullptr;
+        if (! GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                  reinterpret_cast<LPCWSTR> (&totalSystemRamBytes), &self))
+            throw std::runtime_error ("Couldn't locate the justStem binary");
+        std::wstring buf (MAX_PATH, L'\0');
+        for (;;)
+        {
+            const DWORD n = GetModuleFileNameW (self, buf.data(), (DWORD) buf.size());
+            if (n == 0) throw std::runtime_error ("Couldn't read the justStem binary path");
+            if (n < buf.size() - 1) { buf.resize (n); break; }
+            buf.resize (buf.size() * 2);
+        }
+        const auto selfDir = std::filesystem::path (buf).parent_path();
+        auto loadDll = [] (const std::filesystem::path& p) -> HMODULE {
+            if (HMODULE h = LoadLibraryExW (p.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS))
+                return h;
+            return LoadLibraryExW (p.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+        };
+        const auto dmlPath = selfDir / L"DirectML.dll";
+        if (std::error_code ec; std::filesystem::exists (dmlPath, ec))
+            if (loadDll (dmlPath) != nullptr)
+            {
+                HMODULE pinnedDml = nullptr;
+                GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_PIN, dmlPath.c_str(), &pinnedDml);
+            }
+        const auto ortPath = selfDir / L"onnxruntime.dll";
+        HMODULE mod = loadDll (ortPath);
+        if (mod == nullptr)
+            throw std::runtime_error ("Couldn't load ONNX Runtime (" + pathToUtf8 (ortPath) + ")");
+        HMODULE pinned = nullptr;
+        GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_PIN, ortPath.c_str(), &pinned);
+        auto getBase = reinterpret_cast<const OrtApiBase* (ORT_API_CALL*) ()> (GetProcAddress (mod, "OrtGetApiBase"));
+        auto appendDml = reinterpret_cast<OrtRuntime::AppendDmlFn> (GetProcAddress (mod, "OrtSessionOptionsAppendExecutionProvider_DML"));
+#else
+        Dl_info info {};
+        if (! dladdr (reinterpret_cast<const void*> (&totalSystemRamBytes), &info) || info.dli_fname == nullptr)
+            throw std::runtime_error ("Couldn't locate the justStem binary");
+        const auto selfDir = std::filesystem::path (info.dli_fname).parent_path();
+       #if defined (__APPLE__)
+        const std::filesystem::path candidates[] {
+            selfDir / "../Frameworks/libonnxruntime.1.dylib",
+            selfDir / "libonnxruntime.1.dylib",
+            selfDir / "../../../onnxruntime/libonnxruntime.1.dylib",
+            selfDir / "../../onnxruntime/libonnxruntime.1.dylib",
+        };
+       #else
+        const std::filesystem::path candidates[] {
+            selfDir / "libonnxruntime.so.1",
+            selfDir / "../../../onnxruntime/libonnxruntime.so.1",
+            selfDir / "../../onnxruntime/libonnxruntime.so.1",
+        };
+       #endif
+        void* mod = nullptr;
+        std::string lastErr;
+        for (const auto& c : candidates)
+        {
+            std::error_code ec;
+            if (! std::filesystem::exists (c, ec)) continue;
+            if ((mod = dlopen (c.c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE)) != nullptr) break;
+            if (const char* err = dlerror()) lastErr = err;
+        }
+        if (mod == nullptr)
+            throw std::runtime_error ("Couldn't load ONNX Runtime" + (lastErr.empty() ? std::string() : ": " + lastErr));
+        auto getBase = reinterpret_cast<const OrtApiBase* (*) ()> (dlsym (mod, "OrtGetApiBase"));
+#endif
+        if (getBase == nullptr)
+            throw std::runtime_error ("ONNX Runtime is damaged (missing OrtGetApiBase)");
+        const OrtApiBase* base = getBase();
+        const OrtApi* api = base != nullptr ? base->GetApi (ORT_API_VERSION) : nullptr;
+        if (api == nullptr)
+            throw std::runtime_error (std::string ("Incompatible ONNX Runtime version")
+                                      + (base != nullptr ? std::string (": ") + base->GetVersionString() : std::string()));
+        Ort::InitApi (api);
+        auto loaded = std::make_unique<OrtRuntime>();
+        loaded->env = std::make_unique<Ort::Env> (ORT_LOGGING_LEVEL_ERROR, "justStem");
+#if defined (_WIN32)
+        loaded->appendDml = appendDml;
+#endif
+        return loaded.release();
+    }();
+    return *rt;
+}
+} // namespace
+
 /** The one ONNX Runtime environment, shared with Transcriber.cpp. */
 Ort::Env& ortEnv()
 {
-    static Ort::Env env (ORT_LOGGING_LEVEL_ERROR, "justStem");
-    return env;
+    return *ortRuntime().env;
+}
+
+void configureOrtSession (Ort::SessionOptions& so, bool cpuSession)
+{
+    so.SetGraphOptimizationLevel (GraphOptimizationLevel::ORT_ENABLE_ALL);
+    if (isLowMemorySystem())
+    {
+        so.SetIntraOpNumThreads (2);
+        if (cpuSession)
+        {
+            so.DisableCpuMemArena();
+            so.DisableMemPattern();
+        }
+    }
+    else
+    {
+        so.SetIntraOpNumThreads (0); // ORT default: one per performance core
+    }
 }
 
 namespace
@@ -175,10 +363,9 @@ struct Separator::Impl
 
     void createSession (Backend b)
     {
-        auto& env = ortEnv(); // must exist before an execution provider is appended
+        auto& env = ortEnv(); // must exist before SessionOptions or an execution provider is created
         Ort::SessionOptions so;
-        so.SetIntraOpNumThreads (0); // ORT default: one per performance core
-        so.SetGraphOptimizationLevel (GraphOptimizationLevel::ORT_ENABLE_ALL);
+        configureOrtSession (so, b == Backend::CPU);
         if (b == Backend::CoreML)
         {
             // CPUAndGPU, not ALL: leaving out the Neural Engine loads a cached model in ~1 s instead
@@ -191,10 +378,12 @@ struct Separator::Impl
        #if defined (_WIN32)
         if (b == Backend::DirectML)
         {
+            if (ortRuntime().appendDml == nullptr)
+                throw std::runtime_error ("DirectML is not available in this ONNX Runtime build");
             // Required by the DirectML execution provider.
             so.DisableMemPattern();
             so.SetExecutionMode (ExecutionMode::ORT_SEQUENTIAL);
-            Ort::ThrowOnError (OrtSessionOptionsAppendExecutionProvider_DML (so, 0)); // default GPU
+            Ort::ThrowOnError (ortRuntime().appendDml (so, 0)); // default GPU
         }
        #endif
         // ONNX Runtime takes native paths (wide strings on Windows); the model path is UTF-8.
@@ -338,8 +527,9 @@ StemMap Separator::separate (const StereoAudio& mix,
         sumSq += m * m;
     }
     const double mean = sum / std::max (1, N);
-    const float inputScale = spec.normaliseInput
-                                 ? (float) (1.0 / std::sqrt (std::max (sumSq / std::max (1, N) - mean * mean, 1e-12)))
+    const double var = sumSq / std::max (1, N) - mean * mean;
+    const float inputScale = spec.normaliseInput && std::isfinite (var)
+                                 ? (float) (1.0 / std::sqrt (var > 1e-12 ? var : 1e-12))
                                  : 1.0f;
     const float outScale = 1.0f / inputScale;
 
@@ -416,7 +606,16 @@ StemMap Separator::separate (const StereoAudio& mix,
         {
             impl->clearScratch();
             impl->session.reset();
+            if (cancel.load()) throw std::runtime_error ("cancelled");
+            if (isSystemMemoryCritical() || (last && isOutOfMemoryError (e.what())))
+                throw std::runtime_error ("Not enough memory to split this song. Close other apps or try Fast mode.");
             if (last) throw std::runtime_error (std::string ("ONNX Runtime: ") + e.what());
+        }
+        catch (const std::bad_alloc&)
+        {
+            impl->clearScratch();
+            impl->session.reset();
+            throw std::runtime_error ("Not enough memory to split this song. Close other apps or try Fast mode.");
         }
         catch (const BadOutput&)
         {

@@ -73,7 +73,21 @@ justStemProcessor::justStemProcessor (juce::File fastModel)
 
 justStemProcessor::~justStemProcessor()
 {
-    stemExport.reset();
+    if (stemExport != nullptr)
+    {
+        // AlertWindow inside ThreadWithProgressWindow must be destroyed on the message thread; hosts may
+        // destroy processors on a worker thread.
+        if (auto* mm = juce::MessageManager::getInstanceWithoutCreating(); mm != nullptr && mm->isThisTheMessageThread())
+            stemExport.reset();
+        else
+        {
+            pinPluginBinary();
+            stemExport->cancel();
+            auto* raw = stemExport.release();
+            if (! juce::MessageManager::callAsync ([raw] { delete raw; }))
+                delete raw;
+        }
+    }
     {
         const juce::ScopedLock sl (instancesLock);
         instances.removeFirstMatchingValue (this);
@@ -83,7 +97,11 @@ justStemProcessor::~justStemProcessor()
 
 void justStemProcessor::prepareToPlay (double hostRate, int samplesPerBlock)
 {
-    stemPlayer.prepare (hostRate, samplesPerBlock);
+    try
+    {
+        stemPlayer.prepare (hostRate, samplesPerBlock);
+    }
+    catch (...) {}
 }
 
 bool justStemProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -100,7 +118,7 @@ void justStemProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     double hostSeconds = -1;
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition(); pos && pos->getIsPlaying())
-            if (auto t = pos->getTimeInSeconds()) hostSeconds = *t;
+            if (auto t = pos->getTimeInSeconds(); t && std::isfinite (*t) && *t < 1e9) hostSeconds = *t;
     stemPlayer.process (buffer, hostSeconds);
 }
 
@@ -195,64 +213,73 @@ SongJob::Status justStemProcessor::jobStatus() const
 
 void justStemProcessor::getStateInformation (juce::MemoryBlock& data)
 {
-    juce::ValueTree state ("justStem");
+    try
     {
-        const juce::ScopedLock sl (songLock);
-        const auto folder = pendingFolder != juce::File() ? pendingFolder : (song != nullptr ? song->folder : juce::File());
-        if (folder != juce::File()) state.setProperty ("folder", folder.getFullPathName(), nullptr);
+        juce::ValueTree state ("justStem");
+        {
+            const juce::ScopedLock sl (songLock);
+            const auto folder = pendingFolder != juce::File() ? pendingFolder : (song != nullptr ? song->folder : juce::File());
+            if (folder != juce::File()) state.setProperty ("folder", folder.getFullPathName(), nullptr);
+        }
+        state.setProperty ("followHost", stemPlayer.followsHost(), nullptr);
+        state.setProperty ("transpose", transpose.load(), nullptr);
+        state.setProperty ("hq", hq.load(), nullptr);
+        for (int i = 0; i < numStems; ++i)
+        {
+            juce::ValueTree s ("Stem");
+            s.setProperty ("volume", stemPlayer.getVolume (i), nullptr);
+            s.setProperty ("mute", stemPlayer.getMute (i), nullptr);
+            s.setProperty ("solo", stemPlayer.getSolo (i), nullptr);
+            state.appendChild (s, nullptr);
+        }
+        juce::MemoryOutputStream out (data, false);
+        state.writeToStream (out);
     }
-    state.setProperty ("followHost", stemPlayer.followsHost(), nullptr);
-    state.setProperty ("transpose", transpose.load(), nullptr);
-    state.setProperty ("hq", hq.load(), nullptr);
-    for (int i = 0; i < numStems; ++i)
-    {
-        juce::ValueTree s ("Stem");
-        s.setProperty ("volume", stemPlayer.getVolume (i), nullptr);
-        s.setProperty ("mute", stemPlayer.getMute (i), nullptr);
-        s.setProperty ("solo", stemPlayer.getSolo (i), nullptr);
-        state.appendChild (s, nullptr);
-    }
-    juce::MemoryOutputStream out (data, false);
-    state.writeToStream (out);
+    catch (...) {}
 }
 
 void justStemProcessor::setStateInformation (const void* data, int size)
 {
-    const auto state = juce::ValueTree::readFromData (data, (size_t) size);
-    if (! state.hasType ("justStem")) return;
-    struct Restoring
+    try
     {
-        std::atomic<int>& count;
-        explicit Restoring (std::atomic<int>& c) : count (c) { ++count; }
-        ~Restoring() { --count; }
-    } restoring (restoringState);
-    stemPlayer.setFollowHost (wrapperType != wrapperType_Standalone && (bool) state["followHost"]);
-    transpose = juce::jlimit (-11, 11, (int) state["transpose"]);
-    stemPlayer.setTranspose (transpose);
-    hq = (bool) state["hq"];
-    for (int i = 0; i < numStems && i < state.getNumChildren(); ++i)
-    {
-        const auto s = state.getChild (i);
-        stemPlayer.setVolume (i, s.hasProperty ("volume") ? (float) s["volume"] : 1.0f);
-        stemPlayer.setMute (i, s["mute"]);
-        stemPlayer.setSolo (i, s["solo"]);
+        if (data == nullptr || size <= 0) return;
+        const auto state = juce::ValueTree::readFromData (data, (size_t) size);
+        if (! state.hasType ("justStem")) return;
+        struct Restoring
+        {
+            std::atomic<int>& count;
+            explicit Restoring (std::atomic<int>& c) : count (c) { ++count; }
+            ~Restoring() { --count; }
+        } restoring (restoringState);
+        stemPlayer.setFollowHost (wrapperType != wrapperType_Standalone && (bool) state["followHost"]);
+        transpose = juce::jlimit (-11, 11, (int) state["transpose"]);
+        stemPlayer.setTranspose (transpose);
+        hq = (bool) state["hq"];
+        for (int i = 0; i < numStems && i < state.getNumChildren(); ++i)
+        {
+            const auto s = state.getChild (i);
+            stemPlayer.setVolume (i, s.hasProperty ("volume") ? (float) s["volume"] : 1.0f);
+            stemPlayer.setMute (i, s["mute"]);
+            stemPlayer.setSolo (i, s["solo"]);
+        }
+        const auto path = state["folder"].toString();
+        const juce::File folder = juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File();
+        bool sameSong = false;
+        {
+            const juce::ScopedLock sl (songLock);
+            sameSong = song != nullptr && song->folder == folder;
+            pendingFolder = sameSong ? juce::File() : folder;
+        }
+        if (folder != juce::File() && ! sameSong)
+            juce::MessageManager::callAsync ([this, token = std::weak_ptr<bool> (alive), folder] {
+                if (token.expired()) return;
+                // Deleted, or the project came from another computer: say so rather than opening empty.
+                if (folder.isDirectory()) reloadRestored (folder);
+                else showError ("The stems saved with this project weren't found (" + folder.getFullPathName() + "). Split the song again to get them back.");
+            });
+        sendChangeMessage(); // an open window shows the restored settings
     }
-    const auto path = state["folder"].toString();
-    const juce::File folder = juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File();
-    bool sameSong = false;
-    {
-        const juce::ScopedLock sl (songLock);
-        sameSong = song != nullptr && song->folder == folder;
-        pendingFolder = sameSong ? juce::File() : folder;
-    }
-    if (folder != juce::File() && ! sameSong)
-        juce::MessageManager::callAsync ([this, token = std::weak_ptr<bool> (alive), folder] {
-            if (token.expired()) return;
-            // Deleted, or the project came from another computer: say so rather than opening empty.
-            if (folder.isDirectory()) reloadRestored (folder);
-            else showError ("The stems saved with this project weren't found (" + folder.getFullPathName() + "). Split the song again to get them back.");
-        });
-    sendChangeMessage(); // an open window shows the restored settings
+    catch (...) {}
 }
 
 juce::AudioProcessorEditor* justStemProcessor::createEditor()

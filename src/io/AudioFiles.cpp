@@ -76,12 +76,19 @@ std::pair<int, int> mp3EncoderDelay (const juce::File& file)
     return { -1, -1 };
 }
 
+constexpr double minAudioSampleRate = 8000.0, maxAudioSampleRate = 384000.0;
+constexpr juce::int64 maxDecodedSamples = 500'000'000;
+
 DecodedAudio readWithJuce (const juce::File& file, double maxSeconds)
 {
     std::unique_ptr<juce::AudioFormatReader> reader (formats().createReaderFor (file));
     if (reader == nullptr) throw std::runtime_error ("Couldn't read \"" + file.getFileName().toStdString() + "\" as audio");
-    if (reader->sampleRate <= 0 || reader->lengthInSamples <= 0) throw std::runtime_error ("The audio file is empty");
-    if ((double) reader->lengthInSamples / reader->sampleRate > maxSeconds) throw songTooLong (maxSeconds);
+    if (! std::isfinite (reader->sampleRate) || reader->sampleRate <= 0 || reader->lengthInSamples <= 0)
+        throw std::runtime_error ("The audio file is empty");
+    if (reader->sampleRate < minAudioSampleRate || reader->sampleRate > maxAudioSampleRate)
+        throw std::runtime_error ("Unsupported sample rate in \"" + file.getFileName().toStdString() + "\"");
+    if ((double) reader->lengthInSamples / reader->sampleRate > maxSeconds || reader->lengthInSamples > maxDecodedSamples)
+        throw songTooLong (maxSeconds);
 
     const int n = (int) reader->lengthInSamples;
     const int ch = (int) reader->numChannels;
@@ -137,17 +144,27 @@ juce::String describeAudioFile (const juce::File& file)
 StereoAudio loadAudioFile (const juce::File& file, double maxSeconds)
 {
     auto decoded = isMp4File (file) ? decodeM4a (file, maxSeconds) : readWithJuce (file, maxSeconds);
-    if (decoded.sampleRate <= 0 || decoded.left.empty()) throw std::runtime_error ("The audio file is empty");
-    if ((double) decoded.left.size() / decoded.sampleRate > maxSeconds) throw songTooLong (maxSeconds);
+    if (! std::isfinite (decoded.sampleRate) || decoded.sampleRate <= 0 || decoded.left.empty())
+        throw std::runtime_error ("The audio file is empty");
+    if (decoded.sampleRate < minAudioSampleRate || decoded.sampleRate > maxAudioSampleRate)
+        throw std::runtime_error ("Unsupported sample rate in \"" + file.getFileName().toStdString() + "\"");
+    if ((double) decoded.left.size() / decoded.sampleRate > maxSeconds || decoded.left.size() > (std::size_t) maxDecodedSamples)
+        throw songTooLong (maxSeconds);
 
-    if ((int) decoded.sampleRate != sampleRate)
-        resampleStereo (decoded.left, decoded.right, (int) std::lround (decoded.sampleRate), sampleRate);
+    // 32-bit float bounces can carry NaN/Inf samples, which would poison resampling, FFTs and scaling.
+    for (float& v : decoded.left) if (! std::isfinite (v)) v = 0.0f;
+    for (float& v : decoded.right) if (! std::isfinite (v)) v = 0.0f;
+
+    const int inRate = (int) std::lround (decoded.sampleRate);
+    if (inRate != sampleRate)
+        resampleStereo (decoded.left, decoded.right, inRate, sampleRate);
     return { std::move (decoded.left), std::move (decoded.right) };
 }
 
 namespace
 {
-void writeWith (juce::AudioFormat& format, const juce::File& file, const StereoAudio& audio, int bitsPerSample)
+bool writeWith (juce::AudioFormat& format, const juce::File& file, const StereoAudio& audio, int bitsPerSample,
+                const std::function<bool()>& shouldContinue = {})
 {
     file.deleteFile();
     std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());
@@ -157,16 +174,29 @@ void writeWith (juce::AudioFormat& format, const juce::File& file, const StereoA
                                                       .withNumChannels (2)
                                                       .withBitsPerSample (bitsPerSample));
     if (writer == nullptr) throw std::runtime_error ("Can't create a " + format.getFormatName().toStdString() + " writer");
-    const float* channels[] { audio.left.data(), audio.right.data() };
-    if (! writer->writeFromFloatArrays (channels, 2, (int) audio.size()))
-        throw std::runtime_error ("Error while writing " + file.getFullPathName().toStdString());
+    constexpr std::size_t chunk = 65536;
+    const std::size_t total = std::min (audio.left.size(), audio.right.size());
+    for (std::size_t done = 0; done < total; done += chunk)
+    {
+        if (shouldContinue && ! shouldContinue())
+        {
+            writer.reset();
+            file.deleteFile();
+            return false;
+        }
+        const int n = (int) std::min (chunk, total - done);
+        const float* channels[] { audio.left.data() + done, audio.right.data() + done };
+        if (! writer->writeFromFloatArrays (channels, 2, n))
+            throw std::runtime_error ("Error while writing " + file.getFullPathName().toStdString());
+    }
+    return true;
 }
 } // namespace
 
-void writeWav (const juce::File& file, const StereoAudio& audio, int bitsPerSample)
+bool writeWav (const juce::File& file, const StereoAudio& audio, int bitsPerSample, const std::function<bool()>& shouldContinue)
 {
     juce::WavAudioFormat wav;
-    writeWith (wav, file, audio, bitsPerSample);
+    return writeWith (wav, file, audio, bitsPerSample, shouldContinue);
 }
 
 void writeFlac (const juce::File& file, const StereoAudio& audio, int bitsPerSample)

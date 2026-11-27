@@ -227,6 +227,7 @@ ChordResult detectChordsOnBeats (const ChordPeaks& peaks, double length, std::ve
         float strongest = 0;
         for (const auto& p : f) strongest = std::max (strongest, p.mag);
         const auto low = std::find_if (f.begin(), f.end(), [&] (const dsp::Peak& p) { return p.mag >= 0.3f * strongest; });
+        if (low == f.end()) continue;
         const auto [pc, dist] = pitchClass (low->freq, ref);
         const int u = unitOf ((double) (i * (size_t) bp.hop + (size_t) bp.size / 2) / rate);
         const float w = std::sqrt (low->mag) * (float) std::pow (std::cos (std::numbers::pi * dist), 2);

@@ -19,6 +19,7 @@
 namespace juststem
 {
 Ort::Env& ortEnv(); // Separator.cpp: one ONNX Runtime environment for every model
+void configureOrtSession (Ort::SessionOptions& so, bool cpuSession);
 
 namespace
 {
@@ -30,15 +31,16 @@ void checkCancel (const std::atomic<bool>& cancel)
 /** A CPU session. ONNX Runtime takes native paths (wide strings on Windows); `path` is UTF-8. */
 std::unique_ptr<Ort::Session> openSession (const std::string& path)
 {
+    auto& env = ortEnv(); // initialises the ONNX Runtime C++ API table before SessionOptions is made
     Ort::SessionOptions so;
-    so.SetIntraOpNumThreads (0); // ORT default: one per performance core
-    so.SetGraphOptimizationLevel (GraphOptimizationLevel::ORT_ENABLE_ALL);
+    configureOrtSession (so, true);
     const std::filesystem::path p (std::u8string (path.begin(), path.end()));
-    return std::make_unique<Ort::Session> (ortEnv(), p.c_str(), so);
+    return std::make_unique<Ort::Session> (env, p.c_str(), so);
 }
 
 Ort::Value tensor (std::vector<float>& data, const std::vector<int64_t>& shape)
 {
+    ortEnv();
     static const auto mem = Ort::MemoryInfo::CreateCpu (OrtArenaAllocator, OrtMemTypeDefault);
     return Ort::Value::CreateTensor<float> (mem, data.data(), data.size(), shape.data(), shape.size());
 }
@@ -58,7 +60,7 @@ namespace bp
     constexpr int minNoteFrames = 11;                            // round(127.7 ms * 22050 / 256 / 1000)
     constexpr int energyTolerance = 11;
     constexpr double alignment = 0.0018;                         // MAGIC_ALIGNMENT_OFFSET
-    constexpr int batch = 16;                                    // windows per model run (~3 MB in)
+    constexpr int batch = 8;                                     // windows per model run (~1.4 MB in)
 } // namespace bp
 
 /** Basic Pitch's model_frames_to_time: frame times, with its per-window alignment correction. */

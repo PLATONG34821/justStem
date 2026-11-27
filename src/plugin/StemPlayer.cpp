@@ -7,6 +7,13 @@ namespace juststem
 void StemPlayer::prepare (double rate, int maxBlock)
 {
     const juce::SpinLock::ScopedLockType sl (songLock);
+    if (! std::isfinite (rate) || rate <= 0.0 || maxBlock <= 0)
+    {
+        preparedBlock = 0;
+        return;
+    }
+    // Cap scratch allocations for hosts that announce huge offline block sizes (process() slices larger blocks).
+    maxBlock = std::min (maxBlock, 65536);
     hostRate = rate;
     preparedBlock = maxBlock;
     const int need = (int) std::ceil (maxBlock * sampleRate / rate) + 16;

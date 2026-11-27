@@ -2,6 +2,9 @@
 
 #include <juce_core/juce_core.h>
 
+#include <memory>
+#include <thread>
+
 namespace juststem
 {
 /** Asks GitHub, on a background thread, whether a newer justStem release is out.
@@ -11,11 +14,11 @@ namespace juststem
     Skipped when JUSTSTEM_DATA_DIR is set (tests, screenshots) or JUSTSTEM_NO_UPDATE_CHECK is set.
 
     Share one between plug-in instances with juce::SharedResourcePointer<UpdateCheck>. */
-class UpdateCheck final : private juce::Thread
+class UpdateCheck final
 {
 public:
     UpdateCheck();
-    ~UpdateCheck() override;
+    ~UpdateCheck();
 
     /** Starts the check, the first time it's called: when a plug-in window opens. Not on creating the
         plug-in, as DAWs' plug-in scanners and validators (Logic's auval) create and delete it many
@@ -36,11 +39,10 @@ public:
     static bool isNewer (const juce::String& latest, const juce::String& current);
 
 private:
-    void run() override;
-    juce::String fetchLatestTag();
-
-    mutable juce::CriticalSection lock;
-    juce::String newer;
+    struct State;
+    static void runCheck (State&);
+    std::shared_ptr<State> state;
+    std::thread worker;
     bool started = false; // message thread
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UpdateCheck)

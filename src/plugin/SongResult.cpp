@@ -131,17 +131,20 @@ bool copyStems (const SongResult& song, const juce::File& dir, const std::functi
     StereoAudio mix;
     for (std::size_t i = 0; i < stemOrder.size(); ++i)
     {
-        if (! progress ((double) i / files)) return false;
+        const double p = (double) i / files;
+        if (! progress (p)) return false;
         const auto stem = stemOrder[i];
         const auto& s = song.stems.at (stem);
-        writeWav (dir.getChildFile (juce::String (stemWavName (stem))), s);
+        if (! writeWav (dir.getChildFile (juce::String (stemWavName (stem))), s, 24, [&] { return progress (p); })) return false;
         if (stem != Stem::Vocals) addInto (mix, s);
     }
-    if (! progress ((double) numStems / files)) return false;
-    writeWav (dir.getChildFile ("instrumental.wav"), mix);
-    if (! progress ((double) (numStems + 1) / files)) return false;
+    const double pInst = (double) numStems / files;
+    if (! progress (pInst)) return false;
+    if (! writeWav (dir.getChildFile ("instrumental.wav"), mix, 24, [&] { return progress (pInst); })) return false;
+    const double pMix = (double) (numStems + 1) / files;
+    if (! progress (pMix)) return false;
     addInto (mix, song.stems.at (Stem::Vocals));
-    writeWav (dir.getChildFile ("full mix.wav"), mix);
+    if (! writeWav (dir.getChildFile ("full mix.wav"), mix, 24, [&] { return progress (pMix); })) return false;
     saveMidi (song, dir, 0);
     progress (1.0);
     return true;
@@ -192,22 +195,27 @@ bool saveTransposedStems (const SongResult& song, int semitones, const juce::Fil
     }
 
     // Shifting changes phase relationships and can push stems or mixes past full scale.
+    if (! progress (0.9)) return false;
     fitUnderFullScale (shiftedStems);
 
     StereoAudio mix;
     constexpr double writeSteps = numStems + 2;
     for (std::size_t i = 0; i < stemOrder.size(); ++i)
     {
-        if (! progress (0.9 + 0.1 * (double) i / writeSteps)) return false;
+        const double p = 0.9 + 0.1 * (double) i / writeSteps;
+        if (! progress (p)) return false;
         const auto stem = stemOrder[i];
-        writeWav (dir.getChildFile (juce::String (stemWavName (stem))), shiftedStems.at (stem));
+        if (! writeWav (dir.getChildFile (juce::String (stemWavName (stem))), shiftedStems.at (stem), 24, [&] { return progress (p); }))
+            return false;
         if (stem != Stem::Vocals) addInto (mix, shiftedStems.extract (stem).mapped());
     }
-    if (! progress (0.9 + 0.1 * (double) numStems / writeSteps)) return false;
-    writeWav (dir.getChildFile ("instrumental.wav"), mix);
-    if (! progress (0.9 + 0.1 * (double) (numStems + 1) / writeSteps)) return false;
+    const double pInst = 0.9 + 0.1 * (double) numStems / writeSteps;
+    if (! progress (pInst)) return false;
+    if (! writeWav (dir.getChildFile ("instrumental.wav"), mix, 24, [&] { return progress (pInst); })) return false;
+    const double pMix = 0.9 + 0.1 * (double) (numStems + 1) / writeSteps;
+    if (! progress (pMix)) return false;
     addInto (mix, shiftedStems.extract (Stem::Vocals).mapped());
-    writeWav (dir.getChildFile ("full mix.wav"), mix);
+    if (! writeWav (dir.getChildFile ("full mix.wav"), mix, 24, [&] { return progress (pMix); })) return false;
     saveMidi (song, dir, semitones);
     progress (1.0);
     return true;

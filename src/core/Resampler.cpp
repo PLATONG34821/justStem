@@ -5,6 +5,7 @@
 #include <future>
 #include <numbers>
 #include <numeric>
+#include <stdexcept>
 
 namespace juststem
 {
@@ -106,12 +107,14 @@ struct PolyphaseFilter
 
 std::vector<float> resample (const std::vector<float>& in, int inRate, int outRate)
 {
+    if (inRate <= 0 || outRate <= 0) throw std::invalid_argument ("Invalid sample rate for resampling");
     if (inRate == outRate || in.empty()) return in;
     return PolyphaseFilter (inRate, outRate).apply (in);
 }
 
 void resampleStereo (std::vector<float>& left, std::vector<float>& right, int inRate, int outRate)
 {
+    if (inRate <= 0 || outRate <= 0) throw std::invalid_argument ("Invalid sample rate for resampling");
     if (inRate == outRate || left.empty()) return;
     const PolyphaseFilter filter (inRate, outRate);
     if (left == right)

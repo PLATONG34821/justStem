@@ -32,16 +32,13 @@ else()
     set(ORT_ARCH x64)
 endif()
 
-add_library(onnxruntime::onnxruntime SHARED IMPORTED GLOBAL)
+add_library(onnxruntime::onnxruntime INTERFACE IMPORTED GLOBAL)
 
 if(APPLE)
     juststem_nuget(pkg Microsoft.ML.OnnxRuntime 1.32.0 a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db)
     # The package ships libonnxruntime.dylib, but its install name is @rpath/libonnxruntime.1.dylib.
     set(lib ${ORT_LIB_DIR}/libonnxruntime.1.dylib)
     file(COPY_FILE ${pkg}/runtimes/osx-arm64/native/libonnxruntime.dylib ${lib} ONLY_IF_DIFFERENT)
-    set_target_properties(onnxruntime::onnxruntime PROPERTIES
-        IMPORTED_LOCATION ${lib}
-        IMPORTED_SONAME @rpath/libonnxruntime.1.dylib)
     set(ORT_RUNTIME_FILES ${lib})
 
 elseif(WIN32)
@@ -50,9 +47,6 @@ elseif(WIN32)
     set(native ${pkg}/runtimes/win-${ORT_ARCH}/native)
     file(COPY_FILE ${native}/onnxruntime.dll ${ORT_LIB_DIR}/onnxruntime.dll ONLY_IF_DIFFERENT)
     file(COPY_FILE ${dml}/bin/${ORT_ARCH}-win/DirectML.dll ${ORT_LIB_DIR}/DirectML.dll ONLY_IF_DIFFERENT)
-    set_target_properties(onnxruntime::onnxruntime PROPERTIES
-        IMPORTED_LOCATION ${ORT_LIB_DIR}/onnxruntime.dll
-        IMPORTED_IMPLIB ${native}/onnxruntime.lib)
     set(ORT_RUNTIME_FILES ${ORT_LIB_DIR}/onnxruntime.dll ${ORT_LIB_DIR}/DirectML.dll)
     set(extra_includes ${dml}/include) # DirectML.h, needed by dml_provider_factory.h
 
@@ -61,10 +55,13 @@ else() # Linux
     # The package ships libonnxruntime.so, but its soname is libonnxruntime.so.1.
     set(lib ${ORT_LIB_DIR}/libonnxruntime.so.1)
     file(COPY_FILE ${pkg}/runtimes/linux-${ORT_ARCH}/native/libonnxruntime.so ${lib} ONLY_IF_DIFFERENT)
-    set_target_properties(onnxruntime::onnxruntime PROPERTIES
-        IMPORTED_LOCATION ${lib}
-        IMPORTED_SONAME libonnxruntime.so.1)
     set(ORT_RUNTIME_FILES ${lib})
+    set(ort_dl_libs ${CMAKE_DL_LIBS})
 endif()
 
-set_target_properties(onnxruntime::onnxruntime PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${pkg}/build/native/include;${extra_includes}")
+# Loaded explicitly from the plug-in's own bundle via ORT_API_MANUAL_INIT (see Separator.cpp), so
+# another plug-in or DAW shipping a different onnxruntime in the same process never collides with ours.
+set_target_properties(onnxruntime::onnxruntime PROPERTIES
+    INTERFACE_COMPILE_DEFINITIONS "ORT_API_MANUAL_INIT"
+    INTERFACE_INCLUDE_DIRECTORIES "${pkg}/build/native/include;${extra_includes}"
+    INTERFACE_LINK_LIBRARIES "${ort_dl_libs}")

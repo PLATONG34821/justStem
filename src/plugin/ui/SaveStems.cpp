@@ -1,6 +1,7 @@
 #include "SaveStems.h"
 #include "../../io/AppPaths.h"
 
+#include <new>
 #include <utility>
 
 namespace juststem::ui
@@ -15,7 +16,7 @@ public:
     SaveStems (SongResultPtr s, int semis, juce::File folder, juce::Component* centreAround, std::function<void()> finished)
         : juce::ThreadWithProgressWindow (semis == 0 ? juce::String ("Saving stems")
                                                      : "Saving stems transposed " + juce::String (semis > 0 ? "+" : "") + juce::String (semis),
-                                          true, true, 10000, {}, centreAround),
+                                          true, true, -1, {}, centreAround),
           song (std::move (s)), semitones (semis), dir (std::move (folder)), onFinished (std::move (finished))
     {
         setStatusMessage (semis == 0 ? "Copying 6 stems, the instrumental, the full mix and the MIDI..."
@@ -25,9 +26,11 @@ public:
     ~SaveStems() override
     {
         signalThreadShouldExit();
-        stopThread (10000);
+        stopThread (-1); // WAV writes check cancellation every 64K frames; never force-kill the thread
         if (! done) dir.deleteRecursively();
     }
+
+    void cancel() override { signalThreadShouldExit(); }
 
     void launch() { launchThread(); }
 
@@ -40,6 +43,10 @@ public:
                 return ! threadShouldExit();
             };
             done = semitones == 0 ? copyStems (*song, dir, progress) : saveTransposedStems (*song, semitones, dir, progress);
+        }
+        catch (const std::bad_alloc&)
+        {
+            error = "Not enough memory to save the stems.";
         }
         catch (const std::exception& e)
         {

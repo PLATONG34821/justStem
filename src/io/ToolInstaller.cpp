@@ -64,7 +64,19 @@ void verifyChecksum (const juce::File& file, const juce::URL& sumsUrl, const juc
                                                  .withConnectionTimeoutMs (20000)
                                                  .withNumRedirectsToFollow (10)
                                                  .withStatusCode (&status));
-    const auto text = stream != nullptr && status < 400 ? stream->readEntireStreamAsString() : juce::String();
+    juce::String text;
+    if (stream != nullptr && status < 400)
+    {
+        juce::MemoryOutputStream body;
+        char buf[4096];
+        constexpr std::size_t maxSumsBytes = 1024 * 1024;
+        for (int n; (n = stream->read (buf, (int) sizeof (buf))) > 0;)
+        {
+            body.write (buf, (std::size_t) n);
+            if (body.getDataSize() > maxSumsBytes) break;
+        }
+        if (body.getDataSize() <= maxSumsBytes) text = body.toUTF8();
+    }
     const auto expected = findSha256InSums (text, name);
     if (expected.isEmpty())
     {
@@ -212,6 +224,11 @@ juce::File ensureDeno (const ProgressCallback& progress, const std::atomic<bool>
 
     const auto zip = scratchFor (exe, ".zip.part");
     const auto unpackDir = scratchFor (exe, ".unpack");
+    struct Cleanup
+    {
+        const juce::File &z, &u;
+        ~Cleanup() { z.deleteFile(); u.deleteRecursively(); }
+    } cleanup { zip, unpackDir };
     try
     {
         download (juce::URL (release + zipName), zip, "Downloading Deno", progress, cancel);
@@ -227,15 +244,11 @@ juce::File ensureDeno (const ProgressCallback& progress, const std::atomic<bool>
         if (! replaceFileAtomically (unpacked, exe)) throw std::runtime_error ("Can't install Deno");
         stamp.touch();
     }
-    catch (...)
+    catch (const std::exception&)
     {
-        zip.deleteFile();
-        unpackDir.deleteRecursively();
-        if (exe.existsAsFile()) return exe; // an update failed, but the installed copy still works
+        if (! cancel.load() && exe.existsAsFile()) return exe; // an update failed, but the installed copy still works
         throw;
     }
-    zip.deleteFile();
-    unpackDir.deleteRecursively();
     return exe;
 }
 
