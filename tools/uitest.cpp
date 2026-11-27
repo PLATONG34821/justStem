@@ -639,6 +639,20 @@ int main (int argc, char** argv)
                    && b.chords.segments.back().chord == a.chords.segments.back().chord,
                "chords restored (" + juce::String ((int) b.chords.segments.size()) + " changes)");
         check (proc2->getTranspose() == 2, "transpose restored");
+
+        // Opening a saved song that fails to load keeps the open song in the saved state.
+        const auto broken = s->folder.getSiblingFile ("broken-song-uitest");
+        broken.createDirectory();
+        broken.getChildFile ("info.json").replaceWithText ("not json");
+        proc2->openSaved (broken);
+        pumpUntil ([&] { return ! proc2->isBusy(); }, 10000);
+        juce::MemoryBlock afterFail;
+        proc2->getStateInformation (afterFail);
+        const auto tree = juce::ValueTree::readFromData (afterFail.getData(), afterFail.getSize());
+        check (tree["folder"].toString() == proc2->getSong()->folder.getFullPathName()
+                   && ! justStemProcessor::songsInUse().contains (broken),
+               "a failed Reload doesn't replace the open song in the saved state");
+        broken.deleteRecursively();
     }
 
     std::printf ("Song saved before chord detection existed\n");

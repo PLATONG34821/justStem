@@ -117,23 +117,20 @@ void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source
         if (token.expired()) return;
         lastLog = job->log();
         job.reset();
+        {
+            // Whatever the outcome, only a restore still queued is pending now (a failed Reload must not
+            // keep replacing the open song's folder in the saved state).
+            const juce::ScopedLock sl (songLock);
+            if (result != nullptr) song = result;
+            pendingFolder = restoredFolder;
+        }
         if (result != nullptr)
         {
-            {
-                const juce::ScopedLock sl (songLock);
-                song = result;
-                pendingFolder = restoredFolder;
-            }
             stemPlayer.setSong (song);
             if (! fromRestore) notifyHostStateChanged();
         }
         else if (err != "cancelled")
             error = err;
-        else if (restoredFolder == juce::File())
-        {
-            const juce::ScopedLock sl (songLock);
-            pendingFolder = juce::File();
-        }
         sendChangeMessage();
         if (restoredFolder != juce::File()) reloadRestored (std::exchange (restoredFolder, {}));
     }, allowModelDownload);
