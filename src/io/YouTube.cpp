@@ -3,6 +3,7 @@
 #include "ToolInstaller.h"
 
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 namespace juststem
@@ -101,6 +102,22 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
     if (! proc.start (args, juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
         throw std::runtime_error ("Couldn't start yt-dlp");
 
+    // readProcessOutput waits until its buffer is full or yt-dlp exits, which can be a long time while
+    // yt-dlp prints nothing; this watcher ends yt-dlp on cancel so the read returns.
+    struct Watcher
+    {
+        std::atomic<bool> done { false };
+        std::thread thread;
+        ~Watcher() { done = true; if (thread.joinable()) thread.join(); }
+    } watcher;
+    watcher.thread = std::thread ([&] {
+        while (! watcher.done.load())
+        {
+            if (cancel.load()) { proc.kill(); return; }
+            juce::Thread::sleep (50);
+        }
+    });
+
     std::string pending;
     juce::String errors;
     auto handleLine = [&] (const juce::String& line) {
@@ -114,7 +131,7 @@ DownloadedAudio downloadYouTubeAudio (const juce::String& link, const ProgressCa
         else if (line.startsWith ("ERROR")) errors << line << "\n";
         else if (line.startsWith ("WARNING")) { DBG (line); }
     };
-    char buf[4096];
+    char buf[256]; // small, so progress lines arrive as they're printed
     for (;;)
     {
         if (cancel.load())

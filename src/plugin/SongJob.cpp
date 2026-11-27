@@ -22,8 +22,7 @@ namespace
 /** <Music>/justStem/<title>, numbered if that folder already exists. */
 juce::File newSongFolder (const juce::String& title)
 {
-    auto name = juce::File::createLegalFileName (title).trim().substring (0, 80);
-    if (name.isEmpty()) name = "Song";
+    const auto name = paths::folderNameFor (title);
     auto dir = paths::stems().getChildFile (name);
     for (int i = 2; dir.exists(); ++i) dir = paths::stems().getChildFile (name + " (" + juce::String (i) + ")");
     dir.createDirectory();

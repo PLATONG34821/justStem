@@ -613,6 +613,18 @@ int analysisSelftest()
                "single-line HTTP error page is rejected");
     }
 
+    std::printf ("Song folder names\n");
+    {
+        check (paths::folderNameFor ("Wait for me...") == "Wait for me" && paths::folderNameFor ("What? ") == "What"
+                   && paths::folderNameFor ("...") == "Song" && paths::folderNameFor ("") == "Song",
+               "trailing dots and spaces dropped (Windows drops them when it makes the folder)");
+        check (paths::folderNameFor ("CON") == "Song CON" && paths::folderNameFor ("nul.mp3") == "Song nul.mp3"
+                   && paths::folderNameFor ("Contact") == "Contact",
+               "Windows device names get a prefix, other names are kept");
+        check (paths::folderNameFor ("A\tB\nC: D") == "ABC D" && paths::folderNameFor (juce::String::fromUTF8 ("เพลง ไทย")) == juce::String::fromUTF8 ("เพลง ไทย"),
+               "control and reserved characters removed, Thai kept");
+    }
+
     std::printf ("Update check and YouTube URL helpers\n");
     {
         check (UpdateCheck::isNewer ("v0.0.6", "0.0.5") && UpdateCheck::isNewer ("0.1.0", "0.0.5")

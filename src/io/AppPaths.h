@@ -59,6 +59,22 @@ namespace paths
     inline juce::File coremlCache() { return support ("coreml-cache"); } // compiled model
     inline juce::File downloads() { return support ("downloads"); }      // YouTube audio, deleted after use
 
+    /** A song title as a folder name every OS accepts, or "Song". Windows silently drops trailing dots
+        and spaces when it creates a folder ("Wait..." becomes "Wait"), so every later path with the
+        title in it would miss; it also refuses control characters and device names like CON or NUL. */
+    inline juce::String folderNameFor (const juce::String& title)
+    {
+        juce::String controls;
+        for (juce::juce_wchar c = 1; c < 32; ++c) controls += juce::String::charToString (c);
+        auto name = juce::File::createLegalFileName (title.removeCharacters (controls)).substring (0, 80)
+                        .trim().trimCharactersAtEnd (". ").trim();
+        static const juce::StringArray devices { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5",
+                                                 "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4",
+                                                 "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" };
+        if (devices.contains (name.upToFirstOccurrenceOf (".", false, false).trim(), true)) name = "Song " + name;
+        return name.isEmpty() ? juce::String ("Song") : name;
+    }
+
     /** <user's Music folder>/justStem: one folder of stems per song. */
     inline juce::File stems()
     {
