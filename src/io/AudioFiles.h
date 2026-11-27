@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core/Audio.h"
+#include "../core/Transcriber.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -24,6 +25,15 @@ void writeWav (const juce::File& file, const StereoAudio& audio, int bitsPerSamp
 /** Write 44.1 kHz stereo as a FLAC file (replacing it): lossless, about half the size of a WAV.
     Throws std::runtime_error. */
 void writeFlac (const juce::File& file, const StereoAudio& audio, int bitsPerSample = 24);
+
+/** Write notes (and pedals) as a MIDI file (replacing it), at `bpm` (120 when unknown) so the notes sit
+    on the song's beats in a DAW set to the song's tempo. `program` is the General MIDI instrument
+    (0-based) the DAW plays it with. Throws std::runtime_error. */
+void writeMidi (const juce::File& file, const Transcription& notes, double bpm, const juce::String& trackName, int program);
+
+/** Copy a MIDI file with every note moved by `semitones`; notes pushed outside the MIDI range are
+    left out. Throws std::runtime_error. */
+void writeTransposedMidi (const juce::File& from, const juce::File& to, int semitones);
 
 /** A short description of a file's format for logs, e.g. "MP3, 48 kHz, stereo", from its header only.
     Just the format name when the header can't be read here (M4A). */

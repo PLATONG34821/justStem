@@ -2,6 +2,8 @@
 #include "M4aDecoder.h"
 #include "../core/Resampler.h"
 
+#include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <cctype>
 #include <cstring>
@@ -171,5 +173,79 @@ void writeFlac (const juce::File& file, const StereoAudio& audio, int bitsPerSam
 {
     juce::FlacAudioFormat flac;
     writeWith (flac, file, audio, bitsPerSample);
+}
+} // namespace juststem
+
+namespace juststem
+{
+namespace
+{
+void writeMidiFile (const juce::File& file, const juce::MidiFile& midi)
+{
+    file.deleteFile();
+    juce::FileOutputStream out (file);
+    if (! out.openedOk() || ! midi.writeTo (out) || (out.flush(), out.getStatus().failed()))
+        throw std::runtime_error ("Can't write " + file.getFullPathName().toStdString());
+}
+} // namespace
+
+void writeMidi (const juce::File& file, const Transcription& notes, double bpm, const juce::String& trackName, int program)
+{
+    constexpr int ticksPerQuarter = 960;
+    if (! (bpm > 0)) bpm = 120;
+    const double ticksPerSecond = bpm / 60.0 * ticksPerQuarter;
+    auto ticks = [&] (double seconds) { return std::round (seconds * ticksPerSecond); };
+
+    juce::MidiMessageSequence track;
+    track.addEvent (juce::MidiMessage::textMetaEvent (3, trackName)); // track name
+    track.addEvent (juce::MidiMessage::tempoMetaEvent (juce::roundToInt (60'000'000.0 / bpm)));
+    track.addEvent (juce::MidiMessage::programChange (1, program));
+    for (const auto& n : notes.notes)
+    {
+        // At least a tick long, or a DAW may drop it.
+        const double on = ticks (n.start), off = std::max (on + 1, ticks (n.end));
+        track.addEvent (juce::MidiMessage::noteOn (1, n.pitch, (juce::uint8) n.velocity), on);
+        track.addEvent (juce::MidiMessage::noteOff (1, n.pitch), off);
+    }
+    for (const auto& p : notes.pedals)
+    {
+        const double on = ticks (p.start), off = std::max (on + 1, ticks (p.end));
+        track.addEvent (juce::MidiMessage::controllerEvent (1, p.controller, p.value), on);
+        track.addEvent (juce::MidiMessage::controllerEvent (1, p.controller, 0), off);
+    }
+    track.updateMatchedPairs();
+    track.sort(); // stable: a note ending where the next on its key starts stays before it
+    track.addEvent (juce::MidiMessage::endOfTrack(), track.getEndTime());
+
+    juce::MidiFile midi;
+    midi.setTicksPerQuarterNote (ticksPerQuarter);
+    midi.addTrack (track);
+    writeMidiFile (file, midi);
+}
+
+void writeTransposedMidi (const juce::File& from, const juce::File& to, int semitones)
+{
+    juce::FileInputStream in (from);
+    juce::MidiFile midi;
+    if (! in.openedOk() || ! midi.readFrom (in)) throw std::runtime_error ("Can't read " + from.getFullPathName().toStdString());
+    juce::MidiFile shifted;
+    shifted.setTicksPerQuarterNote (midi.getTimeFormat());
+    for (int t = 0; t < midi.getNumTracks(); ++t)
+    {
+        juce::MidiMessageSequence track;
+        for (const auto* e : *midi.getTrack (t))
+        {
+            auto m = e->message;
+            if (m.isNoteOnOrOff())
+            {
+                const int note = m.getNoteNumber() + semitones;
+                if (note < 0 || note > 127) continue;
+                m.setNoteNumber (note);
+            }
+            track.addEvent (m);
+        }
+        shifted.addTrack (track);
+    }
+    writeMidiFile (to, shifted);
 }
 } // namespace juststem

@@ -115,11 +115,15 @@ private:
     float value = 1.0f;
 };
 
-/** Press and drag to drop a file onto a DAW track (or into a folder). */
+/** Press and drag to drop a file onto a DAW track (or into a folder). Shows `icon`: the grip for audio. */
 class DragHandle final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    DragHandle() { setMouseCursor (juce::MouseCursor::DraggingHandCursor); setTooltip ("Drag onto a track in your DAW"); }
+    explicit DragHandle (const juce::Path& iconPath = icons::grip()) : icon (&iconPath)
+    {
+        setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+        setTooltip ("Drag onto a track in your DAW");
+    }
     void setFile (juce::File f) { file = std::move (f); repaint(); }
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override { dragging = false; }
@@ -131,11 +135,12 @@ public:
     }
 
 private:
+    const juce::Path* icon;
     juce::File file;
     bool dragging = false;
 };
 
-/** One stem: colour dot, name, mute, solo, volume, drag-to-DAW. */
+/** One stem: colour dot, name, mute, solo, volume, drag-to-DAW, and drag its MIDI (when it has one). */
 class StemRow final : public juce::Component
 {
 public:
@@ -144,6 +149,12 @@ public:
     StemRow (juce::String name, const juce::Path& icon);
 
     void setFile (const juce::File& f) { drag.setFile (f); }
+    /** The stem's MIDI file; the MIDI handle shows only while it exists. */
+    void setMidiFile (const juce::File& f)
+    {
+        midi.setFile (f);
+        midi.setVisible (f.existsAsFile());
+    }
     void setTransposed (bool transposed);
     void refresh();
     void paint (juce::Graphics&) override;
@@ -156,6 +167,6 @@ private:
     const juce::Path* icon = nullptr; // rows without a player
     juce::TextButton muteButton { "M" }, soloButton { "S" };
     SegmentBar volume;
-    DragHandle drag;
+    DragHandle drag, midi { icons::pianoKeys() };
 };
 } // namespace juststem::ui

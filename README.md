@@ -1,8 +1,8 @@
 # justStem
 
 justStem is an open-source VST3 / AU plug-in that splits a song into six stems,
-**vocals, drums, bass, guitar, piano and other**, plus an instrumental and the full mix, and finds its
-**key, tempo, loudness and chords**. Give it an audio file or a YouTube link; the AI runs on your
+**vocals, drums, bass, guitar, piano and other**, plus an instrumental and the full mix, finds its
+**key, tempo, loudness and chords**, and writes the **vocals, bass, guitar and piano as MIDI**. Give it an audio file or a YouTube link; the AI runs on your
 computer, and nothing is uploaded.
 
 <p align="center"><img src="docs/screenshots/stems.png" width="600" alt="justStem with a song split into stems"></p>
@@ -12,7 +12,8 @@ computer, and nothing is uploaded.
 - 6 stems plus an instrumental and the full mix, kept as lossless 24-bit FLAC (half the size of WAV) that you can drag onto DAW tracks; **Save all** exports WAVs
 - Key (with Camelot code), tempo and loudness (LUFS)
 - Chords bar by bar, with a copyable chart
-- Transpose ±11 semitones: chords, live preview and pitch-shifted stem export
+- MIDI of the vocals, bass, guitar and piano (piano with velocity and sustain pedal), at the song's tempo, to drag onto DAW tracks
+- Transpose ±11 semitones: chords, live preview and pitch-shifted stem and MIDI export
 - Stem preview with mute / solo / volume, in sync with your DAW
 - **HQ** mode (BS-RoFormer) for cleaner stems, slower than the standard model
 
@@ -41,6 +42,8 @@ Download from [Releases](https://github.com/PLATONG34821/justStem/releases), the
 
 The standard AI model is built in so splitting works offline right away; the first time you turn on
 **HQ** mode, `justStem` downloads the HQ model from GitHub Releases and verifies its SHA-256 checksum.
+The piano MIDI model (59 MB) is downloaded the same way the first time a song has piano; offline,
+that song gets no piano MIDI (the stems and the other MIDI are still made).
 
 **Checking a download** (from 0.0.4): each release has a `SHA256SUMS` file. Download it next to the
 installer or zip, then run `shasum -a 256 -c --ignore-missing SHA256SUMS` (macOS) or
@@ -72,10 +75,10 @@ Intel Macs aren't supported. Tried justStem in another DAW or OS? Please share h
 
 1. **Load a song** (up to 15 minutes): paste a YouTube link (use the **Paste** button if your DAW
    blocks ⌘V / Ctrl+V), click **Choose file**, or drop a file on the window. Click **Split**.
-2. **Stems:** mute, solo or set the volume of each stem; drag the ⠿ handle onto a DAW track.
-   Turn on **Follow DAW** to play the stems with your DAW's transport.
+2. **Stems:** mute, solo or set the volume of each stem; drag the ⠿ handle onto a DAW track, or
+   the piano-keys handle beside it for the notes (MIDI). Turn on **Follow DAW** to play the stems with your DAW's transport.
 3. **Chords:** shows the chord playing now and the next ones; click a bar to jump there.
-4. **Transpose:** **−** / **+** moves the chords and preview; **Save all** exports shifted stems.
+4. **Transpose:** **−** / **+** moves the chords and preview; **Save all** exports shifted stems and MIDI.
 5. **Storage** (top right): see and free the disk space justStem uses.
 
 ## Contributing
@@ -95,6 +98,8 @@ Bug reports, ideas and pull requests are welcome.
 justStem is licensed under the GNU AGPL-3.0 (see `LICENSE`). Third-party licences are listed in
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#third-party-licences). The HQ model's weights have no
 stated licence; justStem treats them as CC-BY-NC-SA-4.0, so HQ mode is for non-commercial use only.
+The piano MIDI model (Transkun) is MIT-licensed, but it was trained on a non-commercial dataset
+(MAESTRO), so check that before using piano MIDI commercially.
 
 The song in the screenshots is a synthetic demo. Only process music you have the rights to use;
 downloading from YouTube may break YouTube's terms of service.

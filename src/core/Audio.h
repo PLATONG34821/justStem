@@ -45,5 +45,8 @@ inline std::string stemFileName (Stem s) { return std::string (stemName (s)) + "
 /** The stem's name when exported for a DAW: "vocals.wav". */
 inline std::string stemWavName (Stem s) { return std::string (stemName (s)) + ".wav"; }
 
+/** The stem's notes as MIDI, in a song folder and when exported: "vocals.mid". */
+inline std::string stemMidiName (Stem s) { return std::string (stemName (s)) + ".mid"; }
+
 using StemMap = std::map<Stem, StereoAudio>;
 } // namespace juststem

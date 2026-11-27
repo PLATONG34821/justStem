@@ -1,8 +1,8 @@
 # Builds and tests justStem on macOS, Windows and Linux, and uploads the plug-ins.
 # Pushing a v* tag builds with the fast model bundled (so every download works offline), zips each
 # plug-in and Standalone app, builds the macOS .pkg installer, and creates a draft GitHub release.
-# Pushing a models-* tag (e.g. models-v1) builds and publishes the shared ONNX models once as a
-# prerelease for on-demand HQ download.
+# Pushing a models-stem* or models-midi* tag builds and publishes those shared models once as a
+# prerelease for on-demand download (HQ mode, piano MIDI).
 name: build
 
 on:
@@ -73,6 +73,25 @@ jobs:
           bash scripts/fetch_model.sh fast
           python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
 
+      # The MIDI models are used as published (pinned and checked by scripts/fetch_model.sh): Basic Pitch
+      # is bundled; the piano model is only for the tests (the plug-in downloads it on first use).
+      - name: MIDI model cache
+        id: midi
+        uses: actions/cache@v6
+        with:
+          path: |
+            models/basic_pitch.onnx
+            models/transkun_piano.onnx
+            models/transkun_piano_heads.onnx
+            models/transkun_piano_frontend.bin
+          key: midi-${{ hashFiles('scripts/fetch_model.sh') }}
+      - name: Fetch the MIDI models
+        if: steps.midi.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          bash scripts/fetch_model.sh midi
+          bash scripts/fetch_model.sh piano
+
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DJUSTSTEM_BUNDLE_MODELS=FAST
       - name: Build
@@ -82,6 +101,8 @@ jobs:
         run: build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
       - name: Test separation
         run: build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx 12
+      - name: Test MIDI
+        run: build/juststem_cli_artefacts/Release/juststem_cli midi-selftest models
       - name: Test plug-in UI and audio
         shell: bash
         env:
@@ -272,7 +293,9 @@ jobs:
           gh release create "$GITHUB_REF_NAME" release/*.zip release/*.pkg release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --draft "${pre[@]}" \
             --title "justStem ${GITHUB_REF_NAME#v}" --generate-notes
 
-  # One-time model release (e.g. models-v1): prerelease so /releases/latest stays on app versions.
+  # One-time model release: models-stem* (separation models) or models-midi* (MIDI models).
+  # Prerelease so /releases/latest stays on app versions. A tag whose release already exists (made by
+  # hand, e.g. by moving a release to a new tag) is left alone.
   models-release:
     if: startsWith(github.ref, 'refs/tags/models-')
     runs-on: ubuntu-24.04
@@ -280,21 +303,40 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - name: Build models
-        run: |
-          python -m pip install -r scripts/requirements.txt
-          bash scripts/fetch_model.sh fast
-          bash scripts/fetch_model.sh hq
-          mkdir -p release
-          python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx release/htdemucs_6s_opt.onnx
-          python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx release/bs_roformer_sw_6stem_opt.onnx
-          (cd release && sha256sum *.onnx > SHA256SUMS && cat SHA256SUMS)
-      - name: Publish model release
+      - name: Already released?
+        id: exists
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" release/*.onnx release/SHA256SUMS --repo "$GITHUB_REPOSITORY" --prerelease \
-            --title "$GITHUB_REF_NAME" --notes "Shared ONNX models downloaded on demand by justStem."
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; nothing to do."
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v7
+        if: steps.exists.outputs.yes != 'true'
+        with:
+          python-version: "3.12"
+      - name: Build models
+        if: steps.exists.outputs.yes != 'true'
+        run: |
+          mkdir -p release
+          case "$GITHUB_REF_NAME" in
+            models-midi*)
+              bash scripts/fetch_model.sh midi
+              bash scripts/fetch_model.sh piano
+              cp models/basic_pitch.onnx models/transkun_piano* release/ ;;
+            *)
+              python -m pip install -r scripts/requirements.txt
+              bash scripts/fetch_model.sh fast
+              bash scripts/fetch_model.sh hq
+              python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx release/htdemucs_6s_opt.onnx
+              python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx release/bs_roformer_sw_6stem_opt.onnx ;;
+          esac
+          (cd release && sha256sum * > SHA256SUMS && cat SHA256SUMS)
+      - name: Publish model release
+        if: steps.exists.outputs.yes != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --prerelease \
+            --title "$GITHUB_REF_NAME" --notes "Shared models downloaded on demand by justStem."

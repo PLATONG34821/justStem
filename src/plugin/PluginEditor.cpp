@@ -479,7 +479,11 @@ void justStemEditor::refreshAll()
     {
         shownSong = song;
         songTitle.setSong (song);
-        for (int i = 0; i < numStems; ++i) rows[i]->setFile (song->stemFile (stemOrder[(size_t) i]));
+        for (int i = 0; i < numStems; ++i)
+        {
+            rows[i]->setFile (song->stemFile (stemOrder[(size_t) i]));
+            rows[i]->setMidiFile (song->midiFile (stemOrder[(size_t) i]));
+        }
         rows[numStems]->setFile (song->fullMixFile());
         rows[numStems + 1]->setFile (song->instrumentalFile());
         chordView.setSong (song);

@@ -1,11 +1,12 @@
-// juststem_cli's self-tests: `selftest` (separation) and `analyze-selftest` (everything else in core/),
-// on synthetic signals with known answers. See tools/cli.cpp for the commands.
+// juststem_cli's self-tests: `selftest` (separation), `midi-selftest` (MIDI) and `analyze-selftest`
+// (everything else in core/), on synthetic signals with known answers. See tools/cli.cpp for the commands.
 #include "cli.h"
 #include "../src/core/Analysis.h"
 #include "../src/core/Dsp.h"
 #include "../src/core/PitchShift.h"
 #include "../src/core/Resampler.h"
 #include "../src/core/Separator.h"
+#include "../src/core/Transcriber.h"
 #include "../src/io/AudioFiles.h"
 #include "../src/io/M4aDecoder.h"
 #include "../src/io/ToolInstaller.h"
@@ -698,6 +699,150 @@ int analysisSelftest()
         check (stems.size() == numStems && sdrL > 50.0 && sdrR > 50.0,
                "STFT forward/inverse roundtrip across chunks (SI-SDR L " + juce::String (sdrL, 1).toStdString()
                    + " dB, R " + juce::String (sdrR, 1).toStdString() + " dB)");
+    }
+
+    std::printf ("%s\n", failures == 0 ? "ALL PASSED" : (std::to_string (failures) + " FAILED").c_str());
+    return failures == 0 ? 0 : 1;
+}
+
+int midiSelftest (const std::string& modelsDir)
+{
+    int failures = 0;
+    auto check = [&] (bool ok, const std::string& what) { std::printf ("  [%s] %s\n", ok ? "ok" : "FAIL", what.c_str()); failures += ok ? 0 : 1; };
+    const juce::File models (juce::String::fromUTF8 (modelsDir.c_str()));
+    std::atomic<bool> cancel { false };
+
+    std::printf ("Piano decoder (semi-CRF)\n");
+    {
+        // 6 frames, 3 tracks: a note from frame 1 to 4 on track 0, a one-frame note at 2 on track 1, nothing on 2.
+        constexpr int T = 6, K = 3;
+        std::vector<float> S ((size_t) T * T * K, -1.0f);
+        auto at = [&] (int e, int b, int k) -> float& { return S[((size_t) e * T + (size_t) b) * K + (size_t) k]; };
+        at (4, 1, 0) = 5.0f;
+        at (2, 2, 1) = 1.0f;
+        const auto path = transcription::semiCrfDecode (S.data(), T, K, { 0, 0, 0 });
+        using Iv = std::vector<std::pair<int, int>>;
+        check (path[0] == Iv { { 1, 4 } } && path[1] == Iv { { 2, 2 } } && path[2].empty(), "the best intervals on each track");
+        const auto forced = transcription::semiCrfDecode (S.data(), T, K, { 2, 3, 0 });
+        check (forced[0].empty() && forced[1].empty(), "a forced start after a note leaves it out");
+    }
+
+    std::printf ("Note decoder (Basic Pitch)\n");
+    {
+        // Key 39 (C4) from frame 10 to 40 with an onset; key 43 from 60 to 100 with none (found by its rise).
+        constexpr int n = 150, K = 88;
+        std::vector<float> frames ((size_t) n * K, 0.0f), onsets = frames;
+        for (int t = 10; t < 40; ++t) frames[(size_t) t * K + 39] = 0.8f;
+        onsets[10 * K + 39] = 0.9f;
+        for (int t = 60; t < 100; ++t) frames[(size_t) t * K + 43] = 0.7f;
+        auto notes = transcription::basicPitchNotes (frames, onsets, n, 0, K);
+        std::sort (notes.begin(), notes.end(), [] (const auto& a, const auto& b) { return a.start < b.start; });
+        check (notes.size() == 2 && notes[0].start == 10 && notes[0].end == 40 && notes[0].key == 39
+                   && notes[1].start == 60 && notes[1].end == 100 && notes[1].key == 43,
+               "two notes at the right frames and keys (" + std::to_string (notes.size()) + " found)");
+        frames.assign (frames.size(), 0.0f);
+        onsets.assign (onsets.size(), 0.0f);
+        for (int t = 10; t < 40; ++t) frames[(size_t) t * K + 39] = 0.8f;
+        onsets[10 * K + 39] = 0.9f;
+        check (transcription::basicPitchNotes (frames, onsets, n, 40, K).empty(), "a note below the stem's range is dropped");
+    }
+
+    // Synthetic notes: harmonics, a sharp attack, decaying.
+    struct Expected { int pitch; double start, length; };
+    auto render = [] (const std::vector<Expected>& notes, double seconds) {
+        StereoAudio audio;
+        audio.left.assign ((size_t) (seconds * sampleRate), 0.0f);
+        for (const auto& e : notes)
+        {
+            const double f0 = 440.0 * std::pow (2.0, (e.pitch - 69) / 12.0);
+            const int from = (int) (e.start * sampleRate), len = (int) (e.length * sampleRate);
+            for (int i = 0; i < len; ++i)
+            {
+                const double t = (double) i / sampleRate;
+                const double env = std::min (1.0, t / 0.003) * std::exp (-t * 3.0) * std::min (1.0, (len - i) / (0.02 * sampleRate));
+                double v = 0;
+                for (int h = 1; h <= 8; ++h) v += std::sin (2 * std::numbers::pi * f0 * h * t) * std::exp (-0.5 * h);
+                audio.left[(size_t) (from + i)] += (float) (0.12 * env * v);
+            }
+        }
+        audio.right = audio.left;
+        return audio;
+    };
+    auto score = [&] (const Transcription& found, const std::vector<Expected>& expected, int minMatched, const char* name) {
+        int matched = 0;
+        for (const auto& e : expected)
+            matched += std::any_of (found.notes.begin(), found.notes.end(), [&] (const MidiNote& n) {
+                return n.pitch == e.pitch && std::fabs (n.start - e.start) < 0.06;
+            }) ? 1 : 0;
+        const int extra = (int) found.notes.size() - matched;
+        const bool ok = matched >= minMatched && extra <= 2;
+        if (! ok)
+            for (const auto& n : found.notes) std::printf ("    found %d at %.3f-%.3f s, velocity %d\n", n.pitch, n.start, n.end, n.velocity);
+        check (ok, std::string (name) + ": " + std::to_string (matched) + "/" + std::to_string (expected.size())
+                       + " notes at the right pitch and time (within 60 ms), " + std::to_string (extra) + " extra");
+    };
+
+    std::printf ("Basic Pitch on synthetic notes\n");
+    if (const auto f = models.getChildFile (juce::String (std::string (model::notesFile))); f.existsAsFile())
+    {
+        // C4 E4 G4 C5, then an A minor chord.
+        const std::vector<Expected> melody { { 60, 0.5, 0.8 }, { 64, 1.5, 0.8 }, { 67, 2.5, 0.8 }, { 72, 3.5, 0.8 },
+                                             { 57, 5.0, 1.5 }, { 60, 5.0, 1.5 }, { 64, 5.0, 1.5 } };
+        score (transcribeNotes (f.getFullPathName().toStdString(), render (melody, 8), 80.0f, 1100.0f, cancel), melody,
+               (int) melody.size(), "Basic Pitch");
+    }
+    else
+        check (false, "missing " + f.getFullPathName().toStdString() + " (scripts/fetch_model.sh midi)");
+
+    std::printf ("Transkun on synthetic notes\n");
+    if (const auto f = models.getChildFile (juce::String (std::string (model::pianoFile))); f.existsAsFile())
+    {
+        // A rising run C3..A#4. Trained on real pianos, Transkun ignores a lone synthetic note in silence,
+        // and synthetic notes from about C5 up, so the test stays in a run below that.
+        std::vector<Expected> run;
+        for (int p = 48; p <= 70; p += 2) run.push_back ({ p, 0.5 + (p - 48) * 0.25, 0.45 });
+        score (transcribePiano (f.getFullPathName().toStdString(), render (run, 11), {}, cancel), run, (int) run.size() - 1, "Transkun");
+    }
+    else
+        check (false, "missing " + f.getFullPathName().toStdString() + " (scripts/fetch_model.sh piano)");
+
+    std::printf ("MIDI files\n");
+    {
+        const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("juststem-midi-selftest-" + juce::Uuid().toString());
+        dir.createDirectory();
+        Transcription t;
+        t.notes = { { 60, 0.5, 1.0, 100 }, { 60, 1.0, 1.25, 80 }, { 64, 2.0, 3.0, 64 } };
+        t.pedals = { { 64, 0.4, 2.5, 127 } };
+        const auto file = dir.getChildFile ("piano.mid"), shifted = dir.getChildFile ("up.mid");
+        writeMidi (file, t, 97.0, "Piano", 0);
+        writeTransposedMidi (file, shifted, 2);
+        auto read = [] (const juce::File& f) {
+            juce::FileInputStream in (f);
+            juce::MidiFile m;
+            m.readFrom (in);
+            m.convertTimestampTicksToSeconds();
+            std::vector<MidiNote> notes;
+            int pedals = 0;
+            for (const auto* e : *m.getTrack (0))
+            {
+                if (e->message.isNoteOn())
+                    notes.push_back ({ e->message.getNoteNumber(), e->message.getTimeStamp(),
+                                       e->noteOffObject != nullptr ? e->noteOffObject->message.getTimeStamp() : -1.0, e->message.getVelocity() });
+                if (e->message.isController() && e->message.getControllerNumber() == 64) ++pedals;
+            }
+            return std::pair (notes, pedals);
+        };
+        const auto [back, pedals] = read (file);
+        bool same = back.size() == t.notes.size() && pedals == 2;
+        for (std::size_t i = 0; same && i < back.size(); ++i)
+            same = back[i].pitch == t.notes[i].pitch && back[i].velocity == t.notes[i].velocity
+                && std::fabs (back[i].start - t.notes[i].start) < 0.001 && std::fabs (back[i].end - t.notes[i].end) < 0.001;
+        check (same, "notes, velocities and the sustain pedal read back at the same times (97 BPM file)");
+        const auto [up, upPedals] = read (shifted);
+        check (up.size() == back.size() && up[0].pitch == 62 && up[2].pitch == 66 && upPedals == 2
+                   && std::fabs (up[2].start - 2.0) < 0.001,
+               "transposed +2: every note moved, times and pedal kept");
+        dir.deleteRecursively();
     }
 
     std::printf ("%s\n", failures == 0 ? "ALL PASSED" : (std::to_string (failures) + " FAILED").c_str());

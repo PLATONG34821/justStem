@@ -33,13 +33,15 @@ const char* backendName (Backend b)
     return "?";
 }
 
-namespace
-{
+/** The one ONNX Runtime environment, shared with Transcriber.cpp. */
 Ort::Env& ortEnv()
 {
     static Ort::Env env (ORT_LOGGING_LEVEL_ERROR, "justStem");
     return env;
 }
+
+namespace
+{
 
 struct BadOutput : std::runtime_error
 {

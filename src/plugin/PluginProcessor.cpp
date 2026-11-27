@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "ui/SaveStems.h"
 #include "../core/Separator.h"
+#include "../core/Transcriber.h"
 #include "Text.h"
 
 #include <algorithm>
@@ -48,6 +49,7 @@ justStemProcessor::justStemProcessor()
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       fastModelFile (defaultModelFile (model::fast.fileName)),
       hqModelFile (defaultModelFile (model::hq.fileName)),
+      midiModels { defaultModelFile (model::notesFile), defaultModelFile (model::pianoFile) },
       allowModelDownload (true)
 {
     const juce::ScopedLock sl (instancesLock);
@@ -61,6 +63,7 @@ justStemProcessor::justStemProcessor (juce::File fastModel)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       fastModelFile (std::move (fastModel)),
       hqModelFile (fastModelFile.getSiblingFile (text::from (model::hq.fileName))),
+      midiModels { fastModelFile.getSiblingFile (text::from (model::notesFile)), fastModelFile.getSiblingFile (text::from (model::pianoFile)) },
       allowModelDownload (false)
 {
     const juce::ScopedLock sl (instancesLock);
@@ -112,7 +115,7 @@ void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source
     if (job != nullptr) return;
     error.clear();
     std::weak_ptr<bool> token = alive;
-    job = std::make_unique<SongJob> (kind, source, getHQ() ? hqModelFile : fastModelFile,
+    job = std::make_unique<SongJob> (kind, source, getHQ() ? hqModelFile : fastModelFile, midiModels,
         [this, token, fromRestore] (SongResultPtr result, juce::String err) {
         if (token.expired()) return;
         lastLog = job->log();

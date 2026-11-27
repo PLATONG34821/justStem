@@ -195,7 +195,7 @@ int main (int argc, char** argv)
     snapshot (*editor, outDir.getChildFile ("3-results.png"));
     {
         // Screen readers name each drag handle by its row.
-        int handles = 0, named = 0;
+        int handles = 0, named = 0, midiShown = 0;
         juststem::ui::DragHandle* firstHandle = nullptr;
         std::function<void (juce::Component&)> walk = [&] (juce::Component& c) {
             for (auto* child : c.getChildren())
@@ -205,12 +205,18 @@ int main (int argc, char** argv)
                     if (firstHandle == nullptr) firstHandle = d;
                     ++handles;
                     named += d->getTitle().startsWith ("Drag ") ? 1 : 0;
+                    midiShown += d->getTitle().contains (" MIDI ") && d->isVisible() ? 1 : 0;
                 }
                 walk (*child);
             }
         };
         walk (*editor);
-        check (handles == 8 && named == 8, juce::String (named) + " of " + juce::String (handles) + " drag handles named for screen readers");
+        // 8 for the audio (6 stems + 2 mixes), and a MIDI one on each stem row, shown when the stem has MIDI.
+        check (handles == 14 && named == 14, juce::String (named) + " of " + juce::String (handles) + " drag handles named for screen readers");
+        int midiFiles = 0;
+        for (auto stem : juststem::stemOrder) midiFiles += proc->getSong()->midiFile (stem).existsAsFile() ? 1 : 0;
+        check (midiShown == midiFiles && midiFiles > 0, juce::String (midiShown) + " MIDI handles shown, one for each MIDI file ("
+                                                              + juce::String (midiFiles) + ")");
         check (firstHandle != nullptr && ! firstHandle->getTooltip().contains ("Save all"),
                "drag handle tooltip is plain when not transposed");
         auto* title = findChild<juststem::ui::SongTitle> (*editor);
@@ -240,14 +246,16 @@ int main (int argc, char** argv)
         const bool hadFast = fastInUserModels.existsAsFile();
         if (! hadFast) fastInUserModels.replaceWithText ("dummy fast model");
         panel->refresh();
-        auto* clearHq = findChild<juce::Button> (*panel, [] (juce::Button& b) { return b.getTitle() == "Remove HQ AI model"; });
-        const auto hqInUserModels = juststem::paths::models().getChildFile (juststem::text::from (juststem::model::hq.fileName));
-        check (clearHq != nullptr && (hqInUserModels.existsAsFile() ? clearHq->isEnabled() : ! clearHq->isEnabled()),
-               "Storage HQ model row ignores the fast model in paths::models()");
+        auto* clearHq = findChild<juce::Button> (*panel, [] (juce::Button& b) { return b.getTitle() == "Remove downloaded AI models"; });
+        bool downloaded = false;
+        for (const auto name : { juststem::model::hq.fileName, juststem::model::pianoFile, juststem::model::pianoHeadsFile, juststem::model::pianoFrontEndFile })
+            downloaded = downloaded || juststem::paths::models().getChildFile (juststem::text::from (name)).existsAsFile();
+        check (clearHq != nullptr && (downloaded ? clearHq->isEnabled() : ! clearHq->isEnabled()),
+               "Storage downloaded models row ignores the fast model in paths::models()");
         const auto leftover = juststem::paths::models().getChildFile ("bs_roformer_sw_6stem_opt-uitest.part");
         leftover.replaceWithText ("interrupted download");
         panel->refresh();
-        check (clearHq != nullptr && clearHq->isEnabled(), "Storage HQ model row counts interrupted downloads (.part)");
+        check (clearHq != nullptr && clearHq->isEnabled(), "Storage downloaded models row counts interrupted downloads (.part)");
         leftover.deleteFile();
         if (! hadFast) fastInUserModels.deleteFile();
         panel->refresh();
@@ -299,6 +307,26 @@ int main (int argc, char** argv)
     for (auto stem : juststem::stemOrder) flacs += s->stemFile (stem).existsAsFile() && s->stemFile (stem).hasFileExtension ("flac") ? 1 : 0;
     check (flacs == 6 && s->instrumentalFile().existsAsFile() && s->fullMixFile().existsAsFile(),
            juce::String (flacs) + " stem FLACs + instrumental + full mix written");
+    {
+        // MIDI for the pitched stems that are in the song; the bass plays the roots of Am - F - C - G.
+        juce::StringArray made;
+        for (const auto& m : juststem::midiStems)
+            if (s->midiFile (m.stem).existsAsFile()) made.add (juce::String (std::string (juststem::stemName (m.stem))));
+        std::printf ("  MIDI made for: %s\n", made.joinIntoString (", ").toRawUTF8());
+        juce::FileInputStream in (s->midiFile (juststem::Stem::Bass));
+        juce::MidiFile bassMidi;
+        int notes = 0, roots = 0;
+        if (in.openedOk() && bassMidi.readFrom (in))
+            for (const auto* e : *bassMidi.getTrack (0))
+                if (e->message.isNoteOn())
+                {
+                    ++notes;
+                    const int pc = e->message.getNoteNumber() % 12;
+                    roots += pc == 9 || pc == 5 || pc == 0 || pc == 7 ? 1 : 0;
+                }
+        check (notes > 10 && roots >= notes * 8 / 10, "bass MIDI: " + juce::String (notes) + " notes, " + juce::String (roots)
+                                                           + " on the chord roots (A, F, C, G)");
+    }
     {
         auto* pluginBar = findChild<juststem::ui::PlayerBar> (*editor);
         auto* pluginFollow = pluginBar != nullptr ? findChild<juce::ToggleButton> (*pluginBar) : nullptr;
@@ -538,6 +566,19 @@ int main (int argc, char** argv)
         }
         check (ok && files == 8 && sameLength && lastProgress > 0.99,
                juce::String (files) + " transposed WAVs, same length as the originals, in " + juce::String (secs, 1) + " s");
+        {
+            auto firstNote = [] (const juce::File& f) {
+                juce::FileInputStream in (f);
+                juce::MidiFile m;
+                if (in.openedOk() && m.readFrom (in))
+                    for (const auto* e : *m.getTrack (0))
+                        if (e->message.isNoteOn()) return e->message.getNoteNumber();
+                return -1;
+            };
+            const int before = firstNote (s->midiFile (juststem::Stem::Bass));
+            const int after = firstNote (dir.getChildFile ("bass.mid"));
+            check (before >= 0 && after == before + 2, "transposed MIDI: the bass moved up 2 (" + juce::String (before) + " -> " + juce::String (after) + ")");
+        }
         dir.deleteRecursively();
 
         const auto cancelDir = outDir.getChildFile ("cancelled stems");
@@ -557,6 +598,17 @@ int main (int argc, char** argv)
             same += juststem::loadAudioFile (copies.getChildFile (juce::String (juststem::stemWavName (stem)))).left
                             == juststem::loadAudioFile (s->stemFile (stem)).left ? 1 : 0;
         check (copied && same == 8, "Save all writes the 6 stems, the instrumental and the full mix as WAVs");
+        int midiCopied = 0, midiSaved = 0;
+        for (auto stem : juststem::stemOrder)
+            if (s->midiFile (stem).existsAsFile())
+            {
+                ++midiSaved;
+                juce::MemoryBlock copy, original;
+                copies.getChildFile (s->midiFile (stem).getFileName()).loadFileAsData (copy);
+                s->midiFile (stem).loadFileAsData (original);
+                midiCopied += copy == original && original.getSize() > 0 ? 1 : 0;
+            }
+        check (midiSaved > 0 && midiCopied == midiSaved, "and copies the " + juce::String (midiSaved) + " MIDI files");
         copies.deleteRecursively();
 
         // Loud transposed export: stems whose shifted sum exceeds 0 dBFS are lowered together.

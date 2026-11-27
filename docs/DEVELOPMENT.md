@@ -26,6 +26,14 @@ packages and libcurl for HTTPS (see `.github/workflows/build.yml`). JUCE, ONNX R
    scripts/fetch_model.sh hq
    .venv/bin/python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
    ```
+   The MIDI models are used as published: `scripts/fetch_model.sh midi` downloads Basic Pitch
+   (needed to build: it's bundled), and `scripts/fetch_model.sh piano` the piano model (Transkun;
+   optional, for `midi-selftest` and to bundle it with `JUSTSTEM_BUNDLE_MODELS=ALL`; the plug-in
+   downloads it the first time a song has piano). Both are pinned and checked by SHA-256:
+   ```sh
+   scripts/fetch_model.sh midi
+   scripts/fetch_model.sh piano
+   ```
 2. Build:
    ```sh
    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -45,6 +53,7 @@ Every push is built and tested on macOS, Windows and Linux by GitHub Actions
 ```sh
 build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
 build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx
+build/juststem_cli_artefacts/Release/juststem_cli midi-selftest models
 build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx --synth /tmp/uitest   # or pass a song path; add --hq for the HQ model
 ```
 
@@ -54,6 +63,8 @@ build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.o
   keys, the tempo of that band with its drums muted, and pitch shifting (pitch within 5 cents, no
   timing offset, same level).
 - `selftest`: separates a synthetic track and scores each stem against the original parts.
+- `midi-selftest`: the piano decoder and the note decoder on hand-made model output, Basic Pitch and
+  Transkun on synthetic notes (right pitch, within 60 ms), and MIDI files read back and transposed.
 - `juststem_uitest`: runs the real plug-in code without a DAW. It renders every screen to PNGs
   (the README screenshots come from it), splits a song, and checks:
   - the preview audio, including a host block larger than prepared and preparing again while
@@ -68,8 +79,8 @@ build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.o
 Set `JUSTSTEM_DATA_DIR` to an absolute folder to keep a run's songs and caches there instead of
 in your Music folder and app data (useful for tests and screenshots).
 
-`juststem_cli` can also `separate`, `analyze` or `import` real songs, or print the `chords` of a
-song folder the plug-in saved; see the top of `tools/cli.cpp` (the self-tests are in
+`juststem_cli` can also `separate`, `analyze` or `import` real songs, print the `chords` of a
+song folder the plug-in saved, or make its `midi` (timing each model); see the top of `tools/cli.cpp` (the self-tests are in
 `tools/selftest.cpp`). Paths can be relative and contain
 any characters (they're read as UTF-8).
 
@@ -85,17 +96,18 @@ src/core/      Separation and analysis. Plain C++ + ONNX Runtime, no JUCE.
   Chords.*       beat tracking, bar lines and chord recognition
   Dsp.*          shared spectral peaks and onset envelope
   PitchShift.*   real-time and offline pitch shifting (Signalsmith Stretch)
+  Transcriber.*  MIDI from the stems: Basic Pitch (vocals, bass, guitar), Transkun (piano)
   Resampler.*    sample-rate conversion to 44.1 kHz (polyphase, exact timing)
 src/io/        Files and the outside world (JUCE).
-  AudioFiles.*   decode audio files to 44.1 kHz stereo (gapless); write WAV and FLAC
+  AudioFiles.*   decode audio files to 44.1 kHz stereo (gapless); write WAV, FLAC and MIDI
   M4aDecoder.*   M4A / MP4 reader (classic and fragmented) + FAAD2 AAC decoding
   YouTube.*      download a video's audio with yt-dlp
-  ToolInstaller.* download and verify yt-dlp, Deno and the HQ AI model
+  ToolInstaller.* download and verify yt-dlp, Deno, the HQ AI model and the piano MIDI model
   AppPaths.h     where files are stored
 src/plugin/    The plug-in.
   PluginProcessor.*  audio pass-through + stem preview, runs song jobs, saves state
   PluginEditor.*     the window
-  SongJob.*          background work: import -> split -> analyse -> save, and its log
+  SongJob.*          background work: import -> split -> analyse -> save -> MIDI, and its log
   SongResult.*       a split song; saves and reloads it
   StemPlayer.*       real-time stem preview (lock-free on the audio thread)
   Text.h             text helpers: BPM, m:ss, stem names
@@ -103,7 +115,7 @@ src/plugin/    The plug-in.
                      segmented tabs), the song title, the player bar, the chord view, the Storage
                      panel and Save all (SaveStems)
 tools/         Developer tools, not shipped (see Testing).
-scripts/       Builds the model file.
+scripts/       Builds the model file, and fetches the others.
 resources/     Embedded fonts, and the font and icon licences.
 docs/          This file and the README screenshots.
 cmake/         ONNX Runtime download (per OS), packaging.
@@ -114,8 +126,8 @@ cmake/         ONNX Runtime download (per OS), packaging.
 
 | What | Where |
 |---|---|
-| Stems for each song (8 FLACs + `info.json`; older songs have WAVs) | `<your Music folder>/justStem/<song title>/` |
-| Downloaded HQ AI model (shared across VST3, AU, and Standalone) | `<app data>/justStem/models/` |
+| Stems for each song (8 FLACs + `info.json`; older songs have WAVs), and its MIDI (`vocals.mid`, `bass.mid`, `guitar.mid`, `piano.mid`) | `<your Music folder>/justStem/<song title>/` |
+| Downloaded HQ AI model and piano MIDI model (shared across VST3, AU, and Standalone) | `<app data>/justStem/models/` |
 | yt-dlp and Deno (downloaded on the first YouTube link) | `<app data>/justStem/bin/` |
 | CoreML's compiled model (macOS; makes later loads fast) | `<app data>/justStem/coreml-cache/` |
 | YouTube audio while it's being decoded (a folder per download, deleted after) | `<app data>/justStem/downloads/` |
@@ -157,6 +169,26 @@ the bass instead.
 
 4/4 is assumed. Expect most chords right on pop and rock; dense or jazzy harmony is harder.
 
+## How MIDI is made
+
+After the stems are saved, each pitched stem that's in the song (louder than -45 dB RMS) becomes a
+MIDI file next to it, written at the song's tempo so the notes sit on the beats in a DAW set to it:
+
+- **Vocals, bass, guitar**: [Basic Pitch](https://github.com/spotify/basic-pitch) (Spotify, 17K
+  parameters, 0.2 MB, bundled), limited to the instrument's range (`midiStems` in `Transcriber.h`).
+  About 1.5 s per stem for a 4-minute song on an M4.
+- **Piano**: [Transkun](https://github.com/Yujia-Yan/Transkun) (14M parameters, 59 MB, downloaded
+  from the `models-midi` release the first time a song has piano): notes with velocity, plus the
+  sustain and soft pedals. About 30 s for a 4-minute song on an M4.
+
+Both run on the CPU: CoreML can't compile Basic Pitch and runs Transkun about 90x slower. The
+decoding follows the Python originals step by step (Basic Pitch's `note_creation.py`, Transkun's
+`ModelTransformer.transcribe`); Transkun's features and decoder match the reference fixtures of
+its [ONNX export](https://huggingface.co/TuesdayCrowd/transkun-onnx). A stem whose MIDI fails is
+logged and left without it: the split still succeeds. A song split before MIDI existed gets its MIDI
+the next time it's split (the saved stems are reused). Save all copies the MIDI files, moved by the
+Transpose amount.
+
 ## Transpose
 
 The preview is pitch-shifted live; the shifter delays its output a little, so playback reads that
@@ -189,5 +221,12 @@ stems + instrumental + full mix to a new folder, three stems at a time (about 4 
   justStem treats the weights as CC-BY-NC-SA-4.0 (non-commercial, share-alike) as its own
   cautious choice, not an inherited licence. Releases from 0.0.2 to 0.0.6 bundled them; newer
   releases download the HQ model on demand when HQ mode is used, so HQ mode is for non-commercial use.
+- [Basic Pitch](https://github.com/spotify/basic-pitch) (Spotify; MIDI for vocals, bass and guitar,
+  bundled): Apache-2.0
+- [Transkun](https://github.com/Yujia-Yan/Transkun) (Yujia Yan; piano MIDI, downloaded on demand, or
+  bundled with `JUSTSTEM_BUNDLE_MODELS=ALL`): MIT, the licence of its repository and of the pip
+  package that ships the weights. ONNX export by
+  [TuesdayCrowd](https://huggingface.co/TuesdayCrowd/transkun-onnx) (MIT). The weights were trained
+  on the MAESTRO dataset, which is CC-BY-NC-SA-4.0; whether that limits the weights is unsettled.
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) and [Deno](https://deno.com) (MIT),
   downloaded at runtime, not bundled

@@ -246,7 +246,8 @@ void DragHandle::paint (juce::Graphics& g)
     g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
     g.setColour (Palette::panelBorder);
     g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 1.0f);
-    drawIcon (g, icons::grip(), r.withSizeKeepingCentre (12.0f, 14.0f), enabled ? Palette::text : Palette::faint);
+    const bool grip = icon == &icons::grip();
+    drawIcon (g, *icon, r.withSizeKeepingCentre (grip ? 12.0f : 14.0f, 14.0f), enabled ? Palette::text : Palette::faint);
 }
 
 void DragHandle::mouseDrag (const juce::MouseEvent& e)
@@ -277,11 +278,14 @@ StemRow::StemRow (StemPlayer& p, int i, juce::String n) : player (&p), index (i)
     soloButton.setTitle ("Solo " + name);
     volume.setTitle (name + " volume");
     drag.setTitle ("Drag " + name + " onto a track");
+    midi.setTooltip ("Drag the notes (MIDI) onto a track in your DAW");
+    midi.setTitle ("Drag " + name + " MIDI onto a track");
     muteButton.onClick = [this] { player->setMute (index, muteButton.getToggleState()); repaint(); };
     soloButton.onClick = [this] { player->setSolo (index, soloButton.getToggleState()); };
     volume.onChange = [this] (float v) { player->setVolume (index, v); };
     addAndMakeVisible (volume);
     addAndMakeVisible (drag);
+    addChildComponent (midi);
     refresh();
 }
 
@@ -297,6 +301,9 @@ void StemRow::setTransposed (bool transposed)
                                 : "Drag onto a track in your DAW");
     drag.setTitle ("Drag " + name + " onto a track"
                    + (transposed ? " (original key; use Save all for transposed stems)" : ""));
+    midi.setTooltip (transposed ? "Drag the notes (MIDI) onto a track in your DAW (original key; use Save all for transposed MIDI)"
+                                : "Drag the notes (MIDI) onto a track in your DAW");
+    midi.setTitle ("Drag " + name + " MIDI onto a track" + (transposed ? " (original key; use Save all for transposed MIDI)" : ""));
 }
 
 void StemRow::refresh()
@@ -331,6 +338,8 @@ void StemRow::resized()
     auto r = getLocalBounds().withSizeKeepingCentre (getWidth(), h);
     drag.setBounds (r.removeFromRight (40));
     if (player == nullptr) return;
+    r.removeFromRight (8);
+    midi.setBounds (r.removeFromRight (40)); // room kept on every stem row, so the volume bars line up
     r.removeFromLeft (150); // name
     r.removeFromRight (24);
     volume.setBounds (r.removeFromRight (std::max (160, r.getWidth() - 110)));

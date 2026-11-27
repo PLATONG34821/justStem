@@ -53,9 +53,9 @@ float rmsDb (const StereoAudio& a)
 }
 } // namespace
 
-SongJob::SongJob (Kind k, juce::String src, juce::File model, Finished done, bool downloadModel)
+SongJob::SongJob (Kind k, juce::String src, juce::File model, MidiModels midi, Finished done, bool downloadModel)
     : juce::Thread ("justStem song job"), kind (k), source (std::move (src)), modelFile (std::move (model)),
-      onFinished (std::move (done)), allowModelDownload (downloadModel)
+      midiModels (std::move (midi)), onFinished (std::move (done)), allowModelDownload (downloadModel)
 {
 }
 
@@ -239,7 +239,8 @@ SongResultPtr SongJob::process()
         addLog ("Already split earlier, so its saved stems are used: " + saved.getFullPathName());
         setStatus ("Loading saved stems", -1);
         auto existing = loadSong (saved);
-        addLog ("Loaded \"" + existing->title + "\" (nothing new written)");
+        addLog ("Loaded \"" + existing->title + "\"");
+        makeMidi (*existing); // split before justStem made MIDI, or a stem's MIDI failed then
         return existing;
     }
 
@@ -255,9 +256,10 @@ SongResultPtr SongJob::process()
 #else
     const std::string coremlBase;
 #endif
-    Separator separator (modelFile.getFullPathName().toStdString(), coremlBase);
+    // Freed once the stems are split, before the MIDI models load.
+    auto separator = std::make_unique<Separator> (modelFile.getFullPathName().toStdString(), coremlBase);
 #if JUCE_MAC
-    const juce::File coremlCache (juce::String::fromUTF8 (separator.cacheFolder().c_str()));
+    const juce::File coremlCache (juce::String::fromUTF8 (separator->cacheFolder().c_str()));
     const bool cached = coremlCache.isDirectory()
                         && coremlCache.getNumberOfChildFiles (juce::File::findFilesAndDirectories) > 0;
     const double compileSeconds = spec.coremlCompileSeconds;
@@ -272,7 +274,7 @@ SongResultPtr SongJob::process()
     double modelMs = 0;
     bool backendLogged = false;
     Backend lastBackend {};
-    song->stems = separator.separate (mix, [&] (const SeparationProgress& p) {
+    song->stems = separator->separate (mix, [&] (const SeparationProgress& p) {
         if (! backendLogged || p.backend != lastBackend)
         {
             if (! backendLogged) modelMs = nowMs() - splitStart;
@@ -298,6 +300,7 @@ SongResultPtr SongJob::process()
                    (double) p.segment / p.totalSegments);
     }, cancelled);
     const double splitMs = nowMs() - splitStart - modelMs; // the stems themselves, without loading the model
+    separator.reset();
     addLog ("Split 6 stems in " + seconds (splitMs) + " ("
             + juce::String (song->durationSeconds / std::max (0.01, splitMs / 1000.0), 1) + "x realtime)");
 
@@ -360,8 +363,59 @@ SongResultPtr SongJob::process()
     addLog ("Saved 6 stems + instrumental + full mix (24-bit FLAC, " + juce::File::descriptionOfSizeInBytes (bytes) + ") in "
             + seconds (nowMs() - saveStart));
     addLog ("Folder: " + song->folder.getFullPathName());
+
+    const auto midiStart = nowMs();
+    makeMidi (*song);
     addLog ("Done in " + text::minutesSeconds ((nowMs() - startMs) / 1000.0) + " (decode " + seconds (decodeMs) + ", model " + seconds (modelMs)
-            + ", split " + seconds (splitMs) + ", analysis " + seconds (analysisMs) + ")");
+            + ", split " + seconds (splitMs) + ", analysis " + seconds (analysisMs) + ", MIDI " + seconds (nowMs() - midiStart) + ")");
     return song;
+}
+
+void SongJob::makeMidi (const SongResult& song)
+{
+    // The stems are saved by now: a stem whose MIDI fails is logged and left without it.
+    for (const auto& m : midiStems)
+    {
+        const auto file = song.midiFile (m.stem);
+        const auto it = song.stems.find (m.stem);
+        if (file.existsAsFile() || it == song.stems.end()) continue;
+        const auto name = text::stemLabel (m.stem).toLowerCase();
+        if (rmsDb (it->second) < -45.0f) continue; // not in this song (logged with the stem levels)
+        const auto start = nowMs();
+        try
+        {
+            Transcription notes;
+            if (m.stem == Stem::Piano)
+            {
+                const auto piano = midiModels.piano;
+                for (const auto part : { model::pianoFile, model::pianoHeadsFile, model::pianoFrontEndFile })
+                {
+                    const auto f = piano.getSiblingFile (text::from (part));
+                    if (f.existsAsFile()) continue;
+                    if (! allowModelDownload) throw std::runtime_error ("the piano MIDI model isn't installed");
+                    if (part == model::pianoFile) addLog ("Downloading the piano MIDI model from GitHub (saved for future runs)");
+                    ensureModel (f, [this] (const juce::String& s, double fr) { setStatus (s, fr); }, cancelled);
+                }
+                setStatus ("Making piano MIDI", 0);
+                notes = transcribePiano (piano.getFullPathName().toStdString(), it->second,
+                                         [this] (double f) { setStatus ("Making piano MIDI", f); }, cancelled);
+            }
+            else
+            {
+                setStatus ("Making " + name + " MIDI", -1);
+                notes = transcribeNotes (midiModels.notes.getFullPathName().toStdString(), it->second, m.minHz, m.maxHz, cancelled);
+            }
+            writeMidi (file, notes, song.analysis.tempo.bpm, text::stemLabel (m.stem), m.program);
+            addLog ("Made " + name + " MIDI: " + juce::String ((int) notes.notes.size()) + " notes"
+                    + (notes.pedals.empty() ? juce::String() : ", " + juce::String ((int) notes.pedals.size()) + " pedal presses")
+                    + " in " + seconds (nowMs() - start));
+        }
+        catch (const std::exception& e)
+        {
+            file.deleteFile();
+            if (cancelled) throw std::runtime_error ("cancelled");
+            addLog ("No " + name + " MIDI: " + juce::String::fromUTF8 (e.what()));
+        }
+    }
 }
 } // namespace juststem

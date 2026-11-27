@@ -1,5 +1,6 @@
 #include "StoragePanel.h"
 #include "../../core/Separator.h"
+#include "../../core/Transcriber.h"
 #include "../Text.h"
 
 #include <algorithm>
@@ -9,12 +10,13 @@ namespace juststem::ui
 namespace
 {
 juce::String size (juce::int64 bytes) { return juce::File::descriptionOfSizeInBytes (bytes); }
-/** The downloaded HQ model, plus any interrupted model downloads (ensureModel's "<name>-<uuid>.part"),
-    but not a shared fast model installed there by the macOS .pkg ("Install for me only"). */
-juce::Array<juce::File> hqModelFiles()
+/** The downloaded HQ and piano MIDI models, plus any interrupted model downloads (ensureModel's
+    "<name>-<uuid>.part"), but not a shared fast model installed there by the macOS .pkg ("Install for me only"). */
+juce::Array<juce::File> downloadedModelFiles()
 {
     auto files = paths::models().findChildFiles (juce::File::findFiles, false, "*.part");
-    if (const auto hq = paths::models().getChildFile (text::from (model::hq.fileName)); hq.existsAsFile()) files.add (hq);
+    for (const auto name : { model::hq.fileName, model::pianoFile, model::pianoHeadsFile, model::pianoFrontEndFile })
+        if (const auto f = paths::models().getChildFile (text::from (name)); f.existsAsFile()) files.add (f);
     return files;
 }
 
@@ -95,12 +97,12 @@ StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool
     closeButton.setTitle ("Close");
     showFolderButton.setTitle ("Show songs folder");
     deleteAllButton.setTitle ("Delete all songs");
-    clearModelsButton.setTitle ("Remove HQ AI model");
+    clearModelsButton.setTitle ("Remove downloaded AI models");
     clearCacheButton.setTitle ("Clear model cache");
     removeToolsButton.setTitle ("Remove YouTube tools");
     clearDownloadsButton.setTitle ("Clear temporary downloads");
     deleteAllButton.setTooltip ("Delete all songs (except the ones open in justStem)");
-    clearModelsButton.setTooltip ("Remove the downloaded HQ AI model");
+    clearModelsButton.setTooltip ("Remove the downloaded HQ and piano MIDI models");
     clearCacheButton.setTooltip ("Clear the AI model cache");
     removeToolsButton.setTooltip ("Remove the YouTube tools");
     clearDownloadsButton.setTooltip ("Clear temporary downloads");
@@ -123,8 +125,8 @@ StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool
                  });
     };
     clearModelsButton.onClick = [this] {
-        confirm ("Remove the downloaded HQ AI model?", "It's downloaded again the next time you use HQ mode.",
-                 "Remove", [this] { if (! isBusy()) for (const auto& f : hqModelFiles()) f.deleteFile(); refresh(); });
+        confirm ("Remove the downloaded AI models?", "They're downloaded again the next time you use HQ mode or split a song with piano.",
+                 "Remove", [this] { if (! isBusy()) for (const auto& f : downloadedModelFiles()) f.deleteFile(); refresh(); });
     };
     clearCacheButton.onClick = [this] {
         confirm ("Clear the AI model cache?", "It's rebuilt automatically the next time you split a song (once; about " + compileTimes() + ").",
@@ -182,7 +184,7 @@ void StoragePanel::refresh()
         listContent.addAndMakeVisible (row);
     }
     modelsBytes = 0;
-    for (const auto& f : hqModelFiles()) modelsBytes += f.getSize();
+    for (const auto& f : downloadedModelFiles()) modelsBytes += f.getSize();
     cacheBytes = storage::folderSize (paths::coremlCache());
     toolsBytes = storage::folderSize (paths::tools());
     downloadsBytes = storage::folderSize (paths::downloads());
@@ -293,7 +295,7 @@ void StoragePanel::paint (juce::Graphics& g)
 
     // Models / cache / tools / downloads rows.
     struct Item { const char* name; juce::String note; juce::int64 bytes; };
-    const Item items[] { { "HQ AI model", "BS-RoFormer, downloaded again when HQ mode is used", modelsBytes },
+    const Item items[] { { "Downloaded AI models", "HQ mode and piano MIDI, downloaded again when needed", modelsBytes },
                          { "AI model cache", "Rebuilt automatically on the next split (" + compileTimes() + ")", cacheBytes },
                          { "YouTube tools", "yt-dlp and Deno, downloaded again when needed", toolsBytes },
                          { "Temporary downloads", "YouTube audio waiting to be split", downloadsBytes } };

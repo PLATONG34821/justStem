@@ -30,6 +30,9 @@ struct SongResult
     juce::File instrumentalFile() const { return savedFile ("instrumental"); } // everything except vocals
     juce::File fullMixFile() const { return savedFile ("full mix"); }          // every stem together: the whole song
     juce::File infoFile() const { return folder.getChildFile ("info.json"); }
+    /** The stem's notes (midiStems only; missing when the stem was almost silent, or the song was
+        split before justStem made MIDI). */
+    juce::File midiFile (Stem s) const { return folder.getChildFile (juce::String (stemMidiName (s))); }
 
 private:
     juce::File savedFile (const juce::String& name) const
@@ -54,12 +57,12 @@ juce::File findSavedSong (const juce::String& audioHash, const juce::String& mod
     Throws std::runtime_error. */
 void saveSong (const SongResult& song);
 
-/** Write the stems, the instrumental and the full mix into `dir` (created) as 24-bit WAVs. `progress` gets 0..1 and returns false
+/** Write the stems, the instrumental and the full mix into `dir` (created) as 24-bit WAVs, and the MIDI files. `progress` gets 0..1 and returns false
     to cancel. Returns false if cancelled. Throws std::runtime_error. */
 bool copyStems (const SongResult& song, const juce::File& dir, const std::function<bool (double)>& progress);
 
-/** Write the stems, the instrumental and the full mix pitch-shifted by `semitones` (same names, same length)
-    into `dir`. `progress` gets 0..1 and returns false to cancel. Returns false if cancelled.
+/** Write the stems, the instrumental and the full mix pitch-shifted by `semitones` (same names, same length),
+    and the MIDI files moved by as much, into `dir`. `progress` gets 0..1 and returns false to cancel. Returns false if cancelled.
     Throws std::runtime_error. */
 bool saveTransposedStems (const SongResult& song, int semitones, const juce::File& dir, const std::function<bool (double)>& progress);
 

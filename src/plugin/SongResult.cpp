@@ -108,6 +108,21 @@ void saveSong (const SongResult& song)
     saveInfo (song);
 }
 
+namespace
+{
+/** The song's MIDI files into `dir`, moved by `semitones`. */
+void saveMidi (const SongResult& song, const juce::File& dir, int semitones)
+{
+    for (const auto& m : midiStems)
+        if (const auto from = song.midiFile (m.stem); from.existsAsFile())
+        {
+            const auto to = dir.getChildFile (from.getFileName());
+            if (semitones != 0) writeTransposedMidi (from, to, semitones);
+            else if (! from.copyFileTo (to)) throw std::runtime_error ("Couldn't write " + to.getFullPathName().toStdString());
+        }
+}
+} // namespace
+
 bool copyStems (const SongResult& song, const juce::File& dir, const std::function<bool (double)>& progress)
 {
     if (! dir.createDirectory()) throw std::runtime_error ("Couldn't create " + dir.getFullPathName().toStdString());
@@ -127,6 +142,7 @@ bool copyStems (const SongResult& song, const juce::File& dir, const std::functi
     if (! progress ((double) (numStems + 1) / files)) return false;
     addInto (mix, song.stems.at (Stem::Vocals));
     writeWav (dir.getChildFile ("full mix.wav"), mix);
+    saveMidi (song, dir, 0);
     progress (1.0);
     return true;
 }
@@ -192,6 +208,7 @@ bool saveTransposedStems (const SongResult& song, int semitones, const juce::Fil
     if (! progress (0.9 + 0.1 * (double) (numStems + 1) / writeSteps)) return false;
     addInto (mix, shiftedStems.extract (Stem::Vocals).mapped());
     writeWav (dir.getChildFile ("full mix.wav"), mix);
+    saveMidi (song, dir, semitones);
     progress (1.0);
     return true;
 }

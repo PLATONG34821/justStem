@@ -1,5 +1,6 @@
 #include "ToolInstaller.h"
 #include "../core/Separator.h"
+#include "../core/Transcriber.h"
 
 #include <juce_cryptography/juce_cryptography.h>
 
@@ -244,11 +245,15 @@ juce::File ensureModel (const juce::File& dest, const ProgressCallback& progress
     dest.getParentDirectory().createDirectory();
 
     const juce::String fileName = dest.getFileName();
-    const juce::String step = fileName == juce::String::fromUTF8 (model::hq.fileName.data(), (int) model::hq.fileName.size())
-                                  ? "Downloading HQ AI model"
-                                  : "Downloading AI model";
+    auto is = [&] (std::string_view name) { return fileName == juce::String::fromUTF8 (name.data(), (int) name.size()); };
+    const juce::String step = is (model::hq.fileName) ? "Downloading HQ AI model"
+                            : is (model::pianoFile) || is (model::pianoHeadsFile) || is (model::pianoFrontEndFile)
+                                ? "Downloading piano MIDI model"
+                                : "Downloading AI model";
     const juce::String repoBase = "https://github.com/PLATONG34821/justStem/releases/";
-    const juce::String bases[] { repoBase + "download/models-v1/",
+    // models-stem has the separation models, models-midi the piano MIDI model.
+    const juce::String bases[] { repoBase + "download/models-stem/",
+                                 repoBase + "download/models-midi/",
                                  repoBase + "download/v" + juce::String (JUSTSTEM_VERSION) + "/",
                                  repoBase + "latest/download/" };
 

@@ -66,7 +66,8 @@ add_library(juststem_core STATIC
     src/core/Chords.cpp
     src/core/Dsp.cpp
     src/core/PitchShift.cpp
-    src/core/Resampler.cpp)
+    src/core/Resampler.cpp
+    src/core/Transcriber.cpp)
 target_include_directories(juststem_core PUBLIC src/core)
 target_link_libraries(juststem_core PUBLIC onnxruntime::onnxruntime PRIVATE signalsmith-stretch signalsmith-linear)
 if(MSVC)

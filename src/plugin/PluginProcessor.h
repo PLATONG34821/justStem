@@ -21,6 +21,7 @@ public:
     static juce::File bundledModelFile();
 
     justStemProcessor();
+    /** For tests: the HQ and MIDI models are looked for next to `fastModelFile`, and never downloaded. */
     explicit justStemProcessor (juce::File fastModelFile);
     ~justStemProcessor() override;
 
@@ -105,6 +106,7 @@ private:
     void notifyHostStateChanged();
 
     const juce::File fastModelFile, hqModelFile;
+    const juststem::SongJob::MidiModels midiModels;
     const bool allowModelDownload = false;
     juststem::StemPlayer stemPlayer;
     std::unique_ptr<juststem::SongJob> job;

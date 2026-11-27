@@ -5,9 +5,14 @@
 //   juststem_cli analyze-selftest
 //   juststem_cli analyze <audio file> [model.onnx]   (with a model: analyse the separated stems)
 //   juststem_cli chords <song folder>                 (stems saved by the plug-in)
-// The two self-tests are in tools/selftest.cpp.
+//   juststem_cli midi-selftest <models folder>
+//   juststem_cli midi <song folder> <models folder> <output folder> [bpm]
+//       (MIDI of the vocals, bass, guitar and piano stems; the folder has basic_pitch.onnx and the
+//        transkun_piano files)
+// The self-tests are in tools/selftest.cpp.
 #include "cli.h"
 #include "../src/core/Analysis.h"
+#include "../src/core/Transcriber.h"
 #include "../src/io/AudioFiles.h"
 #include "../src/io/YouTube.h"
 
@@ -127,6 +132,29 @@ static int analyzeFolder (const juce::File& folder)
     return 0;
 }
 
+/** MIDI from a song folder's stems, timing each model. */
+static int midiFolder (const juce::File& folder, const juce::File& models, const juce::File& outDir, double bpm)
+{
+    outDir.createDirectory();
+    std::atomic<bool> cancel { false };
+    for (const auto& m : midiStems)
+    {
+        const auto audio = loadAudioFile (folder.getChildFile (juce::String (stemFileName (m.stem))));
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        const auto t = m.stem == Stem::Piano
+                           ? transcribePiano (models.getChildFile (juce::String (std::string (model::pianoFile))).getFullPathName().toStdString(), audio,
+                                              [] (double f) { std::fprintf (stderr, "\r  piano %3d%%", juce::roundToInt (f * 100)); }, cancel)
+                           : transcribeNotes (models.getChildFile (juce::String (std::string (model::notesFile))).getFullPathName().toStdString(), audio,
+                                              m.minHz, m.maxHz, cancel);
+        const double secs = (juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0;
+        const auto file = outDir.getChildFile (juce::String (stemMidiName (m.stem)));
+        writeMidi (file, t, bpm, juce::String (std::string (stemName (m.stem))), m.program);
+        std::printf ("\r%-7s %5zu notes, %3zu pedal presses in %5.1f s (%.0fx realtime) -> %s\n", std::string (stemName (m.stem)).c_str(),
+                     t.notes.size(), t.pedals.size(), secs, (double) audio.size() / sampleRate / secs, file.getFullPathName().toRawUTF8());
+    }
+    return 0;
+}
+
 int main (int argc, char** argv)
 {
     if (argc < 2) { std::fprintf (stderr, "usage: see the comment at the top of tools/cli.cpp\n"); return 2; }
@@ -139,6 +167,8 @@ int main (int argc, char** argv)
         if (argc < 3) return 2;
         if (cmd == "selftest") return separationSelftest (argv[2], argc > 3 ? std::atoi (argv[3]) : 12, argc > 4 ? (float) std::atof (argv[4]) : 0.0f);
         if (cmd == "import" && argc >= 4) return importSong (juce::String::fromUTF8 (argv[2]), fileArg (argv[3]));
+        if (cmd == "midi-selftest") return midiSelftest (fileArg (argv[2]).getFullPathName().toStdString());
+        if (cmd == "midi" && argc >= 5) return midiFolder (fileArg (argv[2]), fileArg (argv[3]), fileArg (argv[4]), argc > 5 ? std::atof (argv[5]) : 120.0);
         if (cmd == "separate" && argc >= 5) return separateFile (argv[2], fileArg (argv[3]), fileArg (argv[4]));
     }
     catch (const std::exception& e)
