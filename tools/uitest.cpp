@@ -244,6 +244,11 @@ int main (int argc, char** argv)
         const auto hqInUserModels = juststem::paths::models().getChildFile (juststem::text::from (juststem::model::hq.fileName));
         check (clearHq != nullptr && (hqInUserModels.existsAsFile() ? clearHq->isEnabled() : ! clearHq->isEnabled()),
                "Storage HQ model row ignores the fast model in paths::models()");
+        const auto leftover = juststem::paths::models().getChildFile ("bs_roformer_sw_6stem_opt-uitest.part");
+        leftover.replaceWithText ("interrupted download");
+        panel->refresh();
+        check (clearHq != nullptr && clearHq->isEnabled(), "Storage HQ model row counts interrupted downloads (.part)");
+        leftover.deleteFile();
         if (! hadFast) fastInUserModels.deleteFile();
         panel->refresh();
         check (editor->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)), "Escape handled while Storage is open");

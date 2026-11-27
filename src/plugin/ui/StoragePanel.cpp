@@ -9,7 +9,14 @@ namespace juststem::ui
 namespace
 {
 juce::String size (juce::int64 bytes) { return juce::File::descriptionOfSizeInBytes (bytes); }
-juce::File hqModelFile() { return paths::models().getChildFile (text::from (model::hq.fileName)); }
+/** The downloaded HQ model, plus any interrupted model downloads (ensureModel's "<name>-<uuid>.part"),
+    but not a shared fast model installed there by the macOS .pkg ("Install for me only"). */
+juce::Array<juce::File> hqModelFiles()
+{
+    auto files = paths::models().findChildFiles (juce::File::findFiles, false, "*.part");
+    if (const auto hq = paths::models().getChildFile (text::from (model::hq.fileName)); hq.existsAsFile()) files.add (hq);
+    return files;
+}
 
 constexpr int btn = 32;        // round icon buttons throughout the panel
 constexpr int headerH = 80;    // the darker band with the title and Close
@@ -117,7 +124,7 @@ StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool
     };
     clearModelsButton.onClick = [this] {
         confirm ("Remove the downloaded HQ AI model?", "It's downloaded again the next time you use HQ mode.",
-                 "Remove", [this] { if (! isBusy()) hqModelFile().deleteFile(); refresh(); });
+                 "Remove", [this] { if (! isBusy()) for (const auto& f : hqModelFiles()) f.deleteFile(); refresh(); });
     };
     clearCacheButton.onClick = [this] {
         confirm ("Clear the AI model cache?", "It's rebuilt automatically the next time you split a song (once; about " + compileTimes() + ").",
@@ -174,7 +181,8 @@ void StoragePanel::refresh()
         };
         listContent.addAndMakeVisible (row);
     }
-    modelsBytes = hqModelFile().existsAsFile() ? hqModelFile().getSize() : 0;
+    modelsBytes = 0;
+    for (const auto& f : hqModelFiles()) modelsBytes += f.getSize();
     cacheBytes = storage::folderSize (paths::coremlCache());
     toolsBytes = storage::folderSize (paths::tools());
     downloadsBytes = storage::folderSize (paths::downloads());
