@@ -565,7 +565,9 @@ int analysisSelftest()
                    && ! isYouTubeLink ("https://evilwww.youtu.be/abc")
                    && ! isYouTubeLink ("https://www.youtube.com:x@evil.com/watch?v=abc")
                    && ! isYouTubeLink ("ftp://www.youtube.com/watch?v=abc")
-                   && ! isYouTubeLink ("httpfoo://youtube.com/watch?v=abc"),
+                   && ! isYouTubeLink ("httpfoo://youtube.com/watch?v=abc")
+                   && ! isYouTubeLink ("https://evil.com\\.youtube.com/watch?v=abc")
+                   && ! isYouTubeLink ("https://evil.com%2f.youtube.com/watch?v=abc"),
                "isYouTubeLink matches YouTube hosts only and rejects URL spoofing");
         // Multi-byte UTF-8 ("เพลงไทย") split at every 2-byte boundary, plus a trailing line with no newline.
         const std::string raw = "juststem-title \xe0\xb9\x80\xe0\xb8\x9e\xe0\xb8\xa5\xe0\xb8\x87\xe0\xb9\x84\xe0\xb8\x97\xe0\xb8\xa2\nERROR: trailing";

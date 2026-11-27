@@ -40,7 +40,8 @@ bool isYouTubeLink (const juce::String& text)
     }
     auto host = authority.upToFirstOccurrenceOf (":", false, false).toLowerCase();
     if (host.startsWith ("www.")) host = host.substring (4);
-    if (host.startsWith (".") || host.contains ("..")) return false;
+    // Plain DNS names only: a backslash or other odd character can be parsed as a different host downstream.
+    if (! host.containsOnly ("abcdefghijklmnopqrstuvwxyz0123456789.-") || host.startsWith (".") || host.contains ("..")) return false;
     return host == "youtube.com" || host == "youtu.be" || host.endsWith (".youtube.com");
 }
 
