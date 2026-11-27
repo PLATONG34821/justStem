@@ -545,6 +545,10 @@ int analysisSelftest()
                "single-line sha256sum (spaces, tab, or bare digest) extracts 64-hex digest");
         check (findSha256InSums (hash + "  wrong.zip\n", "deno.zip").isEmpty(),
                "single-line sha256sum for another filename is rejected");
+        const juce::String pwsh = "\r\nAlgorithm : SHA256\r\nHash      : " + hash.toUpperCase()
+                                  + "\r\nPath      : C:\\a\\deno\\target\\release\\deno.zip\r\n\r\n";
+        check (findSha256InSums (pwsh, "deno.zip") == hash.toUpperCase() && findSha256InSums (pwsh, "other.zip").isEmpty(),
+               "PowerShell Get-FileHash list (Deno on Windows) extracts the digest for its own file only");
         check (findSha256InSums ("503 Service Unavailable\n", "deno.zip").isEmpty(),
                "single-line HTTP error page is rejected");
     }

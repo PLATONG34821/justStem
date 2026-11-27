@@ -135,18 +135,25 @@ bool replaceFileAtomically (const juce::File& from, const juce::File& to)
 juce::String findSha256InSums (const juce::String& sumsText, const juce::String& fileName)
 {
     // Checksum files are "<hash>  <name>" (or "<hash> *<name>", "<hash>\t<name>"), or "<hash>" alone for a single file.
+    // Deno's Windows files are PowerShell's Get-FileHash list instead: "Hash : <HEX>" and "Path : C:\...\<name>".
     const auto lines = juce::StringArray::fromLines (sumsText.trim());
-    juce::String expected;
+    const auto isHex64 = [] (const juce::String& s) { return s.length() == 64 && s.containsOnly ("0123456789abcdefABCDEF"); };
+    juce::String expected, listHash, listPath;
     for (const auto& raw : lines)
     {
         const auto line = raw.trim();
+        const auto key = line.upToFirstOccurrenceOf (":", false, false).trim();
+        const auto value = line.fromFirstOccurrenceOf (":", false, false).trim();
+        if (key.equalsIgnoreCase ("Hash") && isHex64 (value)) { listHash = value; continue; }
+        if (key.equalsIgnoreCase ("Path")) { listPath = value.fromLastOccurrenceOf ("\\", false, false).fromLastOccurrenceOf ("/", false, false); continue; }
         const auto token = line.upToFirstOccurrenceOf (" ", false, false).upToFirstOccurrenceOf ("\t", false, false);
-        if (token.length() != 64 || ! token.containsOnly ("0123456789abcdefABCDEF")) continue;
+        if (! isHex64 (token)) continue;
         const auto rest = line.substring (token.length()).trimCharactersAtStart (" \t*");
         const auto name = rest.startsWith ("./") ? rest.substring (2) : rest;
         if ((lines.size() == 1 && rest.isEmpty()) || name == fileName)
             expected = token;
     }
+    if (expected.isEmpty() && listHash.isNotEmpty() && listPath == fileName) expected = listHash;
     return expected;
 }
 
