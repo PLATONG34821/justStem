@@ -284,11 +284,12 @@ void justStemEditor::resized()
     auto list = stemsArea;
     constexpr int groupGap = 6;
     const int rowH = (list.getHeight() - groupGap) / rows.size();
-    for (int i = 0; i < rows.size(); ++i)
-    {
-        if (i == numStems) list.removeFromTop (groupGap);
-        rows[i]->setBounds (list.removeFromTop (rowH));
-    }
+    // The stems that get MIDI first (vocals, bass, guitar, piano), then drums and other. Only the layout
+    // changes: rows[i] stays stemOrder[i], the index projects save each stem's settings under.
+    constexpr int shownOrder[] { 0, 2, 3, 4, 1, 5 };
+    for (const int i : shownOrder) rows[i]->setBounds (list.removeFromTop (rowH));
+    list.removeFromTop (groupGap);
+    for (int i = numStems; i < rows.size(); ++i) rows[i]->setBounds (list.removeFromTop (rowH));
     mixesBox = rows[numStems]->getBounds().getUnion (rows.getLast()->getBounds()).expanded (12, 0);
 }
 
@@ -482,7 +483,9 @@ void justStemEditor::refreshAll()
         for (int i = 0; i < numStems; ++i)
         {
             rows[i]->setFile (song->stemFile (stemOrder[(size_t) i]));
-            rows[i]->setMidiFile (song->midiFile (stemOrder[(size_t) i]));
+            const auto stem = stemOrder[(size_t) i];
+            rows[i]->setMidiFile (song->midiFile (stem), std::any_of (midiStems.begin(), midiStems.end(),
+                                                                      [stem] (const MidiStem& m) { return m.stem == stem; }));
         }
         rows[numStems]->setFile (song->fullMixFile());
         rows[numStems + 1]->setFile (song->instrumentalFile());

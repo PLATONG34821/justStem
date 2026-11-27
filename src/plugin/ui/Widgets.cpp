@@ -247,7 +247,13 @@ void DragHandle::paint (juce::Graphics& g)
     g.setColour (Palette::panelBorder);
     g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 1.0f);
     const bool grip = icon == &icons::grip();
-    drawIcon (g, *icon, r.withSizeKeepingCentre (grip ? 12.0f : 14.0f, 14.0f), enabled ? Palette::text : Palette::faint);
+    const auto area = r.withSizeKeepingCentre (grip ? 12.0f : 14.0f, 14.0f);
+    drawIcon (g, *icon, area, enabled ? Palette::text : Palette::faint);
+    if (! enabled && ! grip) // nothing to drag: crossed out
+    {
+        g.setColour (Palette::faint);
+        g.drawLine ({ area.getBottomLeft().translated (-1.5f, 1.5f), area.getTopRight().translated (1.5f, -1.5f) }, 1.2f);
+    }
 }
 
 void DragHandle::mouseDrag (const juce::MouseEvent& e)
@@ -278,8 +284,6 @@ StemRow::StemRow (StemPlayer& p, int i, juce::String n) : player (&p), index (i)
     soloButton.setTitle ("Solo " + name);
     volume.setTitle (name + " volume");
     drag.setTitle ("Drag " + name + " onto a track");
-    midi.setTooltip ("Drag the notes (MIDI) onto a track in your DAW");
-    midi.setTitle ("Drag " + name + " MIDI onto a track");
     muteButton.onClick = [this] { player->setMute (index, muteButton.getToggleState()); repaint(); };
     soloButton.onClick = [this] { player->setSolo (index, soloButton.getToggleState()); };
     volume.onChange = [this] (float v) { player->setVolume (index, v); };
@@ -295,15 +299,34 @@ StemRow::StemRow (juce::String n, const juce::Path& i) : name (std::move (n)), i
     addAndMakeVisible (drag);
 }
 
-void StemRow::setTransposed (bool transposed)
+void StemRow::setMidiFile (const juce::File& f, bool canHaveMidi)
 {
+    midi.setFile (f);
+    midi.setVisible (canHaveMidi);
+    updateMidiText();
+}
+
+void StemRow::updateMidiText()
+{
+    if (! midi.getFile().existsAsFile())
+    {
+        midi.setTooltip ("No MIDI for this stem (it's almost silent, or the song was split before justStem made MIDI)");
+        midi.setTitle ("No MIDI for " + name);
+        return;
+    }
+    const juce::String note = transposed ? " (original key; use Save all for transposed MIDI)" : "";
+    midi.setTooltip ("Drag the notes (MIDI) onto a track in your DAW" + note);
+    midi.setTitle ("Drag " + name + " MIDI onto a track" + note);
+}
+
+void StemRow::setTransposed (bool isTransposed)
+{
+    transposed = isTransposed;
     drag.setTooltip (transposed ? "Drag onto a track in your DAW (original key; use Save all for transposed stems)"
                                 : "Drag onto a track in your DAW");
     drag.setTitle ("Drag " + name + " onto a track"
                    + (transposed ? " (original key; use Save all for transposed stems)" : ""));
-    midi.setTooltip (transposed ? "Drag the notes (MIDI) onto a track in your DAW (original key; use Save all for transposed MIDI)"
-                                : "Drag the notes (MIDI) onto a track in your DAW");
-    midi.setTitle ("Drag " + name + " MIDI onto a track" + (transposed ? " (original key; use Save all for transposed MIDI)" : ""));
+    updateMidiText();
 }
 
 void StemRow::refresh()

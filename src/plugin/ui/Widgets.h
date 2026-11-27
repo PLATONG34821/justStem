@@ -124,7 +124,13 @@ public:
         setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         setTooltip ("Drag onto a track in your DAW");
     }
-    void setFile (juce::File f) { file = std::move (f); repaint(); }
+    void setFile (juce::File f)
+    {
+        file = std::move (f);
+        setMouseCursor (file.existsAsFile() ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
+        repaint();
+    }
+    const juce::File& getFile() const { return file; }
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override { dragging = false; }
     void mouseDrag (const juce::MouseEvent&) override;
@@ -149,12 +155,10 @@ public:
     StemRow (juce::String name, const juce::Path& icon);
 
     void setFile (const juce::File& f) { drag.setFile (f); }
-    /** The stem's MIDI file; the MIDI handle shows only while it exists. */
-    void setMidiFile (const juce::File& f)
-    {
-        midi.setFile (f);
-        midi.setVisible (f.existsAsFile());
-    }
+    /** The stem's MIDI file, for a stem that can have one (midiStems): its handle drags the file, or
+        shows crossed out while there's none (an almost silent stem, a failed one, or a song split
+        before justStem made MIDI). Other stems have no MIDI handle. */
+    void setMidiFile (const juce::File& f, bool canHaveMidi);
     void setTransposed (bool transposed);
     void refresh();
     void paint (juce::Graphics&) override;
@@ -166,6 +170,8 @@ private:
     juce::String name;
     const juce::Path* icon = nullptr; // rows without a player
     juce::TextButton muteButton { "M" }, soloButton { "S" };
+    void updateMidiText();
+    bool transposed = false;
     SegmentBar volume;
     DragHandle drag, midi { icons::pianoKeys() };
 };

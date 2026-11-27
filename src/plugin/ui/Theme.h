@@ -46,7 +46,7 @@ inline void placeRight (juce::Rectangle<int>& r, juce::Component& c, int w, int 
 void paintBackground (juce::Graphics&, juce::Rectangle<int> area);
 
 /** Icons as filled shapes in a 0..1 box (draw them with drawIcon): Phosphor Icons (MIT, phosphoricons.com),
-    Light weight (Fill for play and pause, Bold for the grip dots and the MIDI keys), plus our own prism for Split. */
+    Light weight (Fill for play and pause, Bold for the grip dots), plus our own prism for Split. */
 namespace icons
 {
     const juce::Path& note();
