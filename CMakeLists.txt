@@ -140,7 +140,7 @@ if(APPLE)
 endif()
 
 juce_add_plugin(justStem
-    COMPANY_NAME "justStem"
+    COMPANY_NAME "just"               # the family's name in DAWs, shared with justComp (IDs below unchanged)
     BUNDLE_ID "com.juststem.juststem"
     PLUGIN_MANUFACTURER_CODE Cvtl
     PLUGIN_CODE Ctst
