@@ -72,6 +72,7 @@ private:
     juststem::ui::PillButton newSongButton { {}, juststem::ui::icons::plus() };
     juststem::ui::PillButton closeInputButton { {}, juststem::ui::icons::close() };
     juststem::ui::PillButton hqToggle { "HQ" }; // on/off; downloads BS-RoFormer on first use when not bundled
+    juststem::ui::PillButton midiToggle { "MIDI" }; // on/off; downloads Transkun on first use
     juststem::ui::PillButton copyLogButton { {}, juststem::ui::icons::copy() };
     bool wantInput = false; // New song pressed while a song is open
     std::unique_ptr<juce::FileChooser> chooser;

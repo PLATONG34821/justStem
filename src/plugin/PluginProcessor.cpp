@@ -133,7 +133,7 @@ void justStemProcessor::startJob (SongJob::Kind kind, const juce::String& source
     if (job != nullptr) return;
     error.clear();
     std::weak_ptr<bool> token = alive;
-    job = std::make_unique<SongJob> (kind, source, getHQ() ? hqModelFile : fastModelFile, midiModelFile,
+    job = std::make_unique<SongJob> (kind, source, getHQ() ? hqModelFile : fastModelFile, getMidi() ? midiModelFile : juce::File(),
         [this, token, fromRestore] (SongResultPtr result, juce::String err) {
         if (token.expired()) return;
         lastLog = job->log();
@@ -224,6 +224,7 @@ void justStemProcessor::getStateInformation (juce::MemoryBlock& data)
         state.setProperty ("followHost", stemPlayer.followsHost(), nullptr);
         state.setProperty ("transpose", transpose.load(), nullptr);
         state.setProperty ("hq", hq.load(), nullptr);
+        state.setProperty ("midi", midi.load(), nullptr);
         for (int i = 0; i < numStems; ++i)
         {
             juce::ValueTree s ("Stem");
@@ -255,6 +256,7 @@ void justStemProcessor::setStateInformation (const void* data, int size)
         transpose = juce::jlimit (-11, 11, (int) state["transpose"]);
         stemPlayer.setTranspose (transpose);
         hq = (bool) state["hq"];
+        midi = (bool) state["midi"];
         for (int i = 0; i < numStems && i < state.getNumChildren(); ++i)
         {
             const auto s = state.getChild (i);

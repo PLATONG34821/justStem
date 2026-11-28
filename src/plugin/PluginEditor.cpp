@@ -96,6 +96,13 @@ justStemEditor::justStemEditor (justStemProcessor& p) : AudioProcessorEditor (&p
     hqToggle.setTooltip ("Higher-quality split with BS-RoFormer: cleaner stems, especially guitar and piano, "
                          "about 4x slower (downloads ~350 MB once on first use; non-commercial use)");
     addChildComponent (hqToggle);
+    midiToggle.setClickingTogglesState (true);
+    midiToggle.setColour (juce::TextButton::buttonOnColourId, Palette::accentTo);
+    midiToggle.setColour (juce::TextButton::textColourOnId, Palette::bgBottom);
+    midiToggle.onClick = [this] { proc.setMidi (midiToggle.getToggleState()); };
+    midiToggle.setTooltip ("Also make MIDI of the vocals, bass, guitar, piano and other stems with Transkun, "
+                           "to drag onto DAW tracks (adds about a minute per song; downloads ~60 MB once on first use)");
+    addChildComponent (midiToggle);
     addChildComponent (cancelButton);
     copyLogButton.setName ("Copy log");
     copyLogButton.setTooltip ("Copy the log to the clipboard");
@@ -193,11 +200,12 @@ void justStemEditor::resized()
             closeInputButton.setBounds (top.removeFromRight (newSongButton.idealWidth (40)));
             top.removeFromRight (8);
         }
-        if (hqToggle.isVisible())
-        {
-            hqToggle.setBounds (top.removeFromRight (64));
-            top.removeFromRight (8);
-        }
+        for (auto* toggle : { &hqToggle, &midiToggle })
+            if (toggle->isVisible())
+            {
+                toggle->setBounds (top.removeFromRight (64));
+                top.removeFromRight (8);
+            }
     }
     else
     {
@@ -438,6 +446,9 @@ void justStemEditor::refreshAll()
     hqToggle.setVisible (input && proc.hqAvailable());
     hqToggle.setEnabled (! busy);
     hqToggle.setToggleState (proc.getHQ(), juce::dontSendNotification);
+    midiToggle.setVisible (input && proc.midiAvailable());
+    midiToggle.setEnabled (! busy);
+    midiToggle.setToggleState (proc.getMidi(), juce::dontSendNotification);
     refreshPasteButton(); // Paste and Choose file
     const bool showLog = busy || (song == nullptr && ! proc.jobLog().isEmpty());
     cancelButton.setVisible (busy);
@@ -481,15 +492,21 @@ void justStemEditor::refreshAll()
         shownSong = song;
         songTitle.setSong (song);
         for (int i = 0; i < numStems; ++i)
-        {
             rows[i]->setFile (song->stemFile (stemOrder[(size_t) i]));
-            const auto stem = stemOrder[(size_t) i];
-            rows[i]->setMidiFile (song->midiFile (stem), std::any_of (midiStems.begin(), midiStems.end(),
-                                                                      [stem] (const MidiStem& m) { return m.stem == stem; }));
-        }
         rows[numStems]->setFile (song->fullMixFile());
         rows[numStems + 1]->setFile (song->instrumentalFile());
         chordView.setSong (song);
+    }
+    if (song != nullptr)
+    {
+        // MIDI handles while MIDI is on, or when the song has MIDI from before; none otherwise.
+        const bool songHasMidi = std::any_of (midiStems.begin(), midiStems.end(),
+                                              [&] (const MidiStem& m) { return song->midiFile (m.stem).existsAsFile(); });
+        for (const auto& m : midiStems)
+        {
+            const auto i = (int) (std::find (stemOrder.begin(), stemOrder.end(), m.stem) - stemOrder.begin());
+            rows[i]->setMidiFile (song->midiFile (m.stem), proc.getMidi() || songHasMidi);
+        }
     }
     for (auto* row : rows) { row->setTransposed (t != 0); row->refresh(); }
     updateGauge();

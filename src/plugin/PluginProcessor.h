@@ -53,6 +53,14 @@ public:
         if (hq.exchange (on) != on) notifyHostStateChanged();
         sendChangeMessage();
     }
+    /** MIDI makes notes of the pitched stems after each split (saved with the DAW project; off by default). */
+    bool midiAvailable() const { return allowModelDownload || midiModelFile.existsAsFile(); }
+    bool getMidi() const { return midi && midiAvailable(); }
+    void setMidi (bool on)
+    {
+        if (midi.exchange (on) != on) notifyHostStateChanged();
+        sendChangeMessage();
+    }
     /** Semitones to transpose the chords and the preview by (saved with the DAW project). */
     int getTranspose() const { return transpose; }
     void setTranspose (int semitones)
@@ -120,6 +128,7 @@ private:
     juce::File restoredFolder; // a restored project's song, waiting for the running job (message thread)
     std::atomic<int> transpose { 0 };
     std::atomic<bool> hq { false };
+    std::atomic<bool> midi { false };
     std::atomic<int> restoringState { 0 };
     juce::SharedResourcePointer<juststem::UpdateCheck> updateCheck;
     std::shared_ptr<bool> alive = std::make_shared<bool> (true); // guards async job callbacks

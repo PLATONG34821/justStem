@@ -310,7 +310,7 @@ void StemRow::updateMidiText()
 {
     if (! midi.getFile().existsAsFile())
     {
-        midi.setTooltip ("No MIDI for this stem (it's almost silent, or the song was split before justStem made MIDI)");
+        midi.setTooltip ("No MIDI for this stem (it's almost silent, or MIDI was off when the song was split)");
         midi.setTitle ("No MIDI for " + name);
         return;
     }

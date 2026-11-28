@@ -159,6 +159,8 @@ int main (int argc, char** argv)
         if (! proc->hqAvailable()) { std::fprintf (stderr, "--hq: no HQ model next to %s\n", model.getFullPathName().toRawUTF8()); return 2; }
         proc->setHQ (true);
     }
+    check (proc->midiAvailable() && ! proc->getMidi(), "MIDI is off by default");
+    proc->setMidi (true);
     std::unique_ptr<juce::AudioProcessorEditor> editor (proc->createEditor());
 
     std::printf ("UI\n");
