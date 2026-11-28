@@ -150,6 +150,7 @@ jobs:
             # Windows and Linux Standalone builds place loose files in Standalone/; wrap them in justStem/.
             wrap="$PWD/.pack-standalone"; rm -rf "$wrap"; mkdir -p "$wrap"
             cp -R Standalone "$wrap/justStem"
+            rm -f "$wrap/justStem/"*.exp "$wrap/justStem/"*.lib # MSVC link leftovers, not needed to run
             (cd "$wrap" && if [ "$RUNNER_OS" = Windows ]; then 7z a -tzip -bd "$out/justStem-$ver-${{ matrix.name }}-Standalone.zip" justStem >/dev/null; else zip -qry "$out/justStem-$ver-${{ matrix.name }}-Standalone.zip" justStem; fi)
             rm -rf "$wrap"
           fi
