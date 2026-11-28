@@ -1,5 +1,9 @@
 #include "Transcriber.h"
 
+#if defined (__APPLE__)
+#include "CoreMLNet.h"
+#endif
+
 #include <onnxruntime_cxx_api.h>
 
 #include <signalsmith-linear/fft.h>
@@ -27,13 +31,19 @@ void checkCancel (const std::atomic<bool>& cancel)
     if (cancel.load()) throw std::runtime_error ("cancelled");
 }
 
-// The GPU first, the CPU as the fallback, like the stem models. Not CoreML: it can't build Transkun
-// as an ML program, and runs it as a neural network far slower than the CPU (no stem done in 10 min).
+// The GPU first, the CPU as the fallback, like the stem models. On macOS, Core ML runs its own
+// conversion of the model (model::midiCoreMLFile), not the ONNX file: ONNX Runtime's CoreML provider
+// runs Transkun barely faster than the CPU.
 #if defined (_WIN32)
 constexpr Backend midiBackends[] { Backend::DirectML, Backend::CPU };
+#elif defined (__APPLE__)
+constexpr Backend midiBackends[] { Backend::CoreML, Backend::CPU };
 #else
 constexpr Backend midiBackends[] { Backend::CPU };
 #endif
+
+/** The network run on one segment's features: S and ctx, valid until the next call. */
+using Net = std::function<std::pair<const float*, const float*> (std::vector<float>& features, int T)>;
 
 struct BadGpuOutput : std::runtime_error
 {
@@ -250,7 +260,8 @@ std::vector<float> transkunFeatures (const std::vector<const float*>& channels, 
 } // namespace transcription
 
 Transcription transcribe (const std::string& modelPath, const StereoAudio& audio,
-                          const std::function<void (double)>& onProgress, const std::atomic<bool>& cancel)
+                          const std::function<void (double)>& onProgress, const std::atomic<bool>& cancel,
+                          const std::string& coremlCache)
 {
     using namespace tk;
     const std::filesystem::path model (std::u8string (modelPath.begin(), modelPath.end()));
@@ -274,7 +285,7 @@ Transcription transcribe (const std::string& modelPath, const StereoAudio& audio
     // segment starts where the notes the last one finished ended (forcedStart).
     const auto length = (std::size_t) audio.size() + 2 * (std::size_t) padSamples;
     const int nSegments = (int) ((length + stepSize - 1) / stepSize);
-    auto decode = [&] (Ort::Session& session, Backend backend) {
+    auto decode = [&] (const Net& net, Backend backend) {
         std::vector<int> startPos ((std::size_t) tracks, startFrame);
         std::map<int, std::vector<TkNote>> byType;
         std::vector<float> left ((std::size_t) segmentSize), right ((std::size_t) segmentSize);
@@ -293,10 +304,7 @@ Transcription transcribe (const std::string& modelPath, const StereoAudio& audio
             }
             int T = 0;
             auto features = transcription::transkunFeatures ({ left.data(), right.data() }, segmentSize, frontEnd, T);
-            auto in = tensor (features, { 1, T, mels, windows });
-            auto out = session.Run (Ort::RunOptions {}, inNames, &in, 1, outNames, 2);
-            const float* S = out[0].GetTensorData<float>();
-            const float* ctx = out[1].GetTensorData<float>(); // [tracks][T][ctxSize]
+            const auto [S, ctx] = net (features, T); // ctx: [tracks][T][ctxSize]
             if (seg == 0 && backend != Backend::CPU) // a broken GPU driver gives NaNs instead of failing
                 for (std::size_t i = 0, n = (std::size_t) T * T * tracks; i < n; i += 97)
                     if (std::isnan (S[i])) throw BadGpuOutput();
@@ -373,19 +381,51 @@ Transcription transcribe (const std::string& modelPath, const StereoAudio& audio
     };
 
     std::map<int, std::vector<TkNote>> byType;
-    Backend used = Backend::CPU;
+    Transcription result;
     for (const auto backend : midiBackends)
     {
         const bool last = backend == midiBackends[std::size (midiBackends) - 1];
         try
         {
-            auto session = openSession (modelPath, backend);
-            byType = decode (*session, backend);
-            used = backend;
+            if (backend == Backend::CoreML)
+            {
+#if defined (__APPLE__)
+                const auto package = sibling (model::midiCoreMLFile);
+                if (coremlCache.empty() || ! std::filesystem::is_directory (package)) continue; // not installed
+                // Compiled once per conversion, shared by the AU, VST3 and standalone. The manifest names the
+                // package's parts by IDs made anew by every conversion (the weights file alone can stay the same).
+                const auto cacheBase = std::filesystem::path (std::u8string (coremlCache.begin(), coremlCache.end())) / package.stem();
+                CoreMLNet ml (u8 (package), Separator::coremlCacheFolder (u8 (package / "Manifest.json"), u8 (cacheBase)));
+                std::vector<std::vector<float>> out;
+                byType = decode ([&] (std::vector<float>& features, int T) {
+                    ml.run (features.data(), { 1, T, mels, windows }, { "S", "ctx" }, out);
+                    if (out[0].size() != (std::size_t) T * T * tracks || out[1].size() != (std::size_t) tracks * T * ctxSize)
+                        throw std::runtime_error ("the Core ML MIDI model is for another segment size");
+                    return std::pair<const float*, const float*> { out[0].data(), out[1].data() };
+                }, backend);
+#else
+                (void) coremlCache; // Core ML is macOS only
+#endif
+            }
+            else
+            {
+                auto session = openSession (modelPath, backend);
+                std::vector<Ort::Value> out;
+                byType = decode ([&] (std::vector<float>& features, int T) {
+                    auto in = tensor (features, { 1, T, mels, windows });
+                    out = session->Run (Ort::RunOptions {}, inNames, &in, 1, outNames, 2);
+                    return std::pair { out[0].GetTensorData<float>(), out[1].GetTensorData<float>() };
+                }, backend);
+            }
+            result.backend = backend;
             break;
         }
-        catch (const Ort::Exception&) { checkCancel (cancel); if (last) throw; }
-        catch (const BadGpuOutput&) { if (last) throw; }
+        catch (const std::exception& e) // the GPU failed: on to the next backend
+        {
+            checkCancel (cancel);
+            if (last) throw;
+            result.fallbackReason = e.what();
+        }
     }
 
     std::vector<TkNote> all;
@@ -395,8 +435,6 @@ Transcription transcribe (const std::string& modelPath, const StereoAudio& audio
         for (const auto& e : list)
             if (e.hasOffset) all.push_back (e);
     }
-    Transcription result;
-    result.backend = used;
     for (const auto& e : resolveOverlapping (std::move (all)))
     {
         if (e.symbol > 0) result.notes.push_back ({ e.symbol, e.start, e.end, clampVelocity (e.velocity) });

@@ -403,11 +403,29 @@ void SongJob::makeMidi (const SongResult& song)
                     if (part == model::midiModelFile) addLog ("Downloading the MIDI model from GitHub (saved for future runs)");
                     ensureModel (f, [this] (const juce::String& s, double fr) { setStatus (s, fr); }, cancelled);
                 }
+               #if JUCE_MAC
+                // Optional, for the Neural Engine and GPU: without it MIDI runs on the CPU.
+                if (const auto package = midiModel.getSiblingFile (text::from (model::midiCoreMLFile)); ! package.isDirectory() && allowModelDownload)
+                {
+                    try
+                    {
+                        addLog ("Downloading the MIDI model for the Neural Engine (saved for future runs)");
+                        ensureModelFolder (package, [this] (const juce::String& s, double fr) { setStatus (s, fr); }, cancelled);
+                    }
+                    catch (const std::exception& e)
+                    {
+                        if (cancelled) throw std::runtime_error ("cancelled");
+                        addLog ("MIDI on the CPU: " + juce::String::fromUTF8 (e.what()));
+                    }
+                }
+               #endif
                 modelReady = true;
             }
             setStatus ("Making " + name + " MIDI", 0);
             auto notes = transcribe (midiModel.getFullPathName().toStdString(), it->second,
-                                     [this, &name] (double f) { setStatus ("Making " + name + " MIDI", f); }, cancelled);
+                                     [this, &name] (double f) { setStatus ("Making " + name + " MIDI", f); }, cancelled,
+                                     paths::coremlCache().getFullPathName().toStdString());
+            if (! notes.fallbackReason.empty()) addLog ("MIDI fell back to the CPU: " + juce::String::fromUTF8 (notes.fallbackReason.c_str()));
             if (m.stem != Stem::Piano) notes.pedals.clear(); // a sustain pedal would hold a voice, bass or synth's notes
             writeMidi (file, notes, song.analysis.tempo.bpm, text::stemLabel (m.stem), m.program);
             addLog ("Made " + name + " MIDI: " + juce::String ((int) notes.notes.size()) + " notes"

@@ -840,7 +840,23 @@ int midiSelftest (const std::string& modelsDir)
         // and synthetic notes from about C5 up, so the test stays in a run below that.
         std::vector<Expected> run;
         for (int p = 48; p <= 70; p += 2) run.push_back ({ p, 0.5 + (p - 48) * 0.25, 0.45 });
-        score (transcribe (f.getFullPathName().toStdString(), render (run, 11), {}, cancel), run, (int) run.size() - 1, "Transkun");
+        const auto audio = render (run, 11);
+        const auto cpu = transcribe (f.getFullPathName().toStdString(), audio, {}, cancel);
+        score (cpu, run, (int) run.size() - 1, "Transkun");
+       #if JUCE_MAC
+        // The Core ML conversion (mixed precision), when installed beside the model: the same notes.
+        if (f.getSiblingFile (juce::String (std::string (model::midiCoreMLFile))).isDirectory())
+        {
+            const auto cache = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("juststem-coreml-selftest");
+            const auto ml = transcribe (f.getFullPathName().toStdString(), audio, {}, cancel, cache.getFullPathName().toStdString());
+            check (ml.backend == Backend::CoreML, "Transkun ran on Core ML" + (ml.fallbackReason.empty() ? std::string() : " (" + ml.fallbackReason + ")"));
+            score (ml, run, (int) run.size() - 1, "Transkun on Core ML");
+            bool same = ml.notes.size() == cpu.notes.size();
+            for (size_t i = 0; same && i < cpu.notes.size(); ++i)
+                same = ml.notes[i].pitch == cpu.notes[i].pitch && std::fabs (ml.notes[i].start - cpu.notes[i].start) < 0.03;
+            check (same, "Core ML found the CPU's notes (" + std::to_string (ml.notes.size()) + " vs " + std::to_string (cpu.notes.size()) + ")");
+        }
+       #endif
     }
     else
         check (false, "missing " + f.getFullPathName().toStdString() + " (scripts/fetch_model.sh midi)");

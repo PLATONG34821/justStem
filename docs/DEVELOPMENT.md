@@ -27,8 +27,9 @@ packages and libcurl for HTTPS (see `.github/workflows/build.yml`). JUCE, ONNX R
    .venv/bin/python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
    ```
    The MIDI model (Transkun) is used as published: `scripts/fetch_model.sh midi` downloads it,
-   pinned and checked by SHA-256 (optional: for `midi-selftest` and to bundle it with
-   `JUSTSTEM_BUNDLE_MODELS=ALL`; the plug-in downloads it the first time MIDI is on):
+   pinned and checked by SHA-256, and on macOS its Core ML conversion too (optional: for
+   `midi-selftest` and to bundle it with `JUSTSTEM_BUNDLE_MODELS=ALL`; the plug-in downloads it the
+   first time MIDI is on):
    ```sh
    scripts/fetch_model.sh midi
    ```
@@ -175,9 +176,15 @@ guitar, piano, other; `midiStems` in `Transcriber.h`) are made by
 [Transkun](https://github.com/Yujia-Yan/Transkun) (14M parameters, 59 MB, downloaded from the
 `models-midi` release the first time MIDI is on): notes with velocity, plus the sustain and soft
 pedals, kept for the piano only. Transkun was trained on piano, so the other stems come out as
-piano-style notes. About 30 s per stem for a 4-minute song on an M4.
+piano-style notes.
 
-It runs on the CPU: CoreML runs Transkun about 90x slower. The decoding follows the Python original
+It runs on the GPU when it can, falling back to the CPU (the log names which): DirectML on Windows;
+on macOS, Core ML runs its own conversion of the network (`transkun_piano.mlpackage`, made by
+`scripts/prepare_transkun_coreml.py` and downloaded with the rest), because ONNX Runtime's CoreML
+provider runs Transkun barely faster than the CPU. It is mixed precision: the Neural Engine's fp16
+alone overflows the scores and adds notes, so the scorer, GELU, convolutions and norms stay fp32.
+For a 4-minute song on an M4: about 14 s per stem, against about 40 s on the CPU, with 99-100% of
+the CPU's notes (within 10 ms). The decoding follows the Python original
 step by step (`ModelTransformer.transcribe`); its features and decoder match the reference fixtures
 of its [ONNX export](https://huggingface.co/TuesdayCrowd/transkun-onnx). A stem whose MIDI fails is
 logged and left without it: the split still succeeds. A song split while MIDI was off gets its MIDI

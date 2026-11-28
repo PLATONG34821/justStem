@@ -20,6 +20,10 @@ juce::File ensureDeno (const ProgressCallback&, const std::atomic<bool>& cancel)
     if missing, verifying its SHA-256 against SHA256SUMS. */
 juce::File ensureModel (const juce::File& dest, const ProgressCallback&, const std::atomic<bool>& cancel);
 
+/** A model that is a folder (a Core ML .mlpackage): downloaded as "<name>.zip" by ensureModel, then
+    unpacked into `dest`. */
+juce::File ensureModelFolder (const juce::File& dest, const ProgressCallback&, const std::atomic<bool>& cancel);
+
 /** Extract a 64-hex SHA-256 digest for `fileName` from a checksum file (single-line or multi-line),
     or empty when missing or malformed (e.g. an HTTP error page). */
 juce::String findSha256InSums (const juce::String& sumsText, const juce::String& fileName);

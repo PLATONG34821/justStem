@@ -10,13 +10,14 @@ namespace juststem::ui
 namespace
 {
 juce::String size (juce::int64 bytes) { return juce::File::descriptionOfSizeInBytes (bytes); }
-/** The downloaded HQ and MIDI models, plus any interrupted model downloads (ensureModel's
-    "<name>-<uuid>.part"), but not a shared fast model installed there by the macOS .pkg ("Install for me only"). */
+/** The downloaded HQ and MIDI models (the Core ML one a folder), plus any interrupted model downloads
+    (ensureModel's "<name>-<uuid>.part"), but not a shared fast model installed there by the macOS .pkg
+    ("Install for me only"). */
 juce::Array<juce::File> downloadedModelFiles()
 {
     auto files = paths::models().findChildFiles (juce::File::findFiles, false, "*.part");
-    for (const auto name : { model::hq.fileName, model::midiModelFile, model::midiHeadsFile, model::midiFrontEndFile })
-        if (const auto f = paths::models().getChildFile (text::from (name)); f.existsAsFile()) files.add (f);
+    for (const auto name : { model::hq.fileName, model::midiModelFile, model::midiHeadsFile, model::midiFrontEndFile, model::midiCoreMLFile })
+        if (const auto f = paths::models().getChildFile (text::from (name)); f.exists()) files.add (f);
     return files;
 }
 
@@ -126,7 +127,7 @@ StoragePanel::StoragePanel (std::function<juce::File()> here, std::function<bool
     };
     clearModelsButton.onClick = [this] {
         confirm ("Remove the downloaded AI models?", "They're downloaded again the next time you use HQ mode or MIDI.",
-                 "Remove", [this] { if (! isBusy()) for (const auto& f : downloadedModelFiles()) f.deleteFile(); refresh(); });
+                 "Remove", [this] { if (! isBusy()) for (const auto& f : downloadedModelFiles()) f.deleteRecursively(); refresh(); });
     };
     clearCacheButton.onClick = [this] {
         confirm ("Clear the AI model cache?", "It's rebuilt automatically the next time you split a song (once; about " + compileTimes() + ").",
@@ -184,7 +185,7 @@ void StoragePanel::refresh()
         listContent.addAndMakeVisible (row);
     }
     modelsBytes = 0;
-    for (const auto& f : downloadedModelFiles()) modelsBytes += f.getSize();
+    for (const auto& f : downloadedModelFiles()) modelsBytes += f.isDirectory() ? storage::folderSize (f) : f.getSize();
     cacheBytes = storage::folderSize (paths::coremlCache());
     toolsBytes = storage::folderSize (paths::tools());
     downloadsBytes = storage::folderSize (paths::downloads());

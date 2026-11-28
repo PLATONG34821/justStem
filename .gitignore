@@ -5,6 +5,8 @@
 # Model files and test audio (models are downloaded at runtime; see README)
 /models/*.onnx
 /models/*.bin
+/models/*.mlpackage/
+/models/*.zip
 /models/*.mp3
 /models/*.wav
 /models/*.flac

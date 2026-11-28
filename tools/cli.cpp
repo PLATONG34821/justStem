@@ -12,6 +12,7 @@
 #include "cli.h"
 #include "../src/core/Analysis.h"
 #include "../src/core/Transcriber.h"
+#include "../src/io/AppPaths.h"
 #include "../src/io/AudioFiles.h"
 #include "../src/io/YouTube.h"
 
@@ -141,12 +142,15 @@ static int midiFolder (const juce::File& folder, const juce::File& models, const
         const auto audio = loadAudioFile (folder.getChildFile (juce::String (stemFileName (m.stem))));
         const auto t0 = juce::Time::getMillisecondCounterHiRes();
         const auto t = transcribe (models.getChildFile (juce::String (std::string (model::midiModelFile))).getFullPathName().toStdString(), audio,
-                                   [&] (double f) { std::fprintf (stderr, "\r  %s %3d%%", stemMidiName (m.stem).data(), juce::roundToInt (f * 100)); }, cancel);
+                                   [&] (double f) { std::fprintf (stderr, "\r  %s %3d%%", stemMidiName (m.stem).data(), juce::roundToInt (f * 100)); }, cancel,
+                                   paths::coremlCache().getFullPathName().toStdString());
         const double secs = (juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0;
         const auto file = outDir.getChildFile (juce::String (stemMidiName (m.stem)));
         writeMidi (file, t, bpm, juce::String (std::string (stemName (m.stem))), m.program);
-        std::printf ("\r%-7s %5zu notes, %3zu pedal presses in %5.1f s (%.0fx realtime) -> %s\n", std::string (stemName (m.stem)).c_str(),
-                     t.notes.size(), t.pedals.size(), secs, (double) audio.size() / sampleRate / secs, file.getFullPathName().toRawUTF8());
+        std::printf ("\r%-7s %5zu notes, %3zu pedal presses in %5.1f s (%.0fx realtime, %s) -> %s\n", std::string (stemName (m.stem)).c_str(),
+                     t.notes.size(), t.pedals.size(), secs, (double) audio.size() / sampleRate / secs, backendName (t.backend),
+                     file.getFullPathName().toRawUTF8());
+        if (! t.fallbackReason.empty()) std::printf ("        GPU failed: %s\n", t.fallbackReason.c_str());
     }
     return 0;
 }

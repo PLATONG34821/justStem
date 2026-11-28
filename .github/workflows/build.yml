@@ -83,7 +83,8 @@ jobs:
             models/transkun_piano.onnx
             models/transkun_piano_heads.onnx
             models/transkun_piano_frontend.bin
-          key: midi-${{ hashFiles('scripts/fetch_model.sh') }}
+            models/transkun_piano.mlpackage
+          key: midi-${{ runner.os }}-${{ hashFiles('scripts/fetch_model.sh') }}
       - name: Fetch the MIDI models
         if: steps.midi.outputs.cache-hit != 'true'
         shell: bash
@@ -341,7 +342,9 @@ jobs:
           case "$GITHUB_REF_NAME" in
             models-midi*)
               bash scripts/fetch_model.sh midi
-              cp models/transkun_piano* release/ ;;
+              cp models/transkun_piano* release/
+              python -m pip install transkun==2.0.1 torch==2.15.0 coremltools==9.0 "setuptools<70"
+              python scripts/prepare_transkun_coreml.py release/transkun_piano.mlpackage.zip ;;
             *)
               python -m pip install -r scripts/requirements.txt
               bash scripts/fetch_model.sh fast

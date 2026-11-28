@@ -261,6 +261,7 @@ juce::File ensureModel (const juce::File& dest, const ProgressCallback& progress
     auto is = [&] (std::string_view name) { return fileName == juce::String::fromUTF8 (name.data(), (int) name.size()); };
     const juce::String step = is (model::hq.fileName) ? "Downloading HQ AI model"
                             : is (model::midiModelFile) || is (model::midiHeadsFile) || is (model::midiFrontEndFile)
+                                      || is (model::midiCoreMLDownload)
                                 ? "Downloading MIDI model"
                                 : "Downloading AI model";
     const juce::String repoBase = "https://github.com/PLATONG34821/justStem/releases/";
@@ -297,6 +298,25 @@ juce::File ensureModel (const juce::File& dest, const ProgressCallback& progress
         throw;
     }
     tmp.deleteFile();
+    return dest;
+}
+
+juce::File ensureModelFolder (const juce::File& dest, const ProgressCallback& progress, const std::atomic<bool>& cancel)
+{
+    if (dest.isDirectory()) return dest;
+    const auto zip = dest.getSiblingFile (dest.getFileName() + ".zip");
+    const auto unpackDir = scratchFor (dest, ".unpack");
+    struct Cleanup
+    {
+        const juce::File &z, &u;
+        ~Cleanup() { z.deleteFile(); u.deleteRecursively(); } // the zip isn't needed once unpacked
+    } cleanup { zip, unpackDir };
+    ensureModel (zip, progress, cancel);
+    if (juce::ZipFile (zip).uncompressTo (unpackDir).failed() || ! unpackDir.getChildFile (dest.getFileName()).isDirectory())
+        throw std::runtime_error ("Couldn't unpack " + zip.getFileName().toStdString());
+    // Another plug-in may have finished installing the same model meanwhile.
+    if (! unpackDir.getChildFile (dest.getFileName()).moveFileTo (dest) && ! dest.isDirectory())
+        throw std::runtime_error ("Can't install " + dest.getFileName().toStdString());
     return dest;
 }
 } // namespace juststem

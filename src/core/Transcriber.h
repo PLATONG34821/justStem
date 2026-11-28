@@ -34,6 +34,7 @@ struct Transcription
     std::vector<MidiNote> notes;   // sorted by start
     std::vector<PedalPress> pedals;
     Backend backend = Backend::CPU; // where the model ran
+    std::string fallbackReason;     // why the GPU wasn't used, when it failed
 };
 
 namespace model
@@ -45,6 +46,10 @@ namespace model
     inline constexpr std::string_view midiModelFile = "transkun_piano.onnx";
     inline constexpr std::string_view midiHeadsFile = "transkun_piano_heads.onnx";
     inline constexpr std::string_view midiFrontEndFile = "transkun_piano_frontend.bin";
+    /** macOS: the same network for Core ML (scripts/prepare_transkun_coreml.py), a folder unpacked from
+        midiCoreMLDownload next to the others. Optional: without it MIDI runs on the CPU. */
+    inline constexpr std::string_view midiCoreMLFile = "transkun_piano.mlpackage";
+    inline constexpr std::string_view midiCoreMLDownload = "transkun_piano.mlpackage.zip";
 } // namespace model
 
 /** The stems made into MIDI (when MIDI is on), all by Transkun. */
@@ -62,11 +67,13 @@ inline constexpr std::array<MidiStem, 5> midiStems { {
 } };
 
 /** Notes with velocity, and pedals (Transkun), in 16 s segments 8 s apart. `modelPath` is the
-    model::midiModelFile; the heads and front-end files must be next to it. Runs on the GPU on Windows
-    (DirectML), falling back to the CPU; on the CPU elsewhere. `onProgress` gets 0..1. Blocking; throws std::runtime_error, "cancelled" when
-    `cancel` is set. */
+    model::midiModelFile; the heads and front-end files must be next to it. Runs on the GPU, falling back
+    to the CPU: DirectML on Windows; Core ML on macOS when model::midiCoreMLFile is beside the model and
+    `coremlCache` (where Core ML keeps compiled models) is given; the CPU on Linux. `onProgress` gets
+    0..1. Blocking; throws std::runtime_error, "cancelled" when `cancel` is set. */
 Transcription transcribe (const std::string& modelPath, const StereoAudio& audio,
-                          const std::function<void (double)>& onProgress, const std::atomic<bool>& cancel);
+                          const std::function<void (double)>& onProgress, const std::atomic<bool>& cancel,
+                          const std::string& coremlCache = {});
 
 /** The steps inside, exposed for the self-tests. */
 namespace transcription

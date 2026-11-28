@@ -77,6 +77,11 @@ target_link_libraries(juststem_core PUBLIC onnxruntime::onnxruntime PRIVATE sign
 if(WIN32)
     target_link_libraries(juststem_core PRIVATE version) # GetFileVersionInfoW: the loaded msvcp140.dll's version
 endif()
+if(APPLE)
+    target_sources(juststem_core PRIVATE src/core/CoreMLNet.mm) # MIDI on the Neural Engine / GPU
+    set_source_files_properties(src/core/CoreMLNet.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    target_link_libraries(juststem_core PUBLIC "-framework CoreML" "-framework Foundation")
+endif()
 if(MSVC)
     target_compile_options(juststem_core PRIVATE /W4 /utf-8 /bigobj) # bigobj: Signalsmith templates
 else()
