@@ -395,12 +395,12 @@ void SongJob::makeMidi (const SongResult& song)
         {
             if (! modelReady)
             {
-                for (const auto part : { model::pianoFile, model::pianoHeadsFile, model::pianoFrontEndFile })
+                for (const auto part : { model::midiModelFile, model::midiHeadsFile, model::midiFrontEndFile })
                 {
                     const auto f = midiModel.getSiblingFile (text::from (part));
                     if (f.existsAsFile()) continue;
                     if (! allowModelDownload) throw std::runtime_error ("the MIDI model isn't installed");
-                    if (part == model::pianoFile) addLog ("Downloading the MIDI model from GitHub (saved for future runs)");
+                    if (part == model::midiModelFile) addLog ("Downloading the MIDI model from GitHub (saved for future runs)");
                     ensureModel (f, [this] (const juce::String& s, double fr) { setStatus (s, fr); }, cancelled);
                 }
                 modelReady = true;

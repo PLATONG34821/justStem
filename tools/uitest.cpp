@@ -255,7 +255,7 @@ int main (int argc, char** argv)
         panel->refresh();
         auto* clearHq = findChild<juce::Button> (*panel, [] (juce::Button& b) { return b.getTitle() == "Remove downloaded AI models"; });
         bool downloaded = false;
-        for (const auto name : { juststem::model::hq.fileName, juststem::model::pianoFile, juststem::model::pianoHeadsFile, juststem::model::pianoFrontEndFile })
+        for (const auto name : { juststem::model::hq.fileName, juststem::model::midiModelFile, juststem::model::midiHeadsFile, juststem::model::midiFrontEndFile })
             downloaded = downloaded || juststem::paths::models().getChildFile (juststem::text::from (name)).existsAsFile();
         check (clearHq != nullptr && (downloaded ? clearHq->isEnabled() : ! clearHq->isEnabled()),
                "Storage downloaded models row ignores the fast model in paths::models()");

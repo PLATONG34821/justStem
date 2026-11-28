@@ -37,12 +37,12 @@ struct Transcription
 namespace model
 {
     /** Transkun (Yujia Yan, MIT): notes with velocity, and pedals; trained on piano, used for every
-        pitched stem. Downloaded the first time MIDI is made; fetched by scripts/fetch_model.sh piano.
+        pitched stem. Downloaded the first time MIDI is made; fetched by scripts/fetch_model.sh midi.
         Three files, kept side by side: the model, its velocity / timing heads, and its front end
         (6 analysis windows, then the mel filters). */
-    inline constexpr std::string_view pianoFile = "transkun_piano.onnx";
-    inline constexpr std::string_view pianoHeadsFile = "transkun_piano_heads.onnx";
-    inline constexpr std::string_view pianoFrontEndFile = "transkun_piano_frontend.bin";
+    inline constexpr std::string_view midiModelFile = "transkun_piano.onnx";
+    inline constexpr std::string_view midiHeadsFile = "transkun_piano_heads.onnx";
+    inline constexpr std::string_view midiFrontEndFile = "transkun_piano_frontend.bin";
 } // namespace model
 
 /** The stems made into MIDI (when MIDI is on), all by Transkun. */
@@ -60,7 +60,7 @@ inline constexpr std::array<MidiStem, 5> midiStems { {
 } };
 
 /** Notes with velocity, and pedals (Transkun), in 16 s segments 8 s apart. `modelPath` is the
-    model::pianoFile; the heads and front-end files must be next to it. Runs on the CPU (CoreML is ~90x
+    model::midiModelFile; the heads and front-end files must be next to it. Runs on the CPU (CoreML is ~90x
     slower on this model). `onProgress` gets 0..1. Blocking; throws std::runtime_error, "cancelled" when
     `cancel` is set. */
 Transcription transcribe (const std::string& modelPath, const StereoAudio& audio,
@@ -76,8 +76,8 @@ namespace transcription
                                                                  const std::vector<int>& forcedStart);
 
     /** Transkun's log-mel features for audio already cut to a segment: [frames][229 mels][6 windows].
-        `channels` are the same length; `frontEnd` is the model::pianoFrontEndFile's floats. */
-    std::vector<float> pianoFeatures (const std::vector<const float*>& channels, int length,
+        `channels` are the same length; `frontEnd` is the model::midiFrontEndFile's floats. */
+    std::vector<float> transkunFeatures (const std::vector<const float*>& channels, int length,
                                       const std::vector<float>& frontEnd, int& nFrames);
 } // namespace transcription
 } // namespace juststem

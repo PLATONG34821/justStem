@@ -783,7 +783,7 @@ int midiSelftest (const std::string& modelsDir)
     const juce::File models (juce::String::fromUTF8 (modelsDir.c_str()));
     std::atomic<bool> cancel { false };
 
-    std::printf ("Piano decoder (semi-CRF)\n");
+    std::printf ("Transkun decoder (semi-CRF)\n");
     {
         // 6 frames, 3 tracks: a note from frame 1 to 4 on track 0, a one-frame note at 2 on track 1, nothing on 2.
         constexpr int T = 6, K = 3;
@@ -834,7 +834,7 @@ int midiSelftest (const std::string& modelsDir)
     };
 
     std::printf ("Transkun on synthetic notes\n");
-    if (const auto f = models.getChildFile (juce::String (std::string (model::pianoFile))); f.existsAsFile())
+    if (const auto f = models.getChildFile (juce::String (std::string (model::midiModelFile))); f.existsAsFile())
     {
         // A rising run C3..A#4. Trained on real pianos, Transkun ignores a lone synthetic note in silence,
         // and synthetic notes from about C5 up, so the test stays in a run below that.
@@ -843,7 +843,7 @@ int midiSelftest (const std::string& modelsDir)
         score (transcribe (f.getFullPathName().toStdString(), render (run, 11), {}, cancel), run, (int) run.size() - 1, "Transkun");
     }
     else
-        check (false, "missing " + f.getFullPathName().toStdString() + " (scripts/fetch_model.sh piano)");
+        check (false, "missing " + f.getFullPathName().toStdString() + " (scripts/fetch_model.sh midi)");
 
     std::printf ("MIDI files\n");
     {

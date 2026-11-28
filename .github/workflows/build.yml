@@ -2,7 +2,7 @@
 # Pushing a v* tag builds with the fast model bundled (so every download works offline), zips each
 # plug-in and Standalone app, builds the macOS .pkg installer, and creates a draft GitHub release.
 # Pushing a models-stem* or models-midi* tag builds and publishes those shared models once as a
-# prerelease for on-demand download (HQ mode, piano MIDI).
+# prerelease for on-demand download (HQ mode, MIDI).
 name: build
 
 on:
@@ -88,7 +88,7 @@ jobs:
         if: steps.midi.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          bash scripts/fetch_model.sh piano
+          bash scripts/fetch_model.sh midi
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DJUSTSTEM_BUNDLE_MODELS=FAST
@@ -340,7 +340,7 @@ jobs:
           mkdir -p release
           case "$GITHUB_REF_NAME" in
             models-midi*)
-              bash scripts/fetch_model.sh piano
+              bash scripts/fetch_model.sh midi
               cp models/transkun_piano* release/ ;;
             *)
               python -m pip install -r scripts/requirements.txt

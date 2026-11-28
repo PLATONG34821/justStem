@@ -140,7 +140,7 @@ static int midiFolder (const juce::File& folder, const juce::File& models, const
     {
         const auto audio = loadAudioFile (folder.getChildFile (juce::String (stemFileName (m.stem))));
         const auto t0 = juce::Time::getMillisecondCounterHiRes();
-        const auto t = transcribe (models.getChildFile (juce::String (std::string (model::pianoFile))).getFullPathName().toStdString(), audio,
+        const auto t = transcribe (models.getChildFile (juce::String (std::string (model::midiModelFile))).getFullPathName().toStdString(), audio,
                                    [&] (double f) { std::fprintf (stderr, "\r  %s %3d%%", stemMidiName (m.stem).data(), juce::roundToInt (f * 100)); }, cancel);
         const double secs = (juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0;
         const auto file = outDir.getChildFile (juce::String (stemMidiName (m.stem)));

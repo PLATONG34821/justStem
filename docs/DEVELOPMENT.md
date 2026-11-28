@@ -26,11 +26,11 @@ packages and libcurl for HTTPS (see `.github/workflows/build.yml`). JUCE, ONNX R
    scripts/fetch_model.sh hq
    .venv/bin/python scripts/prepare_roformer_onnx.py bs_roformer_sw_6stem_fp16.onnx models/bs_roformer_sw_6stem_opt.onnx
    ```
-   The MIDI model (Transkun) is used as published: `scripts/fetch_model.sh piano` downloads it,
+   The MIDI model (Transkun) is used as published: `scripts/fetch_model.sh midi` downloads it,
    pinned and checked by SHA-256 (optional: for `midi-selftest` and to bundle it with
    `JUSTSTEM_BUNDLE_MODELS=ALL`; the plug-in downloads it the first time MIDI is on):
    ```sh
-   scripts/fetch_model.sh piano
+   scripts/fetch_model.sh midi
    ```
 2. Build:
    ```sh

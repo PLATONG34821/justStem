@@ -159,7 +159,7 @@ std::vector<std::vector<std::pair<int, int>>> semiCrfDecode (const float* S, int
     return result;
 }
 
-std::vector<float> pianoFeatures (const std::vector<const float*>& channels, int length, const std::vector<float>& frontEnd, int& nFrames)
+std::vector<float> transkunFeatures (const std::vector<const float*>& channels, int length, const std::vector<float>& frontEnd, int& nFrames)
 {
     using namespace tk;
     nFrames = (length + hopSize - 1) / hopSize + 1;
@@ -243,14 +243,14 @@ Transcription transcribe (const std::string& modelPath, const StereoAudio& audio
 
     std::vector<float> frontEnd ((std::size_t) windows * windowSize + (std::size_t) bins * mels);
     {
-        std::ifstream in (sibling (model::pianoFrontEndFile), std::ios::binary);
+        std::ifstream in (sibling (model::midiFrontEndFile), std::ios::binary);
         in.read (reinterpret_cast<char*> (frontEnd.data()), (std::streamsize) (frontEnd.size() * sizeof (float)));
         if (! in || in.peek() != std::char_traits<char>::eof())
-            throw std::runtime_error ("The piano MIDI model's front end is damaged: " + std::string (model::pianoFrontEndFile));
+            throw std::runtime_error ("The MIDI model's front end is damaged: " + std::string (model::midiFrontEndFile));
     }
     const auto u8 = [] (const std::filesystem::path& p) { const auto s = p.u8string(); return std::string (s.begin(), s.end()); };
     auto session = openSession (modelPath);
-    auto heads = openSession (u8 (sibling (model::pianoHeadsFile)));
+    auto heads = openSession (u8 (sibling (model::midiHeadsFile)));
     const char* inNames[] { "featuresBatch" };
     const char* outNames[] { "S", "ctx" };
     const char* headInNames[] { "attr" };
@@ -277,7 +277,7 @@ Transcription transcribe (const std::string& modelPath, const StereoAudio& audio
             right[(std::size_t) i] = inSong ? audio.right[pos - padSamples] : 0.0f;
         }
         int T = 0;
-        auto features = transcription::pianoFeatures ({ left.data(), right.data() }, segmentSize, frontEnd, T);
+        auto features = transcription::transkunFeatures ({ left.data(), right.data() }, segmentSize, frontEnd, T);
         auto in = tensor (features, { 1, T, mels, windows });
         auto out = session->Run (Ort::RunOptions {}, inNames, &in, 1, outNames, 2);
         const float* S = out[0].GetTensorData<float>();

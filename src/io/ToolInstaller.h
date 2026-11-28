@@ -16,7 +16,7 @@ juce::File ensureYtDlp (const ProgressCallback&, const std::atomic<bool>& cancel
 /** Deno, the JavaScript runtime yt-dlp needs for YouTube. Refreshed monthly. */
 juce::File ensureDeno (const ProgressCallback&, const std::atomic<bool>& cancel);
 
-/** Download a model file (separation, or piano MIDI) into `dest` from justStem's GitHub model release
+/** Download a model file (separation, or MIDI) into `dest` from justStem's GitHub model release
     if missing, verifying its SHA-256 against SHA256SUMS. */
 juce::File ensureModel (const juce::File& dest, const ProgressCallback&, const std::atomic<bool>& cancel);
 

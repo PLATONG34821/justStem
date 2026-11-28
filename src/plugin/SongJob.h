@@ -30,7 +30,7 @@ public:
     using Finished = std::function<void (SongResultPtr result, juce::String error)>;
 
     /** @param source  a YouTube link, an audio file path, or (Reload) a saved song folder.
-        @param midiModel  model::pianoFile (its other two files beside it), or none for no MIDI.
+        @param midiModel  model::midiModelFile (its other two files beside it), or none for no MIDI.
         @param allowModelDownload  download the HQ or MIDI model when it's missing (the plug-in), or not (tests). */
     SongJob (Kind, juce::String source, juce::File modelFile, juce::File midiModel, Finished onFinished, bool allowModelDownload = false);
     ~SongJob() override;

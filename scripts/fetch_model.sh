@@ -3,7 +3,7 @@
 # every release) starts from the same files.
 #   scripts/fetch_model.sh fast    htdemucs_6s_fp16weights.onnx    (see scripts/prepare_demucs_onnx.py)
 #   scripts/fetch_model.sh hq      bs_roformer_sw_6stem_fp16.onnx  (see scripts/prepare_roformer_onnx.py)
-#   scripts/fetch_model.sh piano   models/transkun_piano*          (Transkun, used as is)
+#   scripts/fetch_model.sh midi   models/transkun_piano*          (Transkun, used as is)
 set -euo pipefail
 
 # fetch <url> <file> <sha256>
@@ -27,7 +27,7 @@ case "${1:-}" in
   hq)
     fetch https://huggingface.co/elicwhite/bs-roformer-sw-6stem-onnx/resolve/a744f80957374e1735ad70fa122670b7961da8cc/bs_roformer_sw_6stem_fp16.onnx \
       bs_roformer_sw_6stem_fp16.onnx d3d2bac77a7023282cb5f35a5807179e34076b60589867b572275f1a8ec36444 ;;
-  piano)
+  midi)
     # Transkun 2.0 (Yujia Yan, MIT) exported to ONNX by TuesdayCrowd/transkun-onnx. Its front end
     # (6 analysis windows, then the mel filters, raw float32) goes into one file.
     mkdir -p models
@@ -39,6 +39,6 @@ case "${1:-}" in
     cat windows.f32 freq2mels.f32 > models/transkun_piano_frontend.bin
     rm windows.f32 freq2mels.f32 ;;
   *)
-    echo "usage: $0 fast|hq|piano" >&2
+    echo "usage: $0 fast|hq|midi" >&2
     exit 2 ;;
 esac

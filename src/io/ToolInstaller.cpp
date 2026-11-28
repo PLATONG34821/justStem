@@ -260,7 +260,7 @@ juce::File ensureModel (const juce::File& dest, const ProgressCallback& progress
     const juce::String fileName = dest.getFileName();
     auto is = [&] (std::string_view name) { return fileName == juce::String::fromUTF8 (name.data(), (int) name.size()); };
     const juce::String step = is (model::hq.fileName) ? "Downloading HQ AI model"
-                            : is (model::pianoFile) || is (model::pianoHeadsFile) || is (model::pianoFrontEndFile)
+                            : is (model::midiModelFile) || is (model::midiHeadsFile) || is (model::midiFrontEndFile)
                                 ? "Downloading MIDI model"
                                 : "Downloading AI model";
     const juce::String repoBase = "https://github.com/PLATONG34821/justStem/releases/";

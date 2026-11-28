@@ -49,7 +49,7 @@ justStemProcessor::justStemProcessor()
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       fastModelFile (defaultModelFile (model::fast.fileName)),
       hqModelFile (defaultModelFile (model::hq.fileName)),
-      midiModelFile (defaultModelFile (model::pianoFile)),
+      midiModelFile (defaultModelFile (model::midiModelFile)),
       allowModelDownload (true)
 {
     const juce::ScopedLock sl (instancesLock);
@@ -63,7 +63,7 @@ justStemProcessor::justStemProcessor (juce::File fastModel)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       fastModelFile (std::move (fastModel)),
       hqModelFile (fastModelFile.getSiblingFile (text::from (model::hq.fileName))),
-      midiModelFile (fastModelFile.getSiblingFile (text::from (model::pianoFile))),
+      midiModelFile (fastModelFile.getSiblingFile (text::from (model::midiModelFile))),
       allowModelDownload (false)
 {
     const juce::ScopedLock sl (instancesLock);
