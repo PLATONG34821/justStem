@@ -7,6 +7,9 @@ computer, and nothing is uploaded.
 
 <p align="center"><img src="docs/screenshots/stems.png" width="600" alt="justStem with a song split into stems"></p>
 
+justStem is part of the **just** family with [justComp](https://github.com/PLATONG34821/justComp), an AI-assisted
+compressor. In your DAW both are listed under **just**.
+
 ## Features
 
 - 6 stems plus an instrumental and the full mix, kept as lossless 24-bit FLAC (half the size of WAV) that you can drag onto DAW tracks; **Save all** exports WAVs
