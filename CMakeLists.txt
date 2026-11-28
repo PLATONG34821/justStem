@@ -8,6 +8,10 @@ if(APPLE)
 endif()
 project(justStem VERSION 0.0.8 LANGUAGES ${JUSTSTEM_LANGUAGES})
 
+# Windows: the C++ runtime is linked in (/MT), so justStem doesn't need the Visual C++ Redistributable
+# installed, and an older one the DAW loaded can't affect it. Set before any target, JUCE's and faad's too.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 # windows.h defines min/max macros, which break std::min/std::max calls throughout the code.
 if(WIN32)
     add_compile_definitions(NOMINMAX)
@@ -70,6 +74,9 @@ add_library(juststem_core STATIC
     src/core/Transcriber.cpp)
 target_include_directories(juststem_core PUBLIC src/core)
 target_link_libraries(juststem_core PUBLIC onnxruntime::onnxruntime PRIVATE signalsmith-stretch signalsmith-linear)
+if(WIN32)
+    target_link_libraries(juststem_core PRIVATE version) # GetFileVersionInfoW: the loaded msvcp140.dll's version
+endif()
 if(MSVC)
     target_compile_options(juststem_core PRIVATE /W4 /utf-8 /bigobj) # bigobj: Signalsmith templates
 else()

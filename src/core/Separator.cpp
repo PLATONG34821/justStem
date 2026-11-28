@@ -7,6 +7,7 @@
  #endif
  #define WIN32_LEAN_AND_MEAN
  #include <windows.h>
+ #include <winver.h>
 #else
  #include <dlfcn.h>
  #include <unistd.h>
@@ -52,6 +53,27 @@ std::string pathToUtf8 (const std::filesystem::path& p)
 {
     const auto u8 = p.u8string();
     return { u8.begin(), u8.end() };
+}
+
+struct FileVersion { unsigned major = 0, minor = 0; };
+
+/** The file version of a loaded DLL, or 0.0 when it can't be read. */
+FileVersion fileVersion (HMODULE module)
+{
+    std::wstring path (MAX_PATH, L'\0');
+    const DWORD n = GetModuleFileNameW (module, path.data(), (DWORD) path.size());
+    if (n == 0 || n >= path.size()) return {};
+    path.resize (n);
+    DWORD ignored = 0;
+    const DWORD size = GetFileVersionInfoSizeW (path.c_str(), &ignored);
+    if (size == 0) return {};
+    std::vector<char> data (size);
+    VS_FIXEDFILEINFO* info = nullptr;
+    UINT len = 0;
+    if (! GetFileVersionInfoW (path.c_str(), 0, size, data.data())
+        || ! VerQueryValueW (data.data(), L"\\", reinterpret_cast<void**> (&info), &len) || info == nullptr)
+        return {};
+    return { HIWORD (info->dwFileVersionMS), LOWORD (info->dwFileVersionMS) };
 }
 #endif
 
@@ -145,6 +167,14 @@ const OrtRuntime& ortRuntime()
                 HMODULE pinnedDml = nullptr;
                 GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_PIN, dmlPath.c_str(), &pinnedDml);
             }
+        // onnxruntime.dll was built with Visual Studio 17.10+, whose code crashes in _Mtx_lock on a
+        // msvcp140.dll older than 14.40. Without one loaded, it gets the copy shipped beside it; but a
+        // DAW or another plug-in may have loaded an older one, which it would use instead.
+        if (HMODULE crt = GetModuleHandleW (L"msvcp140.dll"))
+            if (const auto v = fileVersion (crt); v.major != 0 && (v.major < 14 || (v.major == 14 && v.minor < 40)))
+                throw std::runtime_error ("Your DAW has loaded an old Microsoft Visual C++ runtime (" + std::to_string (v.major) + "."
+                                          + std::to_string (v.minor) + "), which justStem's AI can't run with. Install the latest "
+                                          "Visual C++ Redistributable (https://aka.ms/vs/17/release/vc_redist.x64.exe) and restart the DAW.");
         const auto ortPath = selfDir / L"onnxruntime.dll";
         HMODULE mod = loadDll (ortPath);
         if (mod == nullptr)

@@ -50,6 +50,26 @@ elseif(WIN32)
     set(ORT_RUNTIME_FILES ${ORT_LIB_DIR}/onnxruntime.dll ${ORT_LIB_DIR}/DirectML.dll)
     set(extra_includes ${dml}/include) # DirectML.h, needed by dml_provider_factory.h
 
+    # onnxruntime.dll needs the Visual C++ runtime, which a fresh Windows doesn't have: ship Microsoft's
+    # redistributable DLLs from this compiler next to it (app-local deployment), loaded from there.
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+    set(CMAKE_INSTALL_UCRT_LIBRARIES FALSE)
+    include(InstallRequiredSystemLibraries)
+    set(crt_found "")
+    foreach(lib IN LISTS CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
+        get_filename_component(name "${lib}" NAME)
+        string(TOLOWER "${name}" name)
+        if(name MATCHES "^(msvcp140|msvcp140_1|vcruntime140|vcruntime140_1)\\.dll$")
+            list(APPEND ORT_RUNTIME_FILES "${lib}")
+            list(APPEND crt_found "${name}")
+        endif()
+    endforeach()
+    if(NOT "msvcp140.dll" IN_LIST crt_found OR NOT "vcruntime140.dll" IN_LIST crt_found)
+        message(FATAL_ERROR "Couldn't find the Visual C++ runtime DLLs to ship with ONNX Runtime (found: ${crt_found}). "
+                            "Build from a Visual Studio developer environment.")
+    endif()
+    message(STATUS "Shipping the Visual C++ runtime with ONNX Runtime: ${crt_found}")
+
 else() # Linux
     juststem_nuget(pkg Microsoft.ML.OnnxRuntime 1.32.0 a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db)
     # The package ships libonnxruntime.so, but its soname is libonnxruntime.so.1.

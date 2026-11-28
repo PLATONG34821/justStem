@@ -95,6 +95,25 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      # A fresh Windows has no Visual C++ runtime: justStem must link it in, and ship it for ONNX Runtime.
+      - name: Check the Visual C++ runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -e
+          a=build/justStem_artefacts/Release
+          for bin in "$a/VST3/justStem.vst3/Contents/x86_64-win/justStem.vst3" "$a/Standalone/justStem.exe"; do
+            if dumpbin //dependents "$bin" | grep -iE "msvcp140|vcruntime140"; then
+              echo "::error::$bin still needs the Visual C++ runtime"; exit 1
+            fi
+          done
+          for dir in "$a/VST3/justStem.vst3/Contents/x86_64-win" "$a/Standalone"; do
+            for dll in msvcp140.dll msvcp140_1.dll vcruntime140.dll vcruntime140_1.dll; do
+              ls "$dir"/$dll > /dev/null || { echo "::error::$dll missing in $dir"; exit 1; }
+            done
+          done
+          echo "justStem links the runtime in; ONNX Runtime has its runtime DLLs beside it"
+
       - name: Test analysis (resampler, loudness, key, tempo, chords, pitch shift)
         run: build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
       - name: Test separation
