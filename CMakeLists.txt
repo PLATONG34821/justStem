@@ -6,7 +6,7 @@ set(JUSTSTEM_LANGUAGES C CXX)
 if(APPLE)
     list(APPEND JUSTSTEM_LANGUAGES OBJC OBJCXX)
 endif()
-project(justStem VERSION 0.0.8 LANGUAGES ${JUSTSTEM_LANGUAGES})
+project(justStem VERSION 0.0.9 LANGUAGES ${JUSTSTEM_LANGUAGES})
 
 # Windows: the C++ runtime is linked in (/MT), so justStem doesn't need the Visual C++ Redistributable
 # installed, and an older one the DAW loaded can't affect it. Set before any target, JUCE's and faad's too.
