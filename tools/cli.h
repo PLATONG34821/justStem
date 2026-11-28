@@ -17,6 +17,6 @@ int separationSelftest (const std::string& model, int seconds, float overlap);
 /** `analyze-selftest`: the resampler, loudness, key, tempo, beats, chords and pitch shifting. */
 int analysisSelftest();
 
-/** `midi-selftest`: the MIDI decoders, Basic Pitch and Transkun (from `modelsDir`) on synthetic notes,
+/** `midi-selftest`: the MIDI decoder, Transkun (from `modelsDir`) on synthetic notes,
     and MIDI files (written, read back, transposed). */
 int midiSelftest (const std::string& modelsDir);

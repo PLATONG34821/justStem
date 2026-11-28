@@ -106,7 +106,7 @@ private:
     void notifyHostStateChanged();
 
     const juce::File fastModelFile, hqModelFile;
-    const juststem::SongJob::MidiModels midiModels;
+    const juce::File midiModelFile;
     const bool allowModelDownload = false;
     juststem::StemPlayer stemPlayer;
     std::unique_ptr<juststem::SongJob> job;

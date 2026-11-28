@@ -1,12 +1,10 @@
 #include "Transcriber.h"
-#include "Resampler.h"
 
 #include <onnxruntime_cxx_api.h>
 
 #include <signalsmith-linear/fft.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <complex>
 #include <filesystem>
@@ -46,32 +44,6 @@ Ort::Value tensor (std::vector<float>& data, const std::vector<int64_t>& shape)
 }
 
 int clampVelocity (long v) { return (int) std::clamp (v, 1L, 127L); }
-
-// ============================================================================ Basic Pitch
-// Constants from basic_pitch/constants.py and inference.py (ICASSP 2022 model).
-namespace bp
-{
-    constexpr int rate = 22050, fftHop = 256, keys = 88, midiOffset = 21;
-    constexpr int windowSamples = rate * 2 - fftHop;            // AUDIO_N_SAMPLES 43844
-    constexpr int windowFrames = rate / fftHop * 2;             // ANNOT_N_FRAMES 172
-    constexpr int overlapFrames = 30, overlapSamples = overlapFrames * fftHop;
-    constexpr int hop = windowSamples - overlapSamples;          // 36164
-    constexpr float onsetThreshold = 0.5f, frameThreshold = 0.3f;
-    constexpr int minNoteFrames = 11;                            // round(127.7 ms * 22050 / 256 / 1000)
-    constexpr int energyTolerance = 11;
-    constexpr double alignment = 0.0018;                         // MAGIC_ALIGNMENT_OFFSET
-    constexpr int batch = 8;                                     // windows per model run (~1.4 MB in)
-} // namespace bp
-
-/** Basic Pitch's model_frames_to_time: frame times, with its per-window alignment correction. */
-double basicPitchFrameTime (int frame)
-{
-    const double windowOffset = (double) bp::fftHop / bp::rate * (bp::windowFrames - (double) bp::windowSamples / bp::fftHop)
-                                + bp::alignment;
-    return frame * (double) bp::fftHop / bp::rate - windowOffset * std::floor ((double) frame / bp::windowFrames);
-}
-
-int hzToKey (float hz) { return (int) std::lround (12.0 * std::log2 (hz / 440.0) + 69.0 - bp::midiOffset); }
 
 // ============================================================================ Transkun
 // From transkun 2.0.1's ModelTransformer.py and pretrained/2.0.conf.
@@ -135,99 +107,6 @@ std::vector<TkNote> resolveOverlapping (std::vector<TkNote> notes)
 
 namespace transcription
 {
-std::vector<FrameNote> basicPitchNotes (std::vector<float>& frames, std::vector<float>& onsets, int n, int minKey, int maxKey)
-{
-    constexpr int K = bp::keys;
-    auto at = [] (int t, int k) { return (std::size_t) t * K + (std::size_t) k; };
-    minKey = std::clamp (minKey, 0, K);
-    maxKey = std::clamp (maxKey, 0, K);
-    for (int t = 0; t < n; ++t)
-        for (int k = 0; k < K; ++k)
-            if (k < minKey || k >= maxKey) frames[at (t, k)] = onsets[at (t, k)] = 0;
-
-    // Inferred onsets: where a frame rises over both of the last two, scaled to the onsets' peak.
-    std::vector<float> diff (frames.size(), 0.0f);
-    float maxDiff = 0, maxOnset = 0;
-    for (std::size_t i = 0; i < onsets.size(); ++i) maxOnset = std::max (maxOnset, onsets[i]);
-    for (int t = 2; t < n; ++t)
-        for (int k = 0; k < K; ++k)
-        {
-            const float d = std::max (0.0f, std::min (frames[at (t, k)] - frames[at (t - 1, k)], frames[at (t, k)] - frames[at (t - 2, k)]));
-            diff[at (t, k)] = d;
-            maxDiff = std::max (maxDiff, d);
-        }
-    if (maxDiff > 0)
-        for (std::size_t i = 0; i < onsets.size(); ++i) onsets[i] = std::max (onsets[i], maxOnset * diff[i] / maxDiff);
-
-    std::vector<float> remaining = frames;
-    std::vector<FrameNote> notes;
-    auto mean = [&] (int a, int b, int k) {
-        double s = 0;
-        for (int t = a; t < b; ++t) s += frames[at (t, k)];
-        return (float) (s / (b - a));
-    };
-    auto clearAround = [&] (int t, int k) {
-        remaining[at (t, k)] = 0;
-        if (k < K - 1) remaining[at (t, k + 1)] = 0;
-        if (k > 0) remaining[at (t, k - 1)] = 0;
-    };
-
-    // Onset peaks over the threshold, latest first (and the highest key first at the same time).
-    for (int t = n - 2; t >= 1; --t)
-        for (int k = K - 1; k >= 0; --k)
-        {
-            const float o = onsets[at (t, k)];
-            if (o < bp::onsetThreshold || ! (o > onsets[at (t - 1, k)] && o > onsets[at (t + 1, k)])) continue;
-            int i = t + 1, quiet = 0;
-            while (i < n - 1 && quiet < bp::energyTolerance)
-            {
-                quiet = remaining[at (i, k)] < bp::frameThreshold ? quiet + 1 : 0;
-                ++i;
-            }
-            i -= quiet;
-            if (i - t <= bp::minNoteFrames) continue;
-            for (int j = t; j < i; ++j) clearAround (j, k);
-            notes.push_back ({ t, i, k, mean (t, i, k) });
-        }
-
-    // Melodia trick: grow notes out from the strongest frames left. The energy only ever drops to 0,
-    // so going through the frames from strongest to weakest, skipping cleared ones, visits each
-    // remaining maximum in the order the original's repeated argmax does (ties: earliest first).
-    std::vector<std::size_t> order;
-    for (std::size_t i = 0; i < remaining.size(); ++i)
-        if (remaining[i] > bp::frameThreshold) order.push_back (i);
-    std::stable_sort (order.begin(), order.end(), [&] (std::size_t a, std::size_t b) { return remaining[a] > remaining[b]; });
-    for (const auto idx : order)
-    {
-        if (remaining[idx] != frames[idx]) continue; // cleared by a note found earlier
-        const int mid = (int) (idx / K), k = (int) (idx % K);
-        remaining[idx] = 0;
-
-        int i = mid + 1, quiet = 0;
-        while (i < n - 1 && quiet < bp::energyTolerance)
-        {
-            quiet = remaining[at (i, k)] < bp::frameThreshold ? quiet + 1 : 0;
-            clearAround (i, k);
-            ++i;
-        }
-        const int end = i - 1 - quiet;
-
-        i = mid - 1;
-        quiet = 0;
-        while (i > 0 && quiet < bp::energyTolerance)
-        {
-            quiet = remaining[at (i, k)] < bp::frameThreshold ? quiet + 1 : 0;
-            clearAround (i, k);
-            --i;
-        }
-        const int start = i + 1 + quiet;
-
-        if (end - start <= bp::minNoteFrames) continue;
-        notes.push_back ({ start, end, k, mean (start, end, k) });
-    }
-    return notes;
-}
-
 std::vector<std::vector<std::pair<int, int>>> semiCrfDecode (const float* S, int T, int K, const std::vector<int>& forcedStart)
 {
     auto s = [&] (int e, int b, int k) { return S[((std::size_t) e * (std::size_t) T + (std::size_t) b) * (std::size_t) K + (std::size_t) k]; };
@@ -355,66 +234,8 @@ std::vector<float> pianoFeatures (const std::vector<const float*>& channels, int
 }
 } // namespace transcription
 
-Transcription transcribeNotes (const std::string& modelPath, const StereoAudio& audio, float minHz, float maxHz,
-                               const std::atomic<bool>& cancel)
-{
-    std::vector<float> mono (audio.size());
-    for (std::size_t i = 0; i < mono.size(); ++i) mono[i] = 0.5f * (audio.left[i] + audio.right[i]);
-    mono = resample (mono, sampleRate, bp::rate);
-    const auto length = mono.size();
-    mono.insert (mono.begin(), (std::size_t) bp::overlapSamples / 2, 0.0f);
-
-    auto session = openSession (modelPath);
-    // Names from basic_pitch/inference.py (the contours, output 0, aren't used).
-    const char* inNames[] { "serving_default_input_2:0" };
-    const char* outNames[] { "StatefulPartitionedCall:1", "StatefulPartitionedCall:2" }; // notes, onsets
-
-    // Windows of 2 s, 30 frames overlapping; half the overlap is dropped from each side of each window.
-    const int nWindows = (int) ((mono.size() + bp::hop - 1) / bp::hop);
-    constexpr int keep = bp::windowFrames - bp::overlapFrames;
-    std::vector<float> frames, onsets;
-    frames.reserve ((std::size_t) nWindows * keep * bp::keys);
-    onsets.reserve (frames.capacity());
-    for (int first = 0; first < nWindows; first += bp::batch)
-    {
-        checkCancel (cancel);
-        const int count = std::min (bp::batch, nWindows - first);
-        std::vector<float> input ((std::size_t) count * bp::windowSamples, 0.0f);
-        for (int w = 0; w < count; ++w)
-        {
-            const auto from = (std::size_t) (first + w) * bp::hop;
-            const auto n = std::min ((std::size_t) bp::windowSamples, mono.size() - from);
-            std::copy_n (mono.begin() + (std::ptrdiff_t) from, n, input.begin() + (std::ptrdiff_t) w * bp::windowSamples);
-        }
-        auto in = tensor (input, { count, bp::windowSamples, 1 });
-        auto out = session->Run (Ort::RunOptions {}, inNames, &in, 1, outNames, 2);
-        for (int o = 0; o < 2; ++o)
-        {
-            const float* data = out[(std::size_t) o].GetTensorData<float>();
-            auto& dest = o == 0 ? frames : onsets;
-            for (int w = 0; w < count; ++w)
-            {
-                const float* from = data + ((std::size_t) w * bp::windowFrames + bp::overlapFrames / 2) * bp::keys;
-                dest.insert (dest.end(), from, from + (std::size_t) keep * bp::keys);
-            }
-        }
-    }
-    const int nFrames = std::min ((int) (frames.size() / bp::keys), (int) ((double) length / bp::hop * keep));
-    frames.resize ((std::size_t) nFrames * bp::keys);
-    onsets.resize (frames.size());
-
-    checkCancel (cancel);
-    const auto found = transcription::basicPitchNotes (frames, onsets, nFrames, hzToKey (minHz), hzToKey (maxHz));
-    Transcription result;
-    for (const auto& n : found)
-        result.notes.push_back ({ n.key + bp::midiOffset, basicPitchFrameTime (n.start), basicPitchFrameTime (n.end),
-                                  clampVelocity (std::lround (127.0 * n.amplitude)) });
-    std::stable_sort (result.notes.begin(), result.notes.end(), [] (const MidiNote& a, const MidiNote& b) { return a.start < b.start; });
-    return result;
-}
-
-Transcription transcribePiano (const std::string& modelPath, const StereoAudio& audio,
-                               const std::function<void (double)>& onProgress, const std::atomic<bool>& cancel)
+Transcription transcribe (const std::string& modelPath, const StereoAudio& audio,
+                          const std::function<void (double)>& onProgress, const std::atomic<bool>& cancel)
 {
     using namespace tk;
     const std::filesystem::path model (std::u8string (modelPath.begin(), modelPath.end()));

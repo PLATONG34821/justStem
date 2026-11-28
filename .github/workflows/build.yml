@@ -73,14 +73,13 @@ jobs:
           bash scripts/fetch_model.sh fast
           python scripts/prepare_demucs_onnx.py htdemucs_6s_fp16weights.onnx models/htdemucs_6s_opt.onnx
 
-      # The MIDI models are used as published (pinned and checked by scripts/fetch_model.sh): Basic Pitch
-      # is bundled; the piano model is only for the tests (the plug-in downloads it on first use).
+      # The MIDI model is used as published (pinned and checked by scripts/fetch_model.sh), only for the
+      # tests: the plug-in downloads it the first time MIDI is on.
       - name: MIDI model cache
         id: midi
         uses: actions/cache@v6
         with:
           path: |
-            models/basic_pitch.onnx
             models/transkun_piano.onnx
             models/transkun_piano_heads.onnx
             models/transkun_piano_frontend.bin
@@ -89,7 +88,6 @@ jobs:
         if: steps.midi.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          bash scripts/fetch_model.sh midi
           bash scripts/fetch_model.sh piano
 
       - name: Configure
@@ -322,9 +320,8 @@ jobs:
           mkdir -p release
           case "$GITHUB_REF_NAME" in
             models-midi*)
-              bash scripts/fetch_model.sh midi
               bash scripts/fetch_model.sh piano
-              cp models/basic_pitch.onnx models/transkun_piano* release/ ;;
+              cp models/transkun_piano* release/ ;;
             *)
               python -m pip install -r scripts/requirements.txt
               bash scripts/fetch_model.sh fast

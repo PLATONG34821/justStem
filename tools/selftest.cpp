@@ -798,26 +798,6 @@ int midiSelftest (const std::string& modelsDir)
         check (forced[0].empty() && forced[1].empty(), "a forced start after a note leaves it out");
     }
 
-    std::printf ("Note decoder (Basic Pitch)\n");
-    {
-        // Key 39 (C4) from frame 10 to 40 with an onset; key 43 from 60 to 100 with none (found by its rise).
-        constexpr int n = 150, K = 88;
-        std::vector<float> frames ((size_t) n * K, 0.0f), onsets = frames;
-        for (int t = 10; t < 40; ++t) frames[(size_t) t * K + 39] = 0.8f;
-        onsets[10 * K + 39] = 0.9f;
-        for (int t = 60; t < 100; ++t) frames[(size_t) t * K + 43] = 0.7f;
-        auto notes = transcription::basicPitchNotes (frames, onsets, n, 0, K);
-        std::sort (notes.begin(), notes.end(), [] (const auto& a, const auto& b) { return a.start < b.start; });
-        check (notes.size() == 2 && notes[0].start == 10 && notes[0].end == 40 && notes[0].key == 39
-                   && notes[1].start == 60 && notes[1].end == 100 && notes[1].key == 43,
-               "two notes at the right frames and keys (" + std::to_string (notes.size()) + " found)");
-        frames.assign (frames.size(), 0.0f);
-        onsets.assign (onsets.size(), 0.0f);
-        for (int t = 10; t < 40; ++t) frames[(size_t) t * K + 39] = 0.8f;
-        onsets[10 * K + 39] = 0.9f;
-        check (transcription::basicPitchNotes (frames, onsets, n, 40, K).empty(), "a note below the stem's range is dropped");
-    }
-
     // Synthetic notes: harmonics, a sharp attack, decaying.
     struct Expected { int pitch; double start, length; };
     auto render = [] (const std::vector<Expected>& notes, double seconds) {
@@ -853,18 +833,6 @@ int midiSelftest (const std::string& modelsDir)
                        + " notes at the right pitch and time (within 60 ms), " + std::to_string (extra) + " extra");
     };
 
-    std::printf ("Basic Pitch on synthetic notes\n");
-    if (const auto f = models.getChildFile (juce::String (std::string (model::notesFile))); f.existsAsFile())
-    {
-        // C4 E4 G4 C5, then an A minor chord.
-        const std::vector<Expected> melody { { 60, 0.5, 0.8 }, { 64, 1.5, 0.8 }, { 67, 2.5, 0.8 }, { 72, 3.5, 0.8 },
-                                             { 57, 5.0, 1.5 }, { 60, 5.0, 1.5 }, { 64, 5.0, 1.5 } };
-        score (transcribeNotes (f.getFullPathName().toStdString(), render (melody, 8), 80.0f, 1100.0f, cancel), melody,
-               (int) melody.size(), "Basic Pitch");
-    }
-    else
-        check (false, "missing " + f.getFullPathName().toStdString() + " (scripts/fetch_model.sh midi)");
-
     std::printf ("Transkun on synthetic notes\n");
     if (const auto f = models.getChildFile (juce::String (std::string (model::pianoFile))); f.existsAsFile())
     {
@@ -872,7 +840,7 @@ int midiSelftest (const std::string& modelsDir)
         // and synthetic notes from about C5 up, so the test stays in a run below that.
         std::vector<Expected> run;
         for (int p = 48; p <= 70; p += 2) run.push_back ({ p, 0.5 + (p - 48) * 0.25, 0.45 });
-        score (transcribePiano (f.getFullPathName().toStdString(), render (run, 11), {}, cancel), run, (int) run.size() - 1, "Transkun");
+        score (transcribe (f.getFullPathName().toStdString(), render (run, 11), {}, cancel), run, (int) run.size() - 1, "Transkun");
     }
     else
         check (false, "missing " + f.getFullPathName().toStdString() + " (scripts/fetch_model.sh piano)");

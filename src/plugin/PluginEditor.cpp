@@ -284,9 +284,9 @@ void justStemEditor::resized()
     auto list = stemsArea;
     constexpr int groupGap = 6;
     const int rowH = (list.getHeight() - groupGap) / rows.size();
-    // The stems that get MIDI first (vocals, bass, guitar, piano), then drums and other. Only the layout
+    // The stems that get MIDI first (vocals, bass, guitar, piano, other), then drums. Only the layout
     // changes: rows[i] stays stemOrder[i], the index projects save each stem's settings under.
-    constexpr int shownOrder[] { 0, 2, 3, 4, 1, 5 };
+    constexpr int shownOrder[] { 0, 2, 3, 4, 5, 1 };
     for (const int i : shownOrder) rows[i]->setBounds (list.removeFromTop (rowH));
     list.removeFromTop (groupGap);
     for (int i = numStems; i < rows.size(); ++i) rows[i]->setBounds (list.removeFromTop (rowH));

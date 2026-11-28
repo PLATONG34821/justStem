@@ -7,8 +7,7 @@
 //   juststem_cli chords <song folder>                 (stems saved by the plug-in)
 //   juststem_cli midi-selftest <models folder>
 //   juststem_cli midi <song folder> <models folder> <output folder> [bpm]
-//       (MIDI of the vocals, bass, guitar and piano stems; the folder has basic_pitch.onnx and the
-//        transkun_piano files)
+//       (MIDI of the vocals, bass, guitar, piano and other stems; the folder has the transkun_piano files)
 // The self-tests are in tools/selftest.cpp.
 #include "cli.h"
 #include "../src/core/Analysis.h"
@@ -141,11 +140,8 @@ static int midiFolder (const juce::File& folder, const juce::File& models, const
     {
         const auto audio = loadAudioFile (folder.getChildFile (juce::String (stemFileName (m.stem))));
         const auto t0 = juce::Time::getMillisecondCounterHiRes();
-        const auto t = m.stem == Stem::Piano
-                           ? transcribePiano (models.getChildFile (juce::String (std::string (model::pianoFile))).getFullPathName().toStdString(), audio,
-                                              [] (double f) { std::fprintf (stderr, "\r  piano %3d%%", juce::roundToInt (f * 100)); }, cancel)
-                           : transcribeNotes (models.getChildFile (juce::String (std::string (model::notesFile))).getFullPathName().toStdString(), audio,
-                                              m.minHz, m.maxHz, cancel);
+        const auto t = transcribe (models.getChildFile (juce::String (std::string (model::pianoFile))).getFullPathName().toStdString(), audio,
+                                   [&] (double f) { std::fprintf (stderr, "\r  %s %3d%%", stemMidiName (m.stem).data(), juce::roundToInt (f * 100)); }, cancel);
         const double secs = (juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0;
         const auto file = outDir.getChildFile (juce::String (stemMidiName (m.stem)));
         writeMidi (file, t, bpm, juce::String (std::string (stemName (m.stem))), m.program);

@@ -55,9 +55,9 @@ float rmsDb (const StereoAudio& a)
 }
 } // namespace
 
-SongJob::SongJob (Kind k, juce::String src, juce::File model, MidiModels midi, Finished done, bool downloadModel)
+SongJob::SongJob (Kind k, juce::String src, juce::File model, juce::File midi, Finished done, bool downloadModel)
     : juce::Thread ("justStem song job"), kind (k), source (std::move (src)), modelFile (std::move (model)),
-      midiModels (std::move (midi)), onFinished (std::move (done)), allowModelDownload (downloadModel)
+      midiModel (std::move (midi)), onFinished (std::move (done)), allowModelDownload (downloadModel)
 {
 }
 
@@ -380,7 +380,9 @@ SongResultPtr SongJob::process()
 
 void SongJob::makeMidi (const SongResult& song)
 {
+    if (midiModel == juce::File()) return; // MIDI is off
     // The stems are saved by now: a stem whose MIDI fails is logged and left without it.
+    bool modelReady = false;
     for (const auto& m : midiStems)
     {
         const auto file = song.midiFile (m.stem);
@@ -391,27 +393,22 @@ void SongJob::makeMidi (const SongResult& song)
         const auto start = nowMs();
         try
         {
-            Transcription notes;
-            if (m.stem == Stem::Piano)
+            if (! modelReady)
             {
-                const auto piano = midiModels.piano;
                 for (const auto part : { model::pianoFile, model::pianoHeadsFile, model::pianoFrontEndFile })
                 {
-                    const auto f = piano.getSiblingFile (text::from (part));
+                    const auto f = midiModel.getSiblingFile (text::from (part));
                     if (f.existsAsFile()) continue;
-                    if (! allowModelDownload) throw std::runtime_error ("the piano MIDI model isn't installed");
-                    if (part == model::pianoFile) addLog ("Downloading the piano MIDI model from GitHub (saved for future runs)");
+                    if (! allowModelDownload) throw std::runtime_error ("the MIDI model isn't installed");
+                    if (part == model::pianoFile) addLog ("Downloading the MIDI model from GitHub (saved for future runs)");
                     ensureModel (f, [this] (const juce::String& s, double fr) { setStatus (s, fr); }, cancelled);
                 }
-                setStatus ("Making piano MIDI", 0);
-                notes = transcribePiano (piano.getFullPathName().toStdString(), it->second,
-                                         [this] (double f) { setStatus ("Making piano MIDI", f); }, cancelled);
+                modelReady = true;
             }
-            else
-            {
-                setStatus ("Making " + name + " MIDI", -1);
-                notes = transcribeNotes (midiModels.notes.getFullPathName().toStdString(), it->second, m.minHz, m.maxHz, cancelled);
-            }
+            setStatus ("Making " + name + " MIDI", 0);
+            auto notes = transcribe (midiModel.getFullPathName().toStdString(), it->second,
+                                     [this, &name] (double f) { setStatus ("Making " + name + " MIDI", f); }, cancelled);
+            if (m.stem != Stem::Piano) notes.pedals.clear(); // a sustain pedal would hold a voice, bass or synth's notes
             writeMidi (file, notes, song.analysis.tempo.bpm, text::stemLabel (m.stem), m.program);
             addLog ("Made " + name + " MIDI: " + juce::String ((int) notes.notes.size()) + " notes"
                     + (notes.pedals.empty() ? juce::String() : ", " + juce::String ((int) notes.pedals.size()) + " pedal presses")

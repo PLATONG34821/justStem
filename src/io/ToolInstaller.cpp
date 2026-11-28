@@ -261,10 +261,10 @@ juce::File ensureModel (const juce::File& dest, const ProgressCallback& progress
     auto is = [&] (std::string_view name) { return fileName == juce::String::fromUTF8 (name.data(), (int) name.size()); };
     const juce::String step = is (model::hq.fileName) ? "Downloading HQ AI model"
                             : is (model::pianoFile) || is (model::pianoHeadsFile) || is (model::pianoFrontEndFile)
-                                ? "Downloading piano MIDI model"
+                                ? "Downloading MIDI model"
                                 : "Downloading AI model";
     const juce::String repoBase = "https://github.com/PLATONG34821/justStem/releases/";
-    // models-stem has the separation models, models-midi the piano MIDI model.
+    // models-stem has the separation models, models-midi the MIDI model.
     const juce::String bases[] { repoBase + "download/models-stem/",
                                  repoBase + "download/models-midi/",
                                  repoBase + "download/v" + juce::String (JUSTSTEM_VERSION) + "/",

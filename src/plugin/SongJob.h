@@ -29,15 +29,10 @@ public:
     /** Called on the message thread when the job ends. `error` is "cancelled" after cancel(). */
     using Finished = std::function<void (SongResultPtr result, juce::String error)>;
 
-    /** Where the MIDI models are: model::notesFile, and model::pianoFile (its other two files beside it). */
-    struct MidiModels
-    {
-        juce::File notes, piano;
-    };
-
     /** @param source  a YouTube link, an audio file path, or (Reload) a saved song folder.
-        @param allowModelDownload  download the HQ or piano model when it's missing (the plug-in), or not (tests). */
-    SongJob (Kind, juce::String source, juce::File modelFile, MidiModels, Finished onFinished, bool allowModelDownload = false);
+        @param midiModel  model::pianoFile (its other two files beside it), or none for no MIDI.
+        @param allowModelDownload  download the HQ or MIDI model when it's missing (the plug-in), or not (tests). */
+    SongJob (Kind, juce::String source, juce::File modelFile, juce::File midiModel, Finished onFinished, bool allowModelDownload = false);
     ~SongJob() override;
 
     void start() { startThread (juce::Thread::Priority::normal); }
@@ -69,7 +64,7 @@ private:
     const Kind kind;
     const juce::String source;
     const juce::File modelFile;
-    const MidiModels midiModels;
+    const juce::File midiModel;
     const Finished onFinished;
     const bool allowModelDownload;
     std::atomic<bool> cancelled { false };
