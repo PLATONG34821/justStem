@@ -6,7 +6,7 @@
 //   juststem_cli analyze <audio file> [model.onnx]   (with a model: analyse the separated stems)
 //   juststem_cli chords <song folder>                 (stems saved by the plug-in)
 //   juststem_cli midi-selftest <models folder>
-//   juststem_cli midi <song folder> <models folder> <output folder> [bpm]
+//   juststem_cli midi <song folder> <models folder> <output folder> [bpm]   (macOS: downloads the Core ML model if missing)
 //       (MIDI of the vocals, bass, guitar, piano and other stems; the folder has the transkun_piano files)
 // The self-tests are in tools/selftest.cpp.
 #include "cli.h"
@@ -14,6 +14,7 @@
 #include "../src/core/Transcriber.h"
 #include "../src/io/AppPaths.h"
 #include "../src/io/AudioFiles.h"
+#include "../src/io/ToolInstaller.h"
 #include "../src/io/YouTube.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -137,6 +138,11 @@ static int midiFolder (const juce::File& folder, const juce::File& models, const
 {
     outDir.createDirectory();
     std::atomic<bool> cancel { false };
+   #if JUCE_MAC
+    // The Core ML model, downloaded like the plug-in does when it's missing.
+    try { ensureModelFolder (models.getChildFile (juce::String (std::string (model::midiCoreMLFile))), {}, cancel); }
+    catch (const std::exception& e) { std::printf ("No Core ML model (MIDI on the CPU): %s\n", e.what()); }
+   #endif
     for (const auto& m : midiStems)
     {
         const auto audio = loadAudioFile (folder.getChildFile (juce::String (stemFileName (m.stem))));
