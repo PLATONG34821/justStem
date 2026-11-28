@@ -18,6 +18,7 @@ namespace juststem
 {
 Ort::Env& ortEnv(); // Separator.cpp: one ONNX Runtime environment for every model
 void configureOrtSession (Ort::SessionOptions& so, bool cpuSession);
+void appendDirectML (Ort::SessionOptions& so);
 
 namespace
 {
@@ -26,12 +27,26 @@ void checkCancel (const std::atomic<bool>& cancel)
     if (cancel.load()) throw std::runtime_error ("cancelled");
 }
 
-/** A CPU session. ONNX Runtime takes native paths (wide strings on Windows); `path` is UTF-8. */
-std::unique_ptr<Ort::Session> openSession (const std::string& path)
+// The GPU first, the CPU as the fallback, like the stem models. Not CoreML: it can't build Transkun
+// as an ML program, and runs it as a neural network far slower than the CPU (no stem done in 10 min).
+#if defined (_WIN32)
+constexpr Backend midiBackends[] { Backend::DirectML, Backend::CPU };
+#else
+constexpr Backend midiBackends[] { Backend::CPU };
+#endif
+
+struct BadGpuOutput : std::runtime_error
+{
+    BadGpuOutput() : std::runtime_error ("the MIDI model gave invalid output on the GPU") {}
+};
+
+/** ONNX Runtime takes native paths (wide strings on Windows); `path` is UTF-8. */
+std::unique_ptr<Ort::Session> openSession (const std::string& path, Backend backend = Backend::CPU)
 {
     auto& env = ortEnv(); // initialises the ONNX Runtime C++ API table before SessionOptions is made
     Ort::SessionOptions so;
-    configureOrtSession (so, true);
+    configureOrtSession (so, backend == Backend::CPU);
+    if (backend == Backend::DirectML) appendDirectML (so);
     const std::filesystem::path p (std::u8string (path.begin(), path.end()));
     return std::make_unique<Ort::Session> (env, p.c_str(), so);
 }
@@ -249,8 +264,7 @@ Transcription transcribe (const std::string& modelPath, const StereoAudio& audio
             throw std::runtime_error ("The MIDI model's front end is damaged: " + std::string (model::midiFrontEndFile));
     }
     const auto u8 = [] (const std::filesystem::path& p) { const auto s = p.u8string(); return std::string (s.begin(), s.end()); };
-    auto session = openSession (modelPath);
-    auto heads = openSession (u8 (sibling (model::midiHeadsFile)));
+    auto heads = openSession (u8 (sibling (model::midiHeadsFile))); // small: the CPU is enough
     const char* inNames[] { "featuresBatch" };
     const char* outNames[] { "S", "ctx" };
     const char* headInNames[] { "attr" };
@@ -260,96 +274,118 @@ Transcription transcribe (const std::string& modelPath, const StereoAudio& audio
     // segment starts where the notes the last one finished ended (forcedStart).
     const auto length = (std::size_t) audio.size() + 2 * (std::size_t) padSamples;
     const int nSegments = (int) ((length + stepSize - 1) / stepSize);
-    std::vector<int> startPos ((std::size_t) tracks, startFrame);
-    std::map<int, std::vector<TkNote>> byType;
-    std::vector<float> left ((std::size_t) segmentSize), right ((std::size_t) segmentSize);
-    const double frameSeconds = (double) hopSize / rate;
+    auto decode = [&] (Ort::Session& session, Backend backend) {
+        std::vector<int> startPos ((std::size_t) tracks, startFrame);
+        std::map<int, std::vector<TkNote>> byType;
+        std::vector<float> left ((std::size_t) segmentSize), right ((std::size_t) segmentSize);
+        const double frameSeconds = (double) hopSize / rate;
 
-    for (int seg = 0; seg < nSegments; ++seg)
-    {
-        checkCancel (cancel);
-        const auto from = (std::size_t) seg * stepSize;
-        for (int i = 0; i < segmentSize; ++i)
+        for (int seg = 0; seg < nSegments; ++seg)
         {
-            const auto pos = from + (std::size_t) i;
-            const bool inSong = pos >= (std::size_t) padSamples && pos - padSamples < audio.size();
-            left[(std::size_t) i] = inSong ? audio.left[pos - padSamples] : 0.0f;
-            right[(std::size_t) i] = inSong ? audio.right[pos - padSamples] : 0.0f;
-        }
-        int T = 0;
-        auto features = transcription::transkunFeatures ({ left.data(), right.data() }, segmentSize, frontEnd, T);
-        auto in = tensor (features, { 1, T, mels, windows });
-        auto out = session->Run (Ort::RunOptions {}, inNames, &in, 1, outNames, 2);
-        const float* S = out[0].GetTensorData<float>();
-        const float* ctx = out[1].GetTensorData<float>(); // [tracks][T][ctxSize]
-        const auto path = transcription::semiCrfDecode (S, T, tracks, startPos);
-
-        std::vector<float> attr;
-        for (int k = 0; k < tracks; ++k)
-            for (const auto& [b, e] : path[(std::size_t) k])
+            checkCancel (cancel);
+            const auto from = (std::size_t) seg * stepSize;
+            for (int i = 0; i < segmentSize; ++i)
             {
-                const float* a = ctx + ((std::size_t) k * T + (std::size_t) b) * ctxSize;
-                const float* z = ctx + ((std::size_t) k * T + (std::size_t) e) * ctxSize;
-                attr.insert (attr.end(), a, a + ctxSize);
-                attr.insert (attr.end(), z, z + ctxSize);
-                for (int d = 0; d < ctxSize; ++d) attr.push_back (a[d] * z[d]);
+                const auto pos = from + (std::size_t) i;
+                const bool inSong = pos >= (std::size_t) padSamples && pos - padSamples < audio.size();
+                left[(std::size_t) i] = inSong ? audio.left[pos - padSamples] : 0.0f;
+                right[(std::size_t) i] = inSong ? audio.right[pos - padSamples] : 0.0f;
             }
-        const auto nIntervals = (int64_t) (attr.size() / (3 * ctxSize));
+            int T = 0;
+            auto features = transcription::transkunFeatures ({ left.data(), right.data() }, segmentSize, frontEnd, T);
+            auto in = tensor (features, { 1, T, mels, windows });
+            auto out = session.Run (Ort::RunOptions {}, inNames, &in, 1, outNames, 2);
+            const float* S = out[0].GetTensorData<float>();
+            const float* ctx = out[1].GetTensorData<float>(); // [tracks][T][ctxSize]
+            if (seg == 0 && backend != Backend::CPU) // a broken GPU driver gives NaNs instead of failing
+                for (std::size_t i = 0, n = (std::size_t) T * T * tracks; i < n; i += 97)
+                    if (std::isnan (S[i])) throw BadGpuOutput();
+            const auto path = transcription::semiCrfDecode (S, T, tracks, startPos);
 
-        std::vector<TkNote> notes;
-        std::vector<int> lastP ((std::size_t) tracks, 0);
-        if (nIntervals > 0)
-        {
-            auto attrIn = tensor (attr, { nIntervals, 3 * ctxSize });
-            auto attrOut = heads->Run (Ort::RunOptions {}, headInNames, &attrIn, 1, headOutNames, 2);
-            const float* vel = attrOut[0].GetTensorData<float>(); // [n][128]
-            const float* of = attrOut[1].GetTensorData<float>();  // [n][4]: onset, offset values; onset, offset presence
-            std::size_t n = 0;
+            std::vector<float> attr;
             for (int k = 0; k < tracks; ++k)
-            {
-                double lastEnd = 0;
                 for (const auto& [b, e] : path[(std::size_t) k])
                 {
-                    const float* v = vel + n * 128;
-                    const float* o = of + n * 4;
-                    auto offset = [] (float logit) { return std::clamp ((continuousBernoulliMean (logit) - 0.5) / 0.99, -0.5, 0.5); };
-                    TkNote note;
-                    note.symbol = symbol (k);
-                    note.velocity = (int) (std::max_element (v, v + 128) - v);
-                    note.start = std::max ((b + offset (o[0])) * frameSeconds, lastEnd);
-                    note.end = std::max ((e + offset (o[1])) * frameSeconds, note.start + 1e-8);
-                    note.hasOnset = b > 0 || o[2] > 0;
-                    note.hasOffset = e < lastFrame || o[3] > 0;
-                    lastEnd = note.end;
-                    if (note.hasOffset) lastP[(std::size_t) k] = e;
-                    notes.push_back (note);
-                    ++n;
+                    const float* a = ctx + ((std::size_t) k * T + (std::size_t) b) * ctxSize;
+                    const float* z = ctx + ((std::size_t) k * T + (std::size_t) e) * ctxSize;
+                    attr.insert (attr.end(), a, a + ctxSize);
+                    attr.insert (attr.end(), z, z + ctxSize);
+                    for (int d = 0; d < ctxSize; ++d) attr.push_back (a[d] * z[d]);
                 }
-            }
-            std::stable_sort (notes.begin(), notes.end(), earlier);
-        }
-        for (int k = 0; k < tracks; ++k) startPos[(std::size_t) k] = std::max (lastP[(std::size_t) k] - stepFrames, 0);
+            const auto nIntervals = (int64_t) (attr.size() / (3 * ctxSize));
 
-        // Into song time; a note that carries on from the last segment extends it.
-        const double beginTime = (double) from / rate - (segmentSeconds - stepSeconds);
-        for (auto e : notes)
-        {
-            e.start = std::max (e.start + beginTime, 0.0);
-            e.end = std::max (e.end + beginTime, e.start);
-            auto& list = byType[e.symbol];
-            if (! list.empty() && e.start < list.back().end)
+            std::vector<TkNote> notes;
+            std::vector<int> lastP ((std::size_t) tracks, 0);
+            if (nIntervals > 0)
             {
-                if (e.hasOnset) list.back() = e;
-                else
+                auto attrIn = tensor (attr, { nIntervals, 3 * ctxSize });
+                auto attrOut = heads->Run (Ort::RunOptions {}, headInNames, &attrIn, 1, headOutNames, 2);
+                const float* vel = attrOut[0].GetTensorData<float>(); // [n][128]
+                const float* of = attrOut[1].GetTensorData<float>();  // [n][4]: onset, offset values; onset, offset presence
+                std::size_t n = 0;
+                for (int k = 0; k < tracks; ++k)
                 {
-                    list.back().hasOffset = e.hasOffset;
-                    list.back().end = std::max (e.end, list.back().end);
+                    double lastEnd = 0;
+                    for (const auto& [b, e] : path[(std::size_t) k])
+                    {
+                        const float* v = vel + n * 128;
+                        const float* o = of + n * 4;
+                        auto offset = [] (float logit) { return std::clamp ((continuousBernoulliMean (logit) - 0.5) / 0.99, -0.5, 0.5); };
+                        TkNote note;
+                        note.symbol = symbol (k);
+                        note.velocity = (int) (std::max_element (v, v + 128) - v);
+                        note.start = std::max ((b + offset (o[0])) * frameSeconds, lastEnd);
+                        note.end = std::max ((e + offset (o[1])) * frameSeconds, note.start + 1e-8);
+                        note.hasOnset = b > 0 || o[2] > 0;
+                        note.hasOffset = e < lastFrame || o[3] > 0;
+                        lastEnd = note.end;
+                        if (note.hasOffset) lastP[(std::size_t) k] = e;
+                        notes.push_back (note);
+                        ++n;
+                    }
                 }
-                continue;
+                std::stable_sort (notes.begin(), notes.end(), earlier);
             }
-            if (e.hasOnset) list.push_back (e);
+            for (int k = 0; k < tracks; ++k) startPos[(std::size_t) k] = std::max (lastP[(std::size_t) k] - stepFrames, 0);
+
+            // Into song time; a note that carries on from the last segment extends it.
+            const double beginTime = (double) from / rate - (segmentSeconds - stepSeconds);
+            for (auto e : notes)
+            {
+                e.start = std::max (e.start + beginTime, 0.0);
+                e.end = std::max (e.end + beginTime, e.start);
+                auto& list = byType[e.symbol];
+                if (! list.empty() && e.start < list.back().end)
+                {
+                    if (e.hasOnset) list.back() = e;
+                    else
+                    {
+                        list.back().hasOffset = e.hasOffset;
+                        list.back().end = std::max (e.end, list.back().end);
+                    }
+                    continue;
+                }
+                if (e.hasOnset) list.push_back (e);
+            }
+            if (onProgress) onProgress ((double) (seg + 1) / nSegments);
         }
-        if (onProgress) onProgress ((double) (seg + 1) / nSegments);
+        return byType;
+    };
+
+    std::map<int, std::vector<TkNote>> byType;
+    Backend used = Backend::CPU;
+    for (const auto backend : midiBackends)
+    {
+        const bool last = backend == midiBackends[std::size (midiBackends) - 1];
+        try
+        {
+            auto session = openSession (modelPath, backend);
+            byType = decode (*session, backend);
+            used = backend;
+            break;
+        }
+        catch (const Ort::Exception&) { checkCancel (cancel); if (last) throw; }
+        catch (const BadGpuOutput&) { if (last) throw; }
     }
 
     std::vector<TkNote> all;
@@ -360,6 +396,7 @@ Transcription transcribe (const std::string& modelPath, const StereoAudio& audio
             if (e.hasOffset) all.push_back (e);
     }
     Transcription result;
+    result.backend = used;
     for (const auto& e : resolveOverlapping (std::move (all)))
     {
         if (e.symbol > 0) result.notes.push_back ({ e.symbol, e.start, e.end, clampVelocity (e.velocity) });

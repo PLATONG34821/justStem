@@ -412,7 +412,7 @@ void SongJob::makeMidi (const SongResult& song)
             writeMidi (file, notes, song.analysis.tempo.bpm, text::stemLabel (m.stem), m.program);
             addLog ("Made " + name + " MIDI: " + juce::String ((int) notes.notes.size()) + " notes"
                     + (notes.pedals.empty() ? juce::String() : ", " + juce::String ((int) notes.pedals.size()) + " pedal presses")
-                    + " in " + seconds (nowMs() - start));
+                    + " in " + seconds (nowMs() - start) + " (" + backendName (notes.backend) + ")");
         }
         catch (const std::bad_alloc&)
         {

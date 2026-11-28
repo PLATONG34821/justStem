@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Audio.h"
+#include "Separator.h" // Backend
 
 #include <array>
 #include <atomic>
@@ -32,6 +33,7 @@ struct Transcription
 {
     std::vector<MidiNote> notes;   // sorted by start
     std::vector<PedalPress> pedals;
+    Backend backend = Backend::CPU; // where the model ran
 };
 
 namespace model
@@ -60,8 +62,8 @@ inline constexpr std::array<MidiStem, 5> midiStems { {
 } };
 
 /** Notes with velocity, and pedals (Transkun), in 16 s segments 8 s apart. `modelPath` is the
-    model::midiModelFile; the heads and front-end files must be next to it. Runs on the CPU (CoreML is ~90x
-    slower on this model). `onProgress` gets 0..1. Blocking; throws std::runtime_error, "cancelled" when
+    model::midiModelFile; the heads and front-end files must be next to it. Runs on the GPU on Windows
+    (DirectML), falling back to the CPU; on the CPU elsewhere. `onProgress` gets 0..1. Blocking; throws std::runtime_error, "cancelled" when
     `cancel` is set. */
 Transcription transcribe (const std::string& modelPath, const StereoAudio& audio,
                           const std::function<void (double)>& onProgress, const std::atomic<bool>& cancel);

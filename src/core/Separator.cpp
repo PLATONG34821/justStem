@@ -240,6 +240,21 @@ Ort::Env& ortEnv()
     return *ortRuntime().env;
 }
 
+void appendDirectML (Ort::SessionOptions& so)
+{
+   #if defined (_WIN32)
+    if (ortRuntime().appendDml == nullptr)
+        throw std::runtime_error ("DirectML is not available in this ONNX Runtime build");
+    // Required by the DirectML execution provider.
+    so.DisableMemPattern();
+    so.SetExecutionMode (ExecutionMode::ORT_SEQUENTIAL);
+    Ort::ThrowOnError (ortRuntime().appendDml (so, 0)); // default GPU
+   #else
+    (void) so;
+    throw std::runtime_error ("DirectML is Windows only");
+   #endif
+}
+
 void configureOrtSession (Ort::SessionOptions& so, bool cpuSession)
 {
     so.SetGraphOptimizationLevel (GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -405,17 +420,7 @@ struct Separator::Impl
             if (! cacheDir.empty()) opts["ModelCacheDirectory"] = cacheDir;
             so.AppendExecutionProvider ("CoreML", opts);
         }
-       #if defined (_WIN32)
-        if (b == Backend::DirectML)
-        {
-            if (ortRuntime().appendDml == nullptr)
-                throw std::runtime_error ("DirectML is not available in this ONNX Runtime build");
-            // Required by the DirectML execution provider.
-            so.DisableMemPattern();
-            so.SetExecutionMode (ExecutionMode::ORT_SEQUENTIAL);
-            Ort::ThrowOnError (ortRuntime().appendDml (so, 0)); // default GPU
-        }
-       #endif
+        if (b == Backend::DirectML) appendDirectML (so);
         // ONNX Runtime takes native paths (wide strings on Windows); the model path is UTF-8.
         const std::filesystem::path modelPath (std::u8string (path.begin(), path.end()));
         session = std::make_unique<Ort::Session> (env, modelPath.c_str(), so);
