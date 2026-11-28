@@ -54,6 +54,8 @@ build/juststem_cli_artefacts/Release/juststem_cli analyze-selftest
 build/juststem_cli_artefacts/Release/juststem_cli selftest models/htdemucs_6s_opt.onnx
 build/juststem_cli_artefacts/Release/juststem_cli midi-selftest models
 build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx --synth /tmp/uitest   # or pass a song path; add --hq for the HQ model
+auval -v aufx Ctst Cvtl
+pluginval --strictness-level 10 --validate-in-process --validate ~/Library/Audio/Plug-Ins/VST3/justStem.vst3
 ```
 
 - `analyze-selftest`: the resampler against exact sine waves and an aliasing test, loudness

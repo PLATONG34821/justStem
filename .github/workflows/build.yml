@@ -12,6 +12,7 @@ on:
 
 env:
   RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+  JUSTSTEM_NO_UPDATE_CHECK: 1 # tests and validators open the editor; no network from CI
 
 jobs:
   build:
@@ -20,9 +21,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-15,     name: macOS }    # Apple Silicon
-          - { os: windows-2022, name: Windows }
-          - { os: ubuntu-24.04, name: Linux }
+          - { os: macos-15,     name: macOS,   pluginval: pluginval_macOS.zip,   pv: pluginval.app/Contents/MacOS/pluginval } # Apple Silicon
+          - { os: windows-2022, name: Windows, pluginval: pluginval_Windows.zip, pv: pluginval.exe }
+          - { os: ubuntu-24.04, name: Linux,   pluginval: pluginval_Linux.zip,   pv: pluginval }
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
 
@@ -133,6 +134,25 @@ jobs:
           else
             build/juststem_uitest_artefacts/Release/juststem_uitest models/htdemucs_6s_opt.onnx --synth build/uitest
           fi
+
+      - name: pluginval (strictness 10)
+        shell: bash
+        run: |
+          curl -sSL -o pv.zip "https://github.com/Tracktion/pluginval/releases/latest/download/${{ matrix.pluginval }}"
+          unzip -oq pv.zip -d pv
+          PV="pv/${{ matrix.pv }}"
+          chmod +x "$PV" || true
+          RUN=""
+          if [ "$RUNNER_OS" = "Linux" ]; then RUN="xvfb-run -a"; fi
+          $RUN "$PV" --strictness-level 10 --validate-in-process --validate build/justStem_artefacts/Release/VST3/justStem.vst3
+
+      - name: AU validation (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          ditto build/justStem_artefacts/Release/AU/justStem.component ~/Library/Audio/Plug-Ins/Components/justStem.component
+          killall -9 AudioComponentRegistrar || true
+          auval -v aufx Ctst Cvtl
 
       - uses: actions/upload-artifact@v7
         with:

@@ -67,9 +67,9 @@ To turn it off, set the environment variable `JUSTSTEM_NO_UPDATE_CHECK=1`.
 
 | OS | Requirements | AI runs on | Tested |
 |---|---|---|---|
-| **macOS** | macOS 12+, Apple Silicon | GPU (CoreML) | Builds and automated tests on macOS 15 (CI); used in Waveform 14 on macOS 27 |
-| **Windows** | Windows 10 1903+, x64 | GPU (DirectML) or CPU | Builds and automated tests on Windows Server 2022 (CI) |
-| **Linux** | x64, glibc | CPU | Builds and automated tests on Ubuntu 24.04 (CI) |
+| **macOS** | macOS 12+, Apple Silicon | GPU (CoreML) | Builds, automated tests, pluginval and auval on macOS 15 (CI); used in Waveform 14 on macOS 27 |
+| **Windows** | Windows 10 1903+, x64 | GPU (DirectML) or CPU | Builds, automated tests and pluginval on Windows Server 2022 (CI) |
+| **Linux** | x64, glibc | CPU | Builds, automated tests and pluginval on Ubuntu 24.04 (CI) |
 
 Intel Macs aren't supported. Tried justStem in another DAW or OS? Please share how it went in
 [Issues](https://github.com/PLATONG34821/justStem/issues).
