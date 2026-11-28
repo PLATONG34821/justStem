@@ -160,12 +160,12 @@ int main (int argc, char** argv)
         proc->setHQ (true);
     }
     check (proc->midiAvailable() && ! proc->getMidi(), "MIDI is off by default");
-    proc->setMidi (true);
     std::unique_ptr<juce::AudioProcessorEditor> editor (proc->createEditor());
 
     std::printf ("UI\n");
     check (editor->getWidth() == 900 && editor->getHeight() == 620, "window is 900 x 620 (fits 720p screens)");
-    snapshot (*editor, outDir.getChildFile ("1-idle.png"));
+    snapshot (*editor, outDir.getChildFile ("1-idle.png")); // as a new user sees it: MIDI off
+    proc->setMidi (true);
 
     std::printf ("Error messages\n");
     {
